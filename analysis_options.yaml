@@ -1,0 +1,69 @@
+include: all_lint_rules.yaml
+
+analyzer:
+  language:
+    strict-casts: true
+    strict-inference: true
+    strict-raw-types: true
+
+  errors:
+    # Correctness
+    avoid_slow_async_io: error
+    avoid_type_to_string: error
+    avoid_web_libraries_in_flutter: error
+    cancel_subscriptions: error
+    close_sinks: error
+    collection_methods_unrelated_type: error
+    hash_and_equals: error
+    literal_only_boolean_expressions: error
+    missing_required_param: error
+    missing_return: error
+    no_duplicate_case_values: error
+    no_self_assignments: error
+    throw_in_finally: error
+    unrelated_type_equality_checks: error
+    unsafe_variance: error
+    valid_regexps: error
+
+    # Async safety
+    discarded_futures: error
+    unawaited_futures: error
+    use_build_context_synchronously: error
+
+  exclude:
+    - "**/*.g.dart"
+    - "**/*.gr.dart"
+    - "**/*.freezed.dart"
+    - "**/*.config.dart"
+    - "**/*.gen.dart"
+    - "**/*.mocks.dart"
+    - "**/l10n/app_localizations*.dart"
+    - "**/generated/**"
+
+linter:
+  rules:
+    # Conflicting rules — disable the losing side of each pair.
+    always_specify_types: false # conflicts with omit_local_variable_types, omit_obvious_*
+    always_use_package_imports: false # conflicts with prefer_relative_imports
+    prefer_double_quotes: false # conflicts with prefer_single_quotes
+    prefer_final_parameters: false # conflicts with avoid_final_parameters
+    unnecessary_final: false # conflicts with prefer_final_locals
+
+    # Too strict or noisy for a Flutter app.
+    specify_nonobvious_property_types: false
+    specify_nonobvious_local_variable_types: false
+    always_put_control_body_on_new_line: false
+    always_put_required_named_parameters_first: false
+    avoid_classes_with_only_static_members: false
+    cascade_invocations: false
+    comment_references: false
+    diagnostic_describe_all_properties: false
+    flutter_style_todos: false
+    one_member_abstracts: false
+    prefer_expression_function_bodies: false
+    prefer_foreach: false
+    prefer_int_literals: false
+    prefer_mixin: false
+    public_member_api_docs: false
+    sort_constructors_first: false
+    document_ignores: false

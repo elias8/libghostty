@@ -1,0 +1,8 @@
+name: libghostty_workspace
+repository: https://github.com/elias8/libghostty
+
+environment:
+  sdk: ^3.10.0
+
+workspace:
+  - packages/libghostty
