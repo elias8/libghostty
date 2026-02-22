@@ -13,3 +13,7 @@ export 'src/enums/mods.dart';
 export 'src/enums/option_as_alt.dart';
 export 'src/enums/underline_style.dart';
 export 'src/exceptions.dart' hide checkResult, throwResult;
+export 'src/terminal/cell.dart' show Cell, CellStyle;
+export 'src/terminal/cursor.dart' show Cursor, CursorShape;
+export 'src/terminal/line.dart' show Line;
+export 'src/terminal/modes.dart' show TerminalModes;
