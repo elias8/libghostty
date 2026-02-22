@@ -88,8 +88,7 @@ void main() {
       final packageRoot = Directory(
         '${tmpDir.path}/workspace/packages/libghostty',
       )..createSync(recursive: true);
-      Directory('${tmpDir.path}/workspace/ghostty')
-          .createSync(recursive: true);
+      Directory('${tmpDir.path}/workspace/ghostty').createSync(recursive: true);
 
       expect(LibraryProvider.sourceAvailable(packageRoot.uri), isTrue);
     });

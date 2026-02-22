@@ -17,5 +17,4 @@ class TestServer {
     final baseUrl = Uri.parse('http://localhost:${server.port}');
     return TestServer._(server, baseUrl);
   }
-
 }

@@ -23,14 +23,8 @@ void main() {
 
     test('expected values at expected indices', () {
       expect(OscCommandType.fromNative(0), OscCommandType.invalid);
-      expect(
-        OscCommandType.fromNative(1),
-        OscCommandType.changeWindowTitle,
-      );
-      expect(
-        OscCommandType.fromNative(2),
-        OscCommandType.changeWindowIcon,
-      );
+      expect(OscCommandType.fromNative(1), OscCommandType.changeWindowTitle);
+      expect(OscCommandType.fromNative(2), OscCommandType.changeWindowIcon);
     });
 
     test('last value is at expected index', () {

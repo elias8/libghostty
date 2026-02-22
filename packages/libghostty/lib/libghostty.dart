@@ -15,6 +15,7 @@ export 'src/enums/underline_style.dart';
 export 'src/exceptions.dart' hide checkResult, throwResult;
 export 'src/key_encoder.dart';
 export 'src/key_event.dart';
+export 'src/paste.dart';
 export 'src/terminal/cell.dart' show Cell, CellStyle;
 export 'src/terminal/cursor.dart' show Cursor, CursorShape;
 export 'src/terminal/line.dart' show Line;

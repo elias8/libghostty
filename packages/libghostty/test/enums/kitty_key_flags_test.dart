@@ -22,8 +22,7 @@ void main() {
     });
 
     test('| operator combines flags', () {
-      final combined =
-          KittyKeyFlags.disambiguate | KittyKeyFlags.reportEvents;
+      final combined = KittyKeyFlags.disambiguate | KittyKeyFlags.reportEvents;
       expect(combined.value, 3);
       expect(combined.isDisabled, isFalse);
     });
@@ -34,10 +33,8 @@ void main() {
     });
 
     test('equality compares by value', () {
-      final a =
-          KittyKeyFlags.disambiguate | KittyKeyFlags.reportEvents;
-      final b =
-          KittyKeyFlags.reportEvents | KittyKeyFlags.disambiguate;
+      final a = KittyKeyFlags.disambiguate | KittyKeyFlags.reportEvents;
+      final b = KittyKeyFlags.reportEvents | KittyKeyFlags.disambiguate;
       expect(a, equals(b));
     });
 
@@ -49,18 +46,13 @@ void main() {
     });
 
     test('hashCode is consistent with equality', () {
-      final a =
-          KittyKeyFlags.disambiguate | KittyKeyFlags.reportAll;
-      final b =
-          KittyKeyFlags.reportAll | KittyKeyFlags.disambiguate;
+      final a = KittyKeyFlags.disambiguate | KittyKeyFlags.reportAll;
+      final b = KittyKeyFlags.reportAll | KittyKeyFlags.disambiguate;
       expect(a.hashCode, equals(b.hashCode));
     });
 
     test('toString contains hex value', () {
-      expect(
-        KittyKeyFlags.disambiguate.toString(),
-        'KittyKeyFlags(0x1)',
-      );
+      expect(KittyKeyFlags.disambiguate.toString(), 'KittyKeyFlags(0x1)');
       expect(KittyKeyFlags.all.toString(), 'KittyKeyFlags(0x1f)');
     });
   });
