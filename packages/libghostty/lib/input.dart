@@ -11,3 +11,5 @@ export 'src/enums/kitty_key_flags.dart';
 export 'src/enums/mods.dart';
 export 'src/enums/option_as_alt.dart';
 export 'src/exceptions.dart' hide checkResult, throwResult;
+export 'src/key_encoder.dart';
+export 'src/key_event.dart';
