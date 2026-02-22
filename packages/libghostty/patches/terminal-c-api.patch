@@ -1,0 +1,1323 @@
+From bedce2994790b9fc798ca75ab2958931ee59a4ce Mon Sep 17 00:00:00 2001
+From: Elias Andualem <eliasandualem8@gmail.com>
+Date: Sun, 22 Feb 2026 19:47:14 +0800
+Subject: [PATCH] wip: add terminal support with new API functions
+
+---
+ include/ghostty/vt.h                         |   1 +
+ include/ghostty/vt/terminal.h                | 511 +++++++++++++++
+ src/lib_vt.zig                               |  27 +
+ src/terminal/c/main.zig                      |  29 +
+ src/terminal/c/terminal.zig                  | 652 +++++++++++++++++++
+ src/terminal/osc/parsers/semantic_prompt.zig |  14 +
+ 6 files changed, 1234 insertions(+)
+ create mode 100644 include/ghostty/vt/terminal.h
+ create mode 100644 src/terminal/c/terminal.zig
+
+diff --git a/include/ghostty/vt.h b/include/ghostty/vt.h
+index 4f8fef88e..1a4656385 100644
+--- a/include/ghostty/vt.h
++++ b/include/ghostty/vt.h
+@@ -78,6 +78,7 @@ extern "C" {
+ #include <ghostty/vt/sgr.h>
+ #include <ghostty/vt/key.h>
+ #include <ghostty/vt/paste.h>
++#include <ghostty/vt/terminal.h>
+ #include <ghostty/vt/wasm.h>
+ 
+ #ifdef __cplusplus
+diff --git a/include/ghostty/vt/terminal.h b/include/ghostty/vt/terminal.h
+new file mode 100644
+index 000000000..56285c7d2
+--- /dev/null
++++ b/include/ghostty/vt/terminal.h
+@@ -0,0 +1,511 @@
++/**
++ * @file terminal.h
++ *
++ * Terminal emulator - create, drive, and query terminal state.
++ */
++
++#ifndef GHOSTTY_VT_TERMINAL_H
++#define GHOSTTY_VT_TERMINAL_H
++
++#include <stdbool.h>
++#include <stddef.h>
++#include <stdint.h>
++#include <ghostty/vt/result.h>
++#include <ghostty/vt/allocator.h>
++
++/** @defgroup terminal Terminal Emulator
++ *
++ * Create and interact with a virtual terminal emulator.
++ *
++ * ## Basic Usage
++ *
++ * 1. Create a terminal with ghostty_terminal_new()
++ * 2. Write input data with ghostty_terminal_write()
++ * 3. Call ghostty_render_state_update() to compute render state
++ * 4. Read viewport cells with ghostty_render_state_get_viewport()
++ * 5. Free the terminal with ghostty_terminal_free()
++ *
++ * ## Example
++ *
++ * @code{.c}
++ * #include <assert.h>
++ * #include <stdio.h>
++ * #include <ghostty/vt.h>
++ *
++ * int main() {
++ *   GhosttyTerminal terminal;
++ *   GhosttyResult result = ghostty_terminal_new(NULL, 80, 24, &terminal);
++ *   assert(result == GHOSTTY_SUCCESS);
++ *
++ *   ghostty_terminal_write(terminal, (const uint8_t *)"Hello!", 6);
++ *   ghostty_render_state_update(terminal);
++ *
++ *   int cols = ghostty_render_state_get_cols(terminal);
++ *   int rows = ghostty_render_state_get_rows(terminal);
++ *   GhosttyCell cells[cols * rows];
++ *   ghostty_render_state_get_viewport(terminal, cells, cols * rows);
++ *
++ *   // cells[0].codepoint == 'H', cells[1].codepoint == 'e', ...
++ *
++ *   ghostty_terminal_free(terminal);
++ *   return 0;
++ * }
++ * @endcode
++ *
++ * @{
++ */
++
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++/**
++ * Opaque handle to a terminal emulator instance.
++ *
++ * This handle represents a terminal emulator that processes input data
++ * and maintains screen state including cells, cursor, and scrollback.
++ *
++ * @ingroup terminal
++ */
++typedef struct GhosttyTerminal *GhosttyTerminal;
++
++/**
++ * A single terminal cell as returned by the render state.
++ *
++ * Cells are 16 bytes, tightly packed in row-major order.
++ * Use the GHOSTTY_CELL_FLAG_* constants to interpret the flags field.
++ *
++ * @ingroup terminal
++ */
++typedef struct {
++    uint32_t codepoint;       /**< Unicode codepoint for this cell */
++    uint8_t fg_r;             /**< Foreground red component (0-255) */
++    uint8_t fg_g;             /**< Foreground green component (0-255) */
++    uint8_t fg_b;             /**< Foreground blue component (0-255) */
++    uint8_t bg_r;             /**< Background red component (0-255) */
++    uint8_t bg_g;             /**< Background green component (0-255) */
++    uint8_t bg_b;             /**< Background blue component (0-255) */
++    uint8_t flags;            /**< Style flags (GHOSTTY_CELL_FLAG_*) */
++    uint8_t width;            /**< Cell width (0=spacer, 1=narrow, 2=wide) */
++    uint8_t underline_style;  /**< Underline style (0=none, see GhosttySgrUnderline) */
++    uint8_t grapheme_len;     /**< Number of extra codepoints in grapheme cluster */
++    uint8_t _pad[2];          /**< Reserved padding */
++} GhosttyCell;
++
++/**
++ * Terminal configuration for ghostty_terminal_new_with_config().
++ *
++ * All fields are optional — pass NULL to ghostty_terminal_new_with_config()
++ * to use defaults, or zero-initialize and set only the fields you need.
++ *
++ * @ingroup terminal
++ */
++typedef struct {
++    uint32_t scrollback_limit; /**< Maximum scrollback lines (default: 10000) */
++    uint8_t fg_r;              /**< Default foreground red */
++    uint8_t fg_g;              /**< Default foreground green */
++    uint8_t fg_b;              /**< Default foreground blue */
++    uint8_t fg_set;            /**< Non-zero to apply foreground color */
++    uint8_t bg_r;              /**< Default background red */
++    uint8_t bg_g;              /**< Default background green */
++    uint8_t bg_b;              /**< Default background blue */
++    uint8_t bg_set;            /**< Non-zero to apply background color */
++    uint8_t cursor_r;          /**< Cursor color red */
++    uint8_t cursor_g;          /**< Cursor color green */
++    uint8_t cursor_b;          /**< Cursor color blue */
++    uint8_t cursor_set;        /**< Non-zero to apply cursor color */
++} GhosttyTerminalConfig;
++
++/** Bold text */
++#define GHOSTTY_CELL_FLAG_BOLD          (1 << 0)
++/** Italic text */
++#define GHOSTTY_CELL_FLAG_ITALIC        (1 << 1)
++/** Strikethrough text */
++#define GHOSTTY_CELL_FLAG_STRIKETHROUGH (1 << 2)
++/** Inverse (swapped fg/bg) */
++#define GHOSTTY_CELL_FLAG_INVERSE       (1 << 3)
++/** Invisible text */
++#define GHOSTTY_CELL_FLAG_INVISIBLE     (1 << 4)
++/** Blinking text */
++#define GHOSTTY_CELL_FLAG_BLINK         (1 << 5)
++/** Faint (dim) text */
++#define GHOSTTY_CELL_FLAG_FAINT         (1 << 6)
++/** Overline decoration */
++#define GHOSTTY_CELL_FLAG_OVERLINE      (1 << 7)
++
++/** Block cursor */
++#define GHOSTTY_CURSOR_STYLE_BLOCK        0
++/** Vertical bar cursor */
++#define GHOSTTY_CURSOR_STYLE_BAR          1
++/** Underline cursor */
++#define GHOSTTY_CURSOR_STYLE_UNDERLINE    2
++/** Hollow block cursor */
++#define GHOSTTY_CURSOR_STYLE_BLOCK_HOLLOW 3
++
++/** No changes since last update */
++#define GHOSTTY_DIRTY_STATE_CLEAN   0
++/** Some rows changed */
++#define GHOSTTY_DIRTY_STATE_PARTIAL 1
++/** Full screen changed */
++#define GHOSTTY_DIRTY_STATE_FULL    2
++
++/**
++ * Create a new terminal emulator instance.
++ *
++ * Creates a new terminal with default configuration. The terminal must be
++ * freed using ghostty_terminal_free() when no longer needed.
++ *
++ * @param allocator Pointer to the allocator to use for memory management, or NULL to use the default allocator
++ * @param cols Number of columns (uses 80 if <= 0)
++ * @param rows Number of rows (uses 24 if <= 0)
++ * @param terminal Pointer to store the created terminal handle
++ * @return GHOSTTY_SUCCESS on success, or an error code on failure
++ *
++ * @ingroup terminal
++ */
++GhosttyResult ghostty_terminal_new(
++    const GhosttyAllocator *allocator,
++    int cols,
++    int rows,
++    GhosttyTerminal *terminal);
++
++/**
++ * Create a new terminal emulator instance with configuration.
++ *
++ * Creates a new terminal with the specified configuration. The terminal
++ * must be freed using ghostty_terminal_free() when no longer needed.
++ *
++ * @param allocator Pointer to the allocator to use for memory management, or NULL to use the default allocator
++ * @param cols Number of columns (uses 80 if <= 0)
++ * @param rows Number of rows (uses 24 if <= 0)
++ * @param config Terminal configuration, or NULL to use defaults
++ * @param terminal Pointer to store the created terminal handle
++ * @return GHOSTTY_SUCCESS on success, or an error code on failure
++ *
++ * @ingroup terminal
++ */
++GhosttyResult ghostty_terminal_new_with_config(
++    const GhosttyAllocator *allocator,
++    int cols,
++    int rows,
++    const GhosttyTerminalConfig *config,
++    GhosttyTerminal *terminal);
++
++/**
++ * Free a terminal emulator instance.
++ *
++ * Releases all resources associated with the terminal. After this call,
++ * the terminal handle becomes invalid and must not be used.
++ *
++ * @param terminal The terminal handle to free (may be NULL)
++ *
++ * @ingroup terminal
++ */
++void ghostty_terminal_free(GhosttyTerminal terminal);
++
++/**
++ * Write data to the terminal.
++ *
++ * Processes the provided bytes as terminal input, interpreting any escape
++ * sequences and updating terminal state accordingly.
++ *
++ * @param terminal The terminal handle, must not be NULL
++ * @param data The input data to process
++ * @param len Length of the input data in bytes
++ *
++ * @ingroup terminal
++ */
++void ghostty_terminal_write(
++    GhosttyTerminal terminal,
++    const uint8_t *data,
++    size_t len);
++
++/**
++ * Resize the terminal.
++ *
++ * Changes the terminal dimensions. Content is reflowed to fit the new
++ * dimensions.
++ *
++ * @param terminal The terminal handle, must not be NULL
++ * @param cols New number of columns (uses 1 if <= 0)
++ * @param rows New number of rows (uses 1 if <= 0)
++ * @return GHOSTTY_SUCCESS on success, or an error code on failure
++ *
++ * @ingroup terminal
++ */
++GhosttyResult ghostty_terminal_resize(
++    GhosttyTerminal terminal,
++    int cols,
++    int rows);
++
++/**
++ * Update the render state from the terminal.
++ *
++ * Computes a snapshot of the terminal's current visual state for rendering.
++ * Call this before reading viewport cells, cursor position, or dirty state.
++ *
++ * @param terminal The terminal handle, must not be NULL
++ * @return Dirty state: GHOSTTY_DIRTY_STATE_CLEAN, GHOSTTY_DIRTY_STATE_PARTIAL, or GHOSTTY_DIRTY_STATE_FULL
++ *
++ * @ingroup terminal
++ */
++uint8_t ghostty_render_state_update(GhosttyTerminal terminal);
++
++/**
++ * Get the viewport cells from the render state.
++ *
++ * Fills the output buffer with cell data for the entire viewport in
++ * row-major order. The buffer must be large enough to hold cols * rows
++ * cells. Call ghostty_render_state_update() before this function to
++ * ensure the render state is current.
++ *
++ * @param terminal The terminal handle, must not be NULL
++ * @param out_buf Buffer to fill with cell data
++ * @param buf_size Size of the buffer in number of cells
++ * @return Number of cells written, or -1 on error
++ *
++ * @ingroup terminal
++ */
++int ghostty_render_state_get_viewport(
++    GhosttyTerminal terminal,
++    GhosttyCell *out_buf,
++    int buf_size);
++
++/**
++ * Get the number of columns in the render state.
++ *
++ * @param terminal The terminal handle, must not be NULL
++ * @return Number of columns
++ *
++ * @ingroup terminal
++ */
++int ghostty_render_state_get_cols(GhosttyTerminal terminal);
++
++/**
++ * Get the number of rows in the render state.
++ *
++ * @param terminal The terminal handle, must not be NULL
++ * @return Number of rows
++ *
++ * @ingroup terminal
++ */
++int ghostty_render_state_get_rows(GhosttyTerminal terminal);
++
++/**
++ * Get the cursor column position.
++ *
++ * @param terminal The terminal handle, must not be NULL
++ * @return Zero-based cursor column
++ *
++ * @ingroup terminal
++ */
++int ghostty_render_state_get_cursor_x(GhosttyTerminal terminal);
++
++/**
++ * Get the cursor row position.
++ *
++ * @param terminal The terminal handle, must not be NULL
++ * @return Zero-based cursor row
++ *
++ * @ingroup terminal
++ */
++int ghostty_render_state_get_cursor_y(GhosttyTerminal terminal);
++
++/**
++ * Get whether the cursor is visible.
++ *
++ * @param terminal The terminal handle, must not be NULL
++ * @return true if the cursor is visible, false otherwise
++ *
++ * @ingroup terminal
++ */
++bool ghostty_render_state_get_cursor_visible(GhosttyTerminal terminal);
++
++/**
++ * Get the cursor style.
++ *
++ * @param terminal The terminal handle, must not be NULL
++ * @return Cursor style: GHOSTTY_CURSOR_STYLE_BLOCK, GHOSTTY_CURSOR_STYLE_BAR, GHOSTTY_CURSOR_STYLE_UNDERLINE, or GHOSTTY_CURSOR_STYLE_BLOCK_HOLLOW
++ *
++ * @ingroup terminal
++ */
++uint8_t ghostty_render_state_get_cursor_style(GhosttyTerminal terminal);
++
++/**
++ * Get the default foreground color as a packed RGB value.
++ *
++ * The color is packed as (R << 16 | G << 8 | B).
++ *
++ * @param terminal The terminal handle, must not be NULL
++ * @return Packed RGB foreground color
++ *
++ * @ingroup terminal
++ */
++uint32_t ghostty_render_state_get_fg_color(GhosttyTerminal terminal);
++
++/**
++ * Get the default background color as a packed RGB value.
++ *
++ * The color is packed as (R << 16 | G << 8 | B).
++ *
++ * @param terminal The terminal handle, must not be NULL
++ * @return Packed RGB background color
++ *
++ * @ingroup terminal
++ */
++uint32_t ghostty_render_state_get_bg_color(GhosttyTerminal terminal);
++
++/**
++ * Check whether a viewport row has changed since the last mark_clean.
++ *
++ * @param terminal The terminal handle, must not be NULL
++ * @param row Zero-based row index
++ * @return true if the row has been modified, false otherwise
++ *
++ * @ingroup terminal
++ */
++bool ghostty_render_state_is_row_dirty(GhosttyTerminal terminal, int row);
++
++/**
++ * Mark all rows as clean.
++ *
++ * Resets dirty state for all rows and the overall dirty flag. Call this
++ * after rendering to track subsequent changes.
++ *
++ * @param terminal The terminal handle, must not be NULL
++ *
++ * @ingroup terminal
++ */
++void ghostty_render_state_mark_clean(GhosttyTerminal terminal);
++
++/**
++ * Get the extra codepoints in a grapheme cluster.
++ *
++ * For cells where GhosttyCell.grapheme_len > 0, this function retrieves
++ * the additional codepoints beyond the base codepoint stored in the cell.
++ *
++ * @param terminal The terminal handle, must not be NULL
++ * @param row Zero-based row index
++ * @param col Zero-based column index
++ * @param out Buffer to fill with codepoints
++ * @param out_size Size of the buffer in number of uint32_t elements
++ * @return Number of codepoints written
++ *
++ * @ingroup terminal
++ */
++int ghostty_render_state_get_grapheme(
++    GhosttyTerminal terminal,
++    int row,
++    int col,
++    uint32_t *out,
++    int out_size);
++
++/**
++ * Get the number of scrollback lines available.
++ *
++ * @param terminal The terminal handle, must not be NULL
++ * @return Number of scrollback lines above the visible viewport
++ *
++ * @ingroup terminal
++ */
++int ghostty_terminal_get_scrollback_length(GhosttyTerminal terminal);
++
++/**
++ * Get a single scrollback line.
++ *
++ * Fills the output buffer with cell data for one scrollback line. Offset 0
++ * is the most recent scrollback line (closest to the viewport).
++ *
++ * @param terminal The terminal handle, must not be NULL
++ * @param offset Zero-based offset from the viewport (0 = most recent)
++ * @param out_buf Buffer to fill with cell data
++ * @param buf_size Size of the buffer in number of cells
++ * @return Number of cells written, or -1 on error
++ *
++ * @ingroup terminal
++ */
++int ghostty_terminal_get_scrollback_line(
++    GhosttyTerminal terminal,
++    int offset,
++    GhosttyCell *out_buf,
++    int buf_size);
++
++/**
++ * Check whether the alternate screen buffer is active.
++ *
++ * @param terminal The terminal handle, must not be NULL
++ * @return true if the alternate screen is active, false for the primary screen
++ *
++ * @ingroup terminal
++ */
++bool ghostty_terminal_is_alternate_screen(GhosttyTerminal terminal);
++
++/**
++ * Query a terminal mode.
++ *
++ * @param terminal The terminal handle, must not be NULL
++ * @param mode_value The numeric mode value to query
++ * @param is_ansi true for ANSI modes (SM/RM), false for DEC private modes (DECSET/DECRST)
++ * @return true if the mode is set, false otherwise
++ *
++ * @ingroup terminal
++ */
++bool ghostty_terminal_get_mode(
++    GhosttyTerminal terminal,
++    uint16_t mode_value,
++    bool is_ansi);
++
++/**
++ * Get the number of bell events since the last reset.
++ *
++ * @param terminal The terminal handle, must not be NULL
++ * @return Number of bells received
++ *
++ * @ingroup terminal
++ */
++uint32_t ghostty_terminal_get_bell_count(GhosttyTerminal terminal);
++
++/**
++ * Reset the bell counter to zero.
++ *
++ * @param terminal The terminal handle, must not be NULL
++ *
++ * @ingroup terminal
++ */
++void ghostty_terminal_reset_bell_count(GhosttyTerminal terminal);
++
++/**
++ * Check whether the terminal title has changed since the last get_title call.
++ *
++ * @param terminal The terminal handle, must not be NULL
++ * @return true if the title has changed
++ *
++ * @ingroup terminal
++ */
++bool ghostty_terminal_has_title_changed(GhosttyTerminal terminal);
++
++/**
++ * Get the current terminal title.
++ *
++ * Copies the title into the output buffer and clears the title-changed flag.
++ * The title is not null-terminated.
++ *
++ * @param terminal The terminal handle, must not be NULL
++ * @param out Buffer to fill with the title bytes
++ * @param out_size Size of the buffer in bytes
++ * @return Number of bytes written
++ *
++ * @ingroup terminal
++ */
++int ghostty_terminal_get_title(
++    GhosttyTerminal terminal,
++    uint8_t *out,
++    int out_size);
++
++#ifdef __cplusplus
++}
++#endif
++
++/** @} */
++
++#endif /* GHOSTTY_VT_TERMINAL_H */
+diff --git a/src/lib_vt.zig b/src/lib_vt.zig
+index 03a883e20..70ded6d0a 100644
+--- a/src/lib_vt.zig
++++ b/src/lib_vt.zig
+@@ -141,6 +141,33 @@ comptime {
+         @export(&c.sgr_attribute_tag, .{ .name = "ghostty_sgr_attribute_tag" });
+         @export(&c.sgr_attribute_value, .{ .name = "ghostty_sgr_attribute_value" });
+ 
++        @export(&c.terminal_new, .{ .name = "ghostty_terminal_new" });
++        @export(&c.terminal_new_with_config, .{ .name = "ghostty_terminal_new_with_config" });
++        @export(&c.terminal_free, .{ .name = "ghostty_terminal_free" });
++        @export(&c.terminal_write, .{ .name = "ghostty_terminal_write" });
++        @export(&c.terminal_resize, .{ .name = "ghostty_terminal_resize" });
++        @export(&c.render_state_update, .{ .name = "ghostty_render_state_update" });
++        @export(&c.render_state_get_viewport, .{ .name = "ghostty_render_state_get_viewport" });
++        @export(&c.render_state_get_cols, .{ .name = "ghostty_render_state_get_cols" });
++        @export(&c.render_state_get_rows, .{ .name = "ghostty_render_state_get_rows" });
++        @export(&c.render_state_get_cursor_x, .{ .name = "ghostty_render_state_get_cursor_x" });
++        @export(&c.render_state_get_cursor_y, .{ .name = "ghostty_render_state_get_cursor_y" });
++        @export(&c.render_state_get_cursor_visible, .{ .name = "ghostty_render_state_get_cursor_visible" });
++        @export(&c.render_state_get_cursor_style, .{ .name = "ghostty_render_state_get_cursor_style" });
++        @export(&c.render_state_get_fg_color, .{ .name = "ghostty_render_state_get_fg_color" });
++        @export(&c.render_state_get_bg_color, .{ .name = "ghostty_render_state_get_bg_color" });
++        @export(&c.render_state_is_row_dirty, .{ .name = "ghostty_render_state_is_row_dirty" });
++        @export(&c.render_state_mark_clean, .{ .name = "ghostty_render_state_mark_clean" });
++        @export(&c.render_state_get_grapheme, .{ .name = "ghostty_render_state_get_grapheme" });
++        @export(&c.terminal_get_scrollback_length, .{ .name = "ghostty_terminal_get_scrollback_length" });
++        @export(&c.terminal_get_scrollback_line, .{ .name = "ghostty_terminal_get_scrollback_line" });
++        @export(&c.terminal_is_alternate_screen, .{ .name = "ghostty_terminal_is_alternate_screen" });
++        @export(&c.terminal_get_mode, .{ .name = "ghostty_terminal_get_mode" });
++        @export(&c.terminal_get_bell_count, .{ .name = "ghostty_terminal_get_bell_count" });
++        @export(&c.terminal_reset_bell_count, .{ .name = "ghostty_terminal_reset_bell_count" });
++        @export(&c.terminal_has_title_changed, .{ .name = "ghostty_terminal_has_title_changed" });
++        @export(&c.terminal_get_title, .{ .name = "ghostty_terminal_get_title" });
++
+         // On Wasm we need to export our allocator convenience functions.
+         if (builtin.target.cpu.arch.isWasm()) {
+             const alloc = @import("lib/allocator/convenience.zig");
+diff --git a/src/terminal/c/main.zig b/src/terminal/c/main.zig
+index bc92597f5..4fdb7c8f1 100644
+--- a/src/terminal/c/main.zig
++++ b/src/terminal/c/main.zig
+@@ -4,6 +4,7 @@ pub const key_event = @import("key_event.zig");
+ pub const key_encode = @import("key_encode.zig");
+ pub const paste = @import("paste.zig");
+ pub const sgr = @import("sgr.zig");
++pub const terminal = @import("terminal.zig");
+ 
+ // The full C API, unexported.
+ pub const osc_new = osc.new;
+@@ -52,6 +53,33 @@ pub const key_encoder_encode = key_encode.encode;
+ 
+ pub const paste_is_safe = paste.is_safe;
+ 
++pub const terminal_new = terminal.new;
++pub const terminal_new_with_config = terminal.new_with_config;
++pub const terminal_free = terminal.free;
++pub const terminal_write = terminal.write;
++pub const terminal_resize = terminal.resize;
++pub const render_state_update = terminal.update;
++pub const render_state_get_viewport = terminal.get_viewport;
++pub const render_state_get_cols = terminal.get_cols;
++pub const render_state_get_rows = terminal.get_rows;
++pub const render_state_get_cursor_x = terminal.get_cursor_x;
++pub const render_state_get_cursor_y = terminal.get_cursor_y;
++pub const render_state_get_cursor_visible = terminal.get_cursor_visible;
++pub const render_state_get_cursor_style = terminal.get_cursor_style;
++pub const render_state_get_fg_color = terminal.get_fg_color;
++pub const render_state_get_bg_color = terminal.get_bg_color;
++pub const render_state_is_row_dirty = terminal.is_row_dirty;
++pub const render_state_mark_clean = terminal.mark_clean;
++pub const render_state_get_grapheme = terminal.get_grapheme;
++pub const terminal_get_scrollback_length = terminal.get_scrollback_length;
++pub const terminal_get_scrollback_line = terminal.get_scrollback_line;
++pub const terminal_is_alternate_screen = terminal.is_alternate_screen;
++pub const terminal_get_mode = terminal.get_mode;
++pub const terminal_get_bell_count = terminal.get_bell_count;
++pub const terminal_reset_bell_count = terminal.reset_bell_count;
++pub const terminal_has_title_changed = terminal.has_title_changed;
++pub const terminal_get_title = terminal.get_title;
++
+ test {
+     _ = color;
+     _ = osc;
+@@ -59,6 +87,7 @@ test {
+     _ = key_encode;
+     _ = paste;
+     _ = sgr;
++    _ = terminal;
+ 
+     // We want to make sure we run the tests for the C allocator interface.
+     _ = @import("../../lib/allocator.zig");
+diff --git a/src/terminal/c/terminal.zig b/src/terminal/c/terminal.zig
+new file mode 100644
+index 000000000..5b42a4eb6
+--- /dev/null
++++ b/src/terminal/c/terminal.zig
+@@ -0,0 +1,652 @@
++const std = @import("std");
++const Allocator = std.mem.Allocator;
++const lib_alloc = @import("../../lib/allocator.zig");
++const CAllocator = lib_alloc.Allocator;
++const Result = @import("result.zig").Result;
++const terminal_pkg = @import("../main.zig");
++const Terminal = terminal_pkg.Terminal;
++const RenderState = terminal_pkg.RenderState;
++const page = terminal_pkg.page;
++const stream_pkg = @import("../stream.zig");
++const stream_readonly = @import("../stream_readonly.zig");
++const size = @import("../size.zig");
++const Style = @import("../style.zig").Style;
++const modes = terminal_pkg.modes;
++
++const log = std.log.scoped(.terminal_c);
++
++/// C: GhosttyCell
++pub const GhosttyCell = extern struct {
++    codepoint: u32,
++    fg_r: u8,
++    fg_g: u8,
++    fg_b: u8,
++    bg_r: u8,
++    bg_g: u8,
++    bg_b: u8,
++    flags: u8,
++    width: u8,
++    underline_style: u8,
++    grapheme_len: u8,
++    _pad: [2]u8 = .{ 0, 0 },
++
++    pub const flag_bold: u8 = 1 << 0;
++    pub const flag_italic: u8 = 1 << 1;
++    pub const flag_strikethrough: u8 = 1 << 2;
++    pub const flag_inverse: u8 = 1 << 3;
++    pub const flag_invisible: u8 = 1 << 4;
++    pub const flag_blink: u8 = 1 << 5;
++    pub const flag_faint: u8 = 1 << 6;
++    pub const flag_overline: u8 = 1 << 7;
++};
++
++/// C: GhosttyTerminalConfig
++pub const GhosttyTerminalConfig = extern struct {
++    scrollback_limit: u32,
++    fg_r: u8,
++    fg_g: u8,
++    fg_b: u8,
++    fg_set: u8,
++    bg_r: u8,
++    bg_g: u8,
++    bg_b: u8,
++    bg_set: u8,
++    cursor_r: u8,
++    cursor_g: u8,
++    cursor_b: u8,
++    cursor_set: u8,
++};
++
++const TerminalWrapper = struct {
++    alloc: Allocator,
++    terminal: Terminal,
++    stream: EventStream,
++    render_state: RenderState,
++    bell_count: u32 = 0,
++    title_changed: bool = false,
++    title_buf: std.ArrayListUnmanaged(u8),
++};
++
++/// C: GhosttyTerminal
++pub const Handle = ?*TerminalWrapper;
++
++const EventHandler = struct {
++    readonly: stream_readonly.Handler,
++    wrapper: *TerminalWrapper,
++
++    pub fn init(terminal: *Terminal, wrapper: *TerminalWrapper) EventHandler {
++        return .{
++            .readonly = stream_readonly.Handler.init(terminal),
++            .wrapper = wrapper,
++        };
++    }
++
++    pub fn deinit(self: *EventHandler) void {
++        self.readonly.deinit();
++    }
++
++    pub fn vt(
++        self: *EventHandler,
++        comptime action: stream_pkg.Action.Tag,
++        value: stream_pkg.Action.Value(action),
++    ) !void {
++        switch (action) {
++            .bell => self.wrapper.bell_count +|= 1,
++            .window_title => {
++                self.wrapper.title_buf.clearRetainingCapacity();
++                self.wrapper.title_buf.appendSlice(self.wrapper.alloc, value.title) catch {};
++                self.wrapper.title_changed = true;
++            },
++            else => return self.readonly.vt(action, value),
++        }
++    }
++};
++
++const EventStream = stream_pkg.Stream(EventHandler);
++
++pub fn new(
++    alloc_: ?*const CAllocator,
++    cols: c_int,
++    rows: c_int,
++    result: *Handle,
++) callconv(.c) Result {
++    return new_with_config(alloc_, cols, rows, null, result);
++}
++
++pub fn new_with_config(
++    alloc_: ?*const CAllocator,
++    cols: c_int,
++    rows: c_int,
++    config: ?*const GhosttyTerminalConfig,
++    result: *Handle,
++) callconv(.c) Result {
++    const alloc = lib_alloc.default(alloc_);
++
++    const ucols: size.CellCountInt = if (cols > 0) @intCast(cols) else 80;
++    const urows: size.CellCountInt = if (rows > 0) @intCast(rows) else 24;
++
++    var terminal_colors: Terminal.Colors = .default;
++    var scrollback: u32 = 10000;
++    if (config) |cfg| {
++        scrollback = cfg.scrollback_limit;
++        if (cfg.fg_set != 0) terminal_colors.foreground = .init(.{
++            .r = cfg.fg_r,
++            .g = cfg.fg_g,
++            .b = cfg.fg_b,
++        });
++        if (cfg.bg_set != 0) terminal_colors.background = .init(.{
++            .r = cfg.bg_r,
++            .g = cfg.bg_g,
++            .b = cfg.bg_b,
++        });
++        if (cfg.cursor_set != 0) terminal_colors.cursor = .init(.{
++            .r = cfg.cursor_r,
++            .g = cfg.cursor_g,
++            .b = cfg.cursor_b,
++        });
++    }
++
++    var t = Terminal.init(alloc, .{
++        .cols = ucols,
++        .rows = urows,
++        .max_scrollback = scrollback,
++        .colors = terminal_colors,
++    }) catch return .out_of_memory;
++    errdefer t.deinit(alloc);
++
++    const wrapper = alloc.create(TerminalWrapper) catch return .out_of_memory;
++    wrapper.* = .{
++        .alloc = alloc,
++        .terminal = t,
++        .stream = undefined,
++        .render_state = .empty,
++        .title_buf = .empty,
++    };
++
++    wrapper.stream = .initAlloc(alloc, .init(&wrapper.terminal, wrapper));
++
++    result.* = wrapper;
++    return .success;
++}
++
++pub fn free(handle: Handle) callconv(.c) void {
++    const wrapper = handle orelse return;
++    const alloc = wrapper.alloc;
++    wrapper.stream.deinit();
++    wrapper.render_state.deinit(alloc);
++    wrapper.terminal.deinit(alloc);
++    wrapper.title_buf.deinit(alloc);
++    alloc.destroy(wrapper);
++}
++
++pub fn write(
++    handle: Handle,
++    data: [*]const u8,
++    len: usize,
++) callconv(.c) void {
++    const wrapper = handle orelse return;
++    wrapper.stream.nextSlice(data[0..len]) catch |err| {
++        log.warn("write error: {}", .{err});
++    };
++}
++
++pub fn resize(
++    handle: Handle,
++    cols: c_int,
++    rows: c_int,
++) callconv(.c) Result {
++    const wrapper = handle orelse return .invalid_value;
++    const ucols: size.CellCountInt = if (cols > 0) @intCast(cols) else 1;
++    const urows: size.CellCountInt = if (rows > 0) @intCast(rows) else 1;
++    wrapper.terminal.resize(wrapper.alloc, ucols, urows) catch return .out_of_memory;
++    return .success;
++}
++
++pub fn update(handle: Handle) callconv(.c) u8 {
++    const wrapper = handle orelse return 0;
++    wrapper.render_state.update(wrapper.alloc, &wrapper.terminal) catch return 0;
++    return switch (wrapper.render_state.dirty) {
++        .false => 0,
++        .partial => 1,
++        .full => 2,
++    };
++}
++
++pub fn get_viewport(
++    handle: Handle,
++    out_buf: [*]GhosttyCell,
++    buf_size: c_int,
++) callconv(.c) c_int {
++    const wrapper = handle orelse return -1;
++    const rs = &wrapper.render_state;
++    const total_cells: usize = @as(usize, rs.rows) * @as(usize, rs.cols);
++    if (@as(usize, @intCast(buf_size)) < total_cells) return -1;
++
++    const row_data = rs.row_data.slice();
++    const row_cells_list = row_data.items(.cells);
++
++    var idx: usize = 0;
++    for (0..rs.rows) |y| {
++        const cells = row_cells_list[y];
++        if (cells.len == 0) {
++            for (0..rs.cols) |_| {
++                out_buf[idx] = emptyCell(rs);
++                idx += 1;
++            }
++            continue;
++        }
++
++        const cells_slice = cells.slice();
++        const raws = cells_slice.items(.raw);
++        const styles = cells_slice.items(.style);
++        const graphemes = cells_slice.items(.grapheme);
++
++        for (0..rs.cols) |x| {
++            const raw = raws[x];
++            const style: Style = if (raw.style_id > 0) styles[x] else .{};
++
++            var gc = emptyCell(rs);
++            gc.codepoint = raw.codepoint();
++
++            resolveColors(&gc, style, rs);
++
++            var f: u8 = 0;
++            if (style.flags.bold) f |= GhosttyCell.flag_bold;
++            if (style.flags.italic) f |= GhosttyCell.flag_italic;
++            if (style.flags.strikethrough) f |= GhosttyCell.flag_strikethrough;
++            if (style.flags.inverse) f |= GhosttyCell.flag_inverse;
++            if (style.flags.invisible) f |= GhosttyCell.flag_invisible;
++            if (style.flags.blink) f |= GhosttyCell.flag_blink;
++            if (style.flags.faint) f |= GhosttyCell.flag_faint;
++            if (style.flags.overline) f |= GhosttyCell.flag_overline;
++            gc.flags = f;
++            gc.underline_style = @intFromEnum(style.flags.underline);
++
++            gc.width = switch (raw.wide) {
++                .narrow => 1,
++                .wide => 2,
++                .spacer_tail => 0,
++                .spacer_head => 0,
++            };
++
++            gc.grapheme_len = if (raw.hasGrapheme())
++                @intCast(@min(graphemes[x].len, 255))
++            else
++                0;
++
++            out_buf[idx] = gc;
++            idx += 1;
++        }
++    }
++
++    return @intCast(total_cells);
++}
++
++pub fn get_cols(handle: Handle) callconv(.c) c_int {
++    const wrapper = handle orelse return 0;
++    return @intCast(wrapper.render_state.cols);
++}
++
++pub fn get_rows(handle: Handle) callconv(.c) c_int {
++    const wrapper = handle orelse return 0;
++    return @intCast(wrapper.render_state.rows);
++}
++
++pub fn get_cursor_x(handle: Handle) callconv(.c) c_int {
++    const wrapper = handle orelse return 0;
++    return @intCast(wrapper.render_state.cursor.active.x);
++}
++
++pub fn get_cursor_y(handle: Handle) callconv(.c) c_int {
++    const wrapper = handle orelse return 0;
++    return @intCast(wrapper.render_state.cursor.active.y);
++}
++
++pub fn get_cursor_visible(handle: Handle) callconv(.c) bool {
++    const wrapper = handle orelse return true;
++    return wrapper.render_state.cursor.visible;
++}
++
++pub fn get_cursor_style(handle: Handle) callconv(.c) u8 {
++    const wrapper = handle orelse return 0;
++    return switch (wrapper.render_state.cursor.visual_style) {
++        .block => 0,
++        .bar => 1,
++        .underline => 2,
++        .block_hollow => 3,
++    };
++}
++
++pub fn get_fg_color(handle: Handle) callconv(.c) u32 {
++    const wrapper = handle orelse return 0;
++    const c = wrapper.render_state.colors.foreground;
++    return packRGB(c.r, c.g, c.b);
++}
++
++pub fn get_bg_color(handle: Handle) callconv(.c) u32 {
++    const wrapper = handle orelse return 0;
++    const c = wrapper.render_state.colors.background;
++    return packRGB(c.r, c.g, c.b);
++}
++
++pub fn is_row_dirty(handle: Handle, y: c_int) callconv(.c) bool {
++    const wrapper = handle orelse return false;
++    const rs = &wrapper.render_state;
++    const uy: usize = @intCast(y);
++    if (uy >= rs.rows) return false;
++    return rs.row_data.items(.dirty)[uy];
++}
++
++pub fn mark_clean(handle: Handle) callconv(.c) void {
++    const wrapper = handle orelse return;
++    const rs = &wrapper.render_state;
++    rs.dirty = .false;
++    const row_data = rs.row_data.slice();
++    @memset(row_data.items(.dirty), false);
++}
++
++pub fn get_grapheme(
++    handle: Handle,
++    row: c_int,
++    col: c_int,
++    out: [*]u32,
++    out_size: c_int,
++) callconv(.c) c_int {
++    const wrapper = handle orelse return 0;
++    const rs = &wrapper.render_state;
++    const urow: usize = @intCast(row);
++    const ucol: usize = @intCast(col);
++    if (urow >= rs.rows or ucol >= rs.cols) return 0;
++
++    const cells = rs.row_data.items(.cells)[urow];
++    if (cells.len == 0) return 0;
++
++    const raw = cells.items(.raw)[ucol];
++    if (!raw.hasGrapheme()) return 0;
++
++    const grapheme = cells.items(.grapheme)[ucol];
++    const count = @min(grapheme.len, @as(usize, @intCast(out_size)));
++    for (0..count) |i| {
++        out[i] = @intCast(grapheme[i]);
++    }
++    return @intCast(count);
++}
++
++pub fn get_scrollback_length(handle: Handle) callconv(.c) c_int {
++    const wrapper = handle orelse return 0;
++    const t = &wrapper.terminal;
++    const s = t.screens.get(.primary) orelse return 0;
++    const total = s.pages.total_rows;
++    const visible = s.pages.rows;
++    return @intCast(if (total > visible) total - visible else 0);
++}
++
++pub fn get_scrollback_line(
++    handle: Handle,
++    offset: c_int,
++    out_buf: [*]GhosttyCell,
++    buf_size: c_int,
++) callconv(.c) c_int {
++    const wrapper = handle orelse return -1;
++    const t = &wrapper.terminal;
++    const rs = &wrapper.render_state;
++    const s = t.screens.get(.primary) orelse return -1;
++
++    const total = s.pages.total_rows;
++    const visible = s.pages.rows;
++    if (total <= visible) return -1;
++
++    const scrollback_len = total - visible;
++    const uoffset: usize = @intCast(offset);
++    if (uoffset >= scrollback_len) return -1;
++
++    const cols = s.pages.cols;
++    if (@as(usize, @intCast(buf_size)) < cols) return -1;
++
++    const row_pin = s.pages.pin(.{ .screen = .{ .x = 0, .y = @intCast(uoffset) } }) orelse return -1;
++    const p: *page.Page = &row_pin.node.data;
++    const rac = row_pin.rowAndCell();
++    const page_cells = p.getCells(rac.row);
++
++    for (0..cols) |x| {
++        const raw = page_cells[x];
++        var gc = emptyCell(rs);
++        gc.codepoint = raw.codepoint();
++
++        if (raw.style_id > 0) {
++            const style = p.styles.get(p.memory, raw.style_id).*;
++            resolveColors(&gc, style, rs);
++
++            var f: u8 = 0;
++            if (style.flags.bold) f |= GhosttyCell.flag_bold;
++            if (style.flags.italic) f |= GhosttyCell.flag_italic;
++            if (style.flags.strikethrough) f |= GhosttyCell.flag_strikethrough;
++            if (style.flags.inverse) f |= GhosttyCell.flag_inverse;
++            if (style.flags.invisible) f |= GhosttyCell.flag_invisible;
++            if (style.flags.blink) f |= GhosttyCell.flag_blink;
++            if (style.flags.faint) f |= GhosttyCell.flag_faint;
++            if (style.flags.overline) f |= GhosttyCell.flag_overline;
++            gc.flags = f;
++            gc.underline_style = @intFromEnum(style.flags.underline);
++        }
++
++        gc.width = switch (raw.wide) {
++            .narrow => 1,
++            .wide => 2,
++            .spacer_tail => 0,
++            .spacer_head => 0,
++        };
++
++        out_buf[x] = gc;
++    }
++
++    return @intCast(cols);
++}
++
++pub fn is_alternate_screen(handle: Handle) callconv(.c) bool {
++    const wrapper = handle orelse return false;
++    return wrapper.terminal.screens.active_key == .alternate;
++}
++
++pub fn get_mode(
++    handle: Handle,
++    mode_value: u16,
++    is_ansi: bool,
++) callconv(.c) bool {
++    const wrapper = handle orelse return false;
++    const mode = modes.modeFromInt(mode_value, is_ansi) orelse return false;
++    return wrapper.terminal.modes.get(mode);
++}
++
++pub fn get_bell_count(handle: Handle) callconv(.c) u32 {
++    const wrapper = handle orelse return 0;
++    return wrapper.bell_count;
++}
++
++pub fn reset_bell_count(handle: Handle) callconv(.c) void {
++    const wrapper = handle orelse return;
++    wrapper.bell_count = 0;
++}
++
++pub fn has_title_changed(handle: Handle) callconv(.c) bool {
++    const wrapper = handle orelse return false;
++    return wrapper.title_changed;
++}
++
++pub fn get_title(
++    handle: Handle,
++    out: [*]u8,
++    out_size: c_int,
++) callconv(.c) c_int {
++    const wrapper = handle orelse return 0;
++    wrapper.title_changed = false;
++    const title = wrapper.title_buf.items;
++    const count = @min(title.len, @as(usize, @intCast(out_size)));
++    @memcpy(out[0..count], title[0..count]);
++    return @intCast(count);
++}
++
++fn packRGB(r: u8, g: u8, b: u8) u32 {
++    return @as(u32, r) << 16 | @as(u32, g) << 8 | @as(u32, b);
++}
++
++fn emptyCell(rs: *const RenderState) GhosttyCell {
++    return .{
++        .codepoint = 0,
++        .fg_r = rs.colors.foreground.r,
++        .fg_g = rs.colors.foreground.g,
++        .fg_b = rs.colors.foreground.b,
++        .bg_r = rs.colors.background.r,
++        .bg_g = rs.colors.background.g,
++        .bg_b = rs.colors.background.b,
++        .flags = 0,
++        .width = 1,
++        .underline_style = 0,
++        .grapheme_len = 0,
++    };
++}
++
++fn resolveColors(gc: *GhosttyCell, style: Style, rs: *const RenderState) void {
++    switch (style.fg_color) {
++        .none => {},
++        .palette => |idx| {
++            const c = rs.colors.palette[idx];
++            gc.fg_r = c.r;
++            gc.fg_g = c.g;
++            gc.fg_b = c.b;
++        },
++        .rgb => |c| {
++            gc.fg_r = c.r;
++            gc.fg_g = c.g;
++            gc.fg_b = c.b;
++        },
++    }
++    switch (style.bg_color) {
++        .none => {},
++        .palette => |idx| {
++            const c = rs.colors.palette[idx];
++            gc.bg_r = c.r;
++            gc.bg_g = c.g;
++            gc.bg_b = c.b;
++        },
++        .rgb => |c| {
++            gc.bg_r = c.r;
++            gc.bg_g = c.g;
++            gc.bg_b = c.b;
++        },
++    }
++}
++
++test "alloc" {
++    const testing = std.testing;
++    var h: Handle = undefined;
++    try testing.expectEqual(Result.success, new(
++        &lib_alloc.test_allocator,
++        10,
++        5,
++        &h,
++    ));
++    free(h);
++}
++
++test "write and read viewport" {
++    const testing = std.testing;
++    var h: Handle = undefined;
++    try testing.expectEqual(Result.success, new(
++        &lib_alloc.test_allocator,
++        10,
++        5,
++        &h,
++    ));
++    defer free(h);
++
++    write(h.?, "Hello", 5);
++    _ = update(h);
++
++    try testing.expectEqual(@as(c_int, 10), get_cols(h));
++    try testing.expectEqual(@as(c_int, 5), get_rows(h));
++
++    var buf: [50]GhosttyCell = undefined;
++    const count = get_viewport(h, &buf, 50);
++    try testing.expectEqual(@as(c_int, 50), count);
++    try testing.expectEqual(@as(u32, 'H'), buf[0].codepoint);
++    try testing.expectEqual(@as(u32, 'e'), buf[1].codepoint);
++    try testing.expectEqual(@as(u32, 'l'), buf[2].codepoint);
++    try testing.expectEqual(@as(u32, 'l'), buf[3].codepoint);
++    try testing.expectEqual(@as(u32, 'o'), buf[4].codepoint);
++}
++
++test "resize" {
++    const testing = std.testing;
++    var h: Handle = undefined;
++    try testing.expectEqual(Result.success, new(
++        &lib_alloc.test_allocator,
++        10,
++        5,
++        &h,
++    ));
++    defer free(h);
++
++    _ = update(h);
++    try testing.expectEqual(@as(c_int, 10), get_cols(h));
++    try testing.expectEqual(@as(c_int, 5), get_rows(h));
++
++    try testing.expectEqual(Result.success, resize(h, 20, 10));
++    _ = update(h);
++    try testing.expectEqual(@as(c_int, 20), get_cols(h));
++    try testing.expectEqual(@as(c_int, 10), get_rows(h));
++}
++
++test "bell count" {
++    const testing = std.testing;
++    var h: Handle = undefined;
++    try testing.expectEqual(Result.success, new(
++        &lib_alloc.test_allocator,
++        10,
++        5,
++        &h,
++    ));
++    defer free(h);
++
++    try testing.expectEqual(@as(u32, 0), get_bell_count(h));
++    write(h.?, "\x07\x07", 2);
++    try testing.expectEqual(@as(u32, 2), get_bell_count(h));
++
++    reset_bell_count(h);
++    try testing.expectEqual(@as(u32, 0), get_bell_count(h));
++}
++
++test "title change" {
++    const testing = std.testing;
++    var h: Handle = undefined;
++    try testing.expectEqual(Result.success, new(
++        &lib_alloc.test_allocator,
++        80,
++        24,
++        &h,
++    ));
++    defer free(h);
++
++    try testing.expect(!has_title_changed(h));
++    write(h.?, "\x1b]0;Hello\x1b\\", 12);
++    try testing.expect(has_title_changed(h));
++
++    var title_buf: [256]u8 = undefined;
++    const title_len = get_title(h, &title_buf, 256);
++    try testing.expectEqual(@as(c_int, 5), title_len);
++    try testing.expectEqualStrings("Hello", title_buf[0..@intCast(title_len)]);
++
++    try testing.expect(!has_title_changed(h));
++}
++
++test "null safety" {
++    free(null);
++    write(null, "x", 1);
++    try std.testing.expectEqual(Result.invalid_value, resize(null, 10, 10));
++    try std.testing.expectEqual(@as(u8, 0), update(null));
++    try std.testing.expectEqual(@as(c_int, -1), get_viewport(null, undefined, 0));
++    try std.testing.expectEqual(@as(c_int, 0), get_cols(null));
++    try std.testing.expectEqual(@as(c_int, 0), get_rows(null));
++    try std.testing.expectEqual(@as(u32, 0), get_bell_count(null));
++    try std.testing.expect(!has_title_changed(null));
++}
+diff --git a/src/terminal/osc/parsers/semantic_prompt.zig b/src/terminal/osc/parsers/semantic_prompt.zig
+index c2872b28d..d5282a34a 100644
+--- a/src/terminal/osc/parsers/semantic_prompt.zig
++++ b/src/terminal/osc/parsers/semantic_prompt.zig
+@@ -15,6 +15,20 @@ pub const Command = struct {
+     action: Action,
+     options_unvalidated: []const u8,
+ 
++    pub const C = extern struct {
++        action: u8,
++        options_ptr: ?[*]const u8,
++        options_len: usize,
++    };
++
++    pub fn cval(self: Command) C {
++        return .{
++            .action = @intFromEnum(self.action),
++            .options_ptr = if (self.options_unvalidated.len > 0) self.options_unvalidated.ptr else null,
++            .options_len = self.options_unvalidated.len,
++        };
++    }
++
+     pub const Action = enum {
+         fresh_line, // 'L'
+         fresh_line_new_prompt, // 'A'
+-- 
+2.40.1
+

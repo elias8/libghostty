@@ -1,0 +1,64 @@
+# ffigen configuration for libghostty-vt
+#
+# Upstream base: ghostty-org/ghostty @ 861a9cf537a58a380bc6a0784573b3de3a70415e
+# Keep this in sync with upstream. The patch in patches/terminal-c-api.patch
+# applies on top of this commit — update both when rebasing.
+#
+# Regenerate bindings:
+#   dart run ffigen --config packages/libghostty/ffigen.yaml
+#   (or from packages/libghostty/: dart run ffigen --config ffigen.yaml)
+
+name: GhosttyBindings
+description: Raw FFI bindings to libghostty-vt.
+output: 'lib/src/ffi/bindings.g.dart'
+headers:
+  entry-points:
+    - '../../ghostty/include/ghostty/vt.h'
+compiler-opts:
+  - '-I../../ghostty/include'
+  - '-Ighostty/include'
+# TODO(elias8): ffi-native generates @ffi.DefaultAsset / external bindings
+# using Dart's native assets system, which is still experimental. Revisit
+# when native assets stabilize.
+ffi-native:
+  asset-id: 'package:libghostty/libghostty.dart'
+exclude-all-by-default: true
+silence-enum-warning: true
+functions:
+  include:
+    - 'ghostty_key_.*'
+    - 'ghostty_osc_.*'
+    - 'ghostty_sgr_.*'
+    - 'ghostty_paste_.*'
+    - 'ghostty_color_.*'
+    - 'ghostty_terminal_.*'
+    - 'ghostty_render_state_.*'
+structs:
+  include:
+    - 'GhosttyColorRgb'
+    - 'GhosttySgrAttribute'
+    - 'GhosttySgrUnknown'
+    - 'GhosttyCell'
+    - 'GhosttyTerminalConfig'
+unions:
+  include:
+    - 'GhosttySgrAttributeValue'
+enums:
+  include:
+    - 'GhosttyResult'
+    - 'GhosttyKeyAction'
+    - 'GhosttyKey'
+    - 'GhosttyKeyEncoderOption'
+    - 'GhosttyOptionAsAlt'
+    - 'GhosttyOscCommandType'
+    - 'GhosttyOscCommandData'
+    - 'GhosttySgrAttributeTag'
+    - 'GhosttySgrUnderline'
+unnamed-enums:
+  include:
+    - 'GHOSTTY_.*'
+typedefs:
+  include:
+    - 'GhosttyMods'
+    - 'GhosttyKittyKeyFlags'
+    - 'GhosttyColorPaletteIndex'
