@@ -10,13 +10,15 @@
 /// ```
 // Maps 1:1 with the native GhosttyKeyAction enum.
 enum KeyAction {
-  release,
-  press,
-  repeat;
+  release(0),
+  press(1),
+  repeat(2);
 
-  int get nativeValue => index;
+  final int nativeValue;
+
+  const KeyAction(this.nativeValue);
 
   static KeyAction fromNative(int value) {
-    return KeyAction.values[value];
+    return KeyAction.values.firstWhere((e) => e.nativeValue == value);
   }
 }
