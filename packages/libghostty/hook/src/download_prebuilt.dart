@@ -7,6 +7,7 @@ final class DownloadPrebuilt extends LibraryProvider {
 
   final OS targetOS;
   final Uri cacheBase;
+  final Uri packageRoot;
   final String baseUrl;
   final Architecture targetArch;
   final Map<String, String> hashes;
@@ -14,6 +15,7 @@ final class DownloadPrebuilt extends LibraryProvider {
   const DownloadPrebuilt({
     required this.targetOS,
     required this.cacheBase,
+    required this.packageRoot,
     required this.targetArch,
     Map<String, String>? hashes,
     this.baseUrl = _defaultBaseUrl,
@@ -21,7 +23,8 @@ final class DownloadPrebuilt extends LibraryProvider {
 
   @override
   Future<void> provide(File target) async {
-    final commitShort = pinnedCommit.substring(0, 7);
+    final commit = pinnedCommit(packageRoot);
+    final commitShort = commit.substring(0, 7);
     final platform = platformKey(targetOS, targetArch);
     final ext = libraryExtension(targetOS);
     final fileName = 'libghostty-vt-$commitShort-$platform.$ext';
@@ -39,7 +42,7 @@ final class DownloadPrebuilt extends LibraryProvider {
     }
 
     if (!cachedFile.existsSync()) {
-      await _download(fileName, cachedFile);
+      await _download(commit, fileName, cachedFile);
       if (!_validateHash(cachedFile, hashKey)) {
         cachedFile.deleteSync();
         throw Exception(
@@ -54,8 +57,12 @@ final class DownloadPrebuilt extends LibraryProvider {
     cachedFile.copySync(target.path);
   }
 
-  Future<void> _download(String fileName, File destination) async {
-    final url = '$baseUrl/v$pinnedCommit/$fileName';
+  Future<void> _download(
+    String commit,
+    String fileName,
+    File destination,
+  ) async {
+    final url = '$baseUrl/v$commit/$fileName';
 
     destination.parent.createSync(recursive: true);
     final tmp = File('${destination.path}.tmp');

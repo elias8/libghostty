@@ -38,6 +38,7 @@ sealed class LibraryProvider {
       targetOS: input.config.code.targetOS,
       targetArch: input.config.code.targetArchitecture,
       cacheBase: input.outputDirectoryShared,
+      packageRoot: input.packageRoot,
     );
   }
 

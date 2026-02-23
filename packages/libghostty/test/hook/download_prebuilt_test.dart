@@ -16,10 +16,16 @@ void main() {
   group('DownloadPrebuilt', () {
     late Directory tmpDir;
     late Directory serverDir;
+    late Uri packageRoot;
 
     setUp(() {
       tmpDir = Directory.systemTemp.createTempSync('download_prebuilt_test_');
       serverDir = Directory('${tmpDir.path}/server')..createSync();
+      packageRoot = Uri.directory('${tmpDir.path}/pkg/');
+      Directory.fromUri(packageRoot).createSync(recursive: true);
+      File.fromUri(
+        packageRoot.resolve('ghostty.version'),
+      ).writeAsStringSync('861a9cf537a58a380bc6a0784573b3de3a70415e\n');
     });
 
     tearDown(() {
@@ -35,6 +41,7 @@ void main() {
       return DownloadPrebuilt(
         targetOS: os,
         targetArch: arch,
+        packageRoot: packageRoot,
         cacheBase: Uri.directory('${tmpDir.path}/cache/'),
         baseUrl: server.baseUrl.toString(),
         hashes: hashes,
@@ -42,15 +49,14 @@ void main() {
     }
 
     void seedBinary(List<int> content) {
-      final commitShort = pinnedCommit.substring(0, 7);
+      final commit = pinnedCommit(packageRoot);
+      final commitShort = commit.substring(0, 7);
       final platform = platformKey(OS.macOS, Architecture.arm64);
       final ext = libraryExtension(OS.macOS);
       final fileName = 'libghostty-vt-$commitShort-$platform.$ext';
 
-      Directory('${serverDir.path}/v$pinnedCommit').createSync(recursive: true);
-      File(
-        '${serverDir.path}/v$pinnedCommit/$fileName',
-      ).writeAsBytesSync(content);
+      Directory('${serverDir.path}/v$commit').createSync(recursive: true);
+      File('${serverDir.path}/v$commit/$fileName').writeAsBytesSync(content);
     }
 
     test('downloads binary from server to target', () async {
@@ -104,7 +110,7 @@ void main() {
       final server = await TestServer.start(serverDir);
       addTearDown(server.close);
 
-      final commitShort = pinnedCommit.substring(0, 7);
+      final commitShort = pinnedCommit(packageRoot).substring(0, 7);
       final platform = platformKey(OS.macOS, Architecture.arm64);
       final expectedHash = sha256.convert(content).toString();
 
@@ -123,7 +129,7 @@ void main() {
       final server = await TestServer.start(serverDir);
       addTearDown(server.close);
 
-      final commitShort = pinnedCommit.substring(0, 7);
+      final commitShort = pinnedCommit(packageRoot).substring(0, 7);
       final platform = platformKey(OS.macOS, Architecture.arm64);
 
       final target = File('${tmpDir.path}/output/lib/t.dylib');
@@ -144,7 +150,7 @@ void main() {
     });
 
     test('re-downloads when cached file has wrong hash', () async {
-      final commitShort = pinnedCommit.substring(0, 7);
+      final commitShort = pinnedCommit(packageRoot).substring(0, 7);
       final platform = platformKey(OS.macOS, Architecture.arm64);
       final ext = libraryExtension(OS.macOS);
       final fileName = 'libghostty-vt-$commitShort-$platform.$ext';

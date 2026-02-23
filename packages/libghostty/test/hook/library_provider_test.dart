@@ -118,6 +118,7 @@ void main() {
           DownloadPrebuilt(
             targetOS: OS.macOS,
             targetArch: Architecture.arm64,
+            packageRoot: Uri.directory('/tmp/pkg/'),
             cacheBase: Uri.directory('/tmp/'),
           ),
         ),
@@ -131,6 +132,7 @@ void main() {
         DownloadPrebuilt(
           targetOS: OS.macOS,
           targetArch: Architecture.arm64,
+          packageRoot: Uri.directory('/tmp/pkg/'),
           cacheBase: Uri.directory('/tmp/'),
         ),
         isA<LibraryProvider>(),

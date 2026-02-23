@@ -6,34 +6,30 @@ import 'package:crypto/crypto.dart';
 /// Environment variable that overrides source resolution with a local checkout.
 const ghosttySrcEnvKey = 'GHOSTTY_SRC';
 
-/// Commit from ghostty-org/ghostty that the bindings target.
-/// Keep in sync with `ffigen.yaml`. Regenerate bindings after updating:
-///   dart run ffigen --config ffigen.yaml
-const pinnedCommit = '861a9cf537a58a380bc6a0784573b3de3a70415e';
-
 const _defaultTarballBase = 'https://github.com/ghostty-org/ghostty/archive';
 
 /// Downloads a source tarball, extracts it, applies patches, and caches
 /// the result.
 ///
-/// Uses [tarballUrl] if provided, otherwise builds URL from [pinnedCommit].
-/// When [packageRoot] is set, applies patches from `patches/` after
-/// extraction. Patch content is hashed into the cache key.
+/// Uses [tarballUrl] if provided, otherwise builds URL from the pinned commit
+/// in `ghostty.version`. Applies patches from `patches/` after extraction.
+/// Patch content is hashed into the cache key.
 Future<Directory> downloadSource(
   Uri cacheBase, {
+  required Uri packageRoot,
   String? tarballUrl,
-  Uri? packageRoot,
 }) async {
-  final patchHash = packageRoot != null ? _patchesHash(packageRoot) : 'none';
-  final cacheKey = '${pinnedCommit.substring(0, 12)}-$patchHash';
+  final commit = pinnedCommit(packageRoot);
+  final patchHash = _patchesHash(packageRoot);
+  final cacheKey = '${commit.substring(0, 12)}-$patchHash';
   final cacheDir = Directory.fromUri(
     cacheBase.resolve('ghostty-source-$cacheKey/'),
   );
   if (cacheDir.existsSync()) return cacheDir;
 
-  tarballUrl ??= '$_defaultTarballBase/$pinnedCommit.tar.gz';
+  tarballUrl ??= '$_defaultTarballBase/$commit.tar.gz';
 
-  final tarball = File.fromUri(cacheBase.resolve('$pinnedCommit.tar.gz'));
+  final tarball = File.fromUri(cacheBase.resolve('$commit.tar.gz'));
   tarball.parent.createSync(recursive: true);
 
   final httpClient = HttpClient();
@@ -70,11 +66,21 @@ Future<Directory> downloadSource(
 
   tarball.deleteSync();
 
-  if (packageRoot != null) {
-    await _applyPatches(cacheDir, packageRoot);
-  }
+  await _applyPatches(cacheDir, packageRoot);
 
   return cacheDir;
+}
+
+/// Reads the pinned Ghostty commit from `ghostty.version` at [packageRoot].
+String pinnedCommit(Uri packageRoot) {
+  final file = File.fromUri(packageRoot.resolve('ghostty.version'));
+  if (!file.existsSync()) {
+    throw StateError(
+      'ghostty.version not found at ${file.path}. '
+      'This file must contain the pinned Ghostty commit hash.',
+    );
+  }
+  return file.readAsStringSync().trim();
 }
 
 /// Resolves the Ghostty source directory.

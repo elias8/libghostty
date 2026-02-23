@@ -11,8 +11,22 @@ import 'helpers/test_server.dart';
 void main() {
   group('pinnedCommit', () {
     test('is a 40-character hex string', () {
-      expect(pinnedCommit, hasLength(40));
-      expect(pinnedCommit, matches(RegExp(r'^[0-9a-f]{40}$')));
+      final tmpDir = Directory.systemTemp.createTempSync('pinnedCommit_test_');
+      addTearDown(() => tmpDir.deleteSync(recursive: true));
+      File(
+        '${tmpDir.path}/ghostty.version',
+      ).writeAsStringSync('861a9cf537a58a380bc6a0784573b3de3a70415e\n');
+
+      final commit = pinnedCommit(tmpDir.uri);
+      expect(commit, hasLength(40));
+      expect(commit, matches(RegExp(r'^[0-9a-f]{40}$')));
+    });
+
+    test('throws when ghostty.version is missing', () {
+      final tmpDir = Directory.systemTemp.createTempSync('pinnedCommit_test_');
+      addTearDown(() => tmpDir.deleteSync(recursive: true));
+
+      expect(() => pinnedCommit(tmpDir.uri), throwsA(isA<StateError>()));
     });
   });
 
@@ -88,6 +102,17 @@ void main() {
       tmpDir.deleteSync(recursive: true);
     });
 
+    late Uri packageRoot;
+
+    setUp(() {
+      tmpDir = Directory.systemTemp.createTempSync('download_source_test_');
+      packageRoot = Uri.directory('${tmpDir.path}/pkg/');
+      Directory.fromUri(packageRoot).createSync(recursive: true);
+      File.fromUri(
+        packageRoot.resolve('ghostty.version'),
+      ).writeAsStringSync('861a9cf537a58a380bc6a0784573b3de3a70415e\n');
+    });
+
     test('extracts tarball content to cache', () async {
       final contentDir = Directory('${tmpDir.path}/content')..createSync();
       File('${contentDir.path}/build.zig').writeAsStringSync('test marker');
@@ -104,6 +129,7 @@ void main() {
       final cacheBase = Uri.directory('${tmpDir.path}/cache/');
       final result = await downloadSource(
         cacheBase,
+        packageRoot: packageRoot,
         tarballUrl: '${server.baseUrl}/source.tar.gz',
       );
 
@@ -129,11 +155,19 @@ void main() {
       final cacheBase = Uri.directory('${tmpDir.path}/cache/');
       final tarballUrl = '${server.baseUrl}/source.tar.gz';
 
-      final first = await downloadSource(cacheBase, tarballUrl: tarballUrl);
+      final first = await downloadSource(
+        cacheBase,
+        packageRoot: packageRoot,
+        tarballUrl: tarballUrl,
+      );
 
       File('${serverDir.path}/source.tar.gz').deleteSync();
 
-      final second = await downloadSource(cacheBase, tarballUrl: tarballUrl);
+      final second = await downloadSource(
+        cacheBase,
+        packageRoot: packageRoot,
+        tarballUrl: tarballUrl,
+      );
 
       expect(second.path, equals(first.path));
       expect(
@@ -152,6 +186,7 @@ void main() {
       expect(
         () => downloadSource(
           cacheBase,
+          packageRoot: packageRoot,
           tarballUrl: '${server.baseUrl}/nonexistent.tar.gz',
         ),
         throwsA(
@@ -176,13 +211,15 @@ void main() {
       await expectLater(
         () => downloadSource(
           cacheBase,
+          packageRoot: packageRoot,
           tarballUrl: '${server.baseUrl}/bad.tar.gz',
         ),
         throwsA(isA<Exception>()),
       );
 
+      final commit = pinnedCommit(packageRoot);
       final cacheDir = Directory.fromUri(
-        cacheBase.resolve('ghostty-source-$pinnedCommit/'),
+        cacheBase.resolve('ghostty-source-${commit.substring(0, 12)}-none/'),
       );
       expect(cacheDir.existsSync(), isFalse);
     });
@@ -203,12 +240,12 @@ void main() {
       final cacheBase = Uri.directory('${tmpDir.path}/cache/');
       await downloadSource(
         cacheBase,
+        packageRoot: packageRoot,
         tarballUrl: '${server.baseUrl}/source.tar.gz',
       );
 
-      final tarballInCache = File.fromUri(
-        cacheBase.resolve('$pinnedCommit.tar.gz'),
-      );
+      final commit = pinnedCommit(packageRoot);
+      final tarballInCache = File.fromUri(cacheBase.resolve('$commit.tar.gz'));
       expect(tarballInCache.existsSync(), isFalse);
     });
   });
