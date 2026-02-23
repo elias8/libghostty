@@ -92,6 +92,6 @@ class KeyEncoder {
 
   void _setOptBool(int option, bool enabled) {
     _ensureNotDisposed();
-    bindings.keyEncoderSetBoolOpt(_handle, option, enabled);
+    bindings.keyEncoderSetBoolOpt(_handle, option, value: enabled);
   }
 }

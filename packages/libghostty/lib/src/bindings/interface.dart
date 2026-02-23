@@ -36,7 +36,7 @@ abstract interface class GhosttyBindings {
   int keyEventGetConsumedMods(int handle);
 
   // ghostty_key_event_set_composing
-  void keyEventSetComposing(int handle, bool composing);
+  void keyEventSetComposing(int handle, {required bool composing});
 
   // ghostty_key_event_get_composing
   bool keyEventGetComposing(int handle);
@@ -60,7 +60,7 @@ abstract interface class GhosttyBindings {
   void keyEncoderFree(int handle);
 
   // ghostty_key_encoder_setopt (GhosttyKeyEncoderOption, bool*)
-  void keyEncoderSetBoolOpt(int handle, int option, bool value);
+  void keyEncoderSetBoolOpt(int handle, int option, {required bool value});
 
   // ghostty_key_encoder_setopt (GHOSTTY_KEY_ENCODER_OPTION_KITTY_FLAGS, u8*)
   void keyEncoderSetKittyFlags(int handle, int flags);
@@ -170,7 +170,7 @@ abstract interface class GhosttyBindings {
   bool terminalIsAlternateScreen(int handle);
 
   // ghostty_terminal_get_mode
-  bool terminalGetMode(int handle, int mode, bool isAnsi);
+  bool terminalGetMode(int handle, int mode, {required bool isAnsi});
 
   // ghostty_terminal_get_bell_count
   int terminalGetBellCount(int handle);

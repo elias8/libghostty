@@ -131,7 +131,7 @@ class WasmBindings implements GhosttyBindings {
   }
 
   @override
-  void keyEncoderSetBoolOpt(int handle, int option, bool value) {
+  void keyEncoderSetBoolOpt(int handle, int option, {required bool value}) {
     final ptr = _fn.call0('ghostty_wasm_alloc_u8');
     try {
       _mem.writeU8(ptr, value ? 1 : 0);
@@ -237,7 +237,7 @@ class WasmBindings implements GhosttyBindings {
   }
 
   @override
-  void keyEventSetComposing(int handle, bool composing) {
+  void keyEventSetComposing(int handle, {required bool composing}) {
     _fn.void2('ghostty_key_event_set_composing', handle, composing ? 1 : 0);
   }
 
@@ -490,7 +490,7 @@ class WasmBindings implements GhosttyBindings {
       _fn.call1('ghostty_terminal_get_bell_count', handle);
 
   @override
-  bool terminalGetMode(int handle, int mode, bool isAnsi) =>
+  bool terminalGetMode(int handle, int mode, {required bool isAnsi}) =>
       _fn.call3('ghostty_terminal_get_mode', handle, mode, isAnsi ? 1 : 0) != 0;
 
   @override

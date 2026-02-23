@@ -85,7 +85,7 @@ class NativeBindings implements GhosttyBindings {
   }
 
   @override
-  void keyEncoderSetBoolOpt(int handle, int option, bool value) {
+  void keyEncoderSetBoolOpt(int handle, int option, {required bool value}) {
     final ptr = calloc<ffi.Bool>();
     try {
       ptr.value = value;
@@ -201,7 +201,7 @@ class NativeBindings implements GhosttyBindings {
   }
 
   @override
-  void keyEventSetComposing(int handle, bool composing) {
+  void keyEventSetComposing(int handle, {required bool composing}) {
     native.ghostty_key_event_set_composing(
       ffi.Pointer.fromAddress(handle),
       composing,
@@ -463,7 +463,7 @@ class NativeBindings implements GhosttyBindings {
       native.ghostty_terminal_get_bell_count(ffi.Pointer.fromAddress(handle));
 
   @override
-  bool terminalGetMode(int handle, int mode, bool isAnsi) => native
+  bool terminalGetMode(int handle, int mode, {required bool isAnsi}) => native
       .ghostty_terminal_get_mode(ffi.Pointer.fromAddress(handle), mode, isAnsi);
 
   @override

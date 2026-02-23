@@ -19,6 +19,9 @@ enum KeyAction {
   const KeyAction(this.nativeValue);
 
   static KeyAction fromNative(int value) {
-    return KeyAction.values.firstWhere((e) => e.nativeValue == value);
+    return KeyAction.values.firstWhere(
+      (e) => e.nativeValue == value,
+      orElse: () => KeyAction.press,
+    );
   }
 }

@@ -26,6 +26,14 @@ import 'scrollback.dart';
 /// terminal.dispose();
 /// ```
 class Terminal {
+  // ANSI / DEC private mode numbers used by terminalGetMode.
+  static const _modeBracketedPaste = 2004;
+  static const _modeCursorKeys = 1;
+  static const _modeKeypadApplication = 66;
+  static const _modeAutoWrap = 7;
+  static const _modeOrigin = 6;
+  static const _modeInsert = 4;
+
   static final _ris = Uint8List.fromList('\x1bc'.codeUnits);
 
   static final _finalizer = Finalizer<int>(
@@ -72,11 +80,7 @@ class Terminal {
 
     final defaultFg = foreground ?? const RgbColor(0, 0, 0);
     final defaultBg = background ?? const RgbColor(0, 0, 0);
-    _screen = NativeScreen(
-      _handle,
-      defaultFg: defaultFg,
-      defaultBg: defaultBg,
-    );
+    _screen = NativeScreen(_handle, defaultFg: defaultFg, defaultBg: defaultBg);
     _scrollback = NativeScrollback(
       _handle,
       defaultFg: defaultFg,
@@ -93,18 +97,27 @@ class Terminal {
   }
 
   /// Whether cell content has changed since the last [clearContentChanges].
-  bool get hasContentChanges => _hasContentChanges;
+  bool get hasContentChanges {
+    _ensureNotDisposed();
+    return _hasContentChanges;
+  }
 
   /// Current terminal mode flags.
   TerminalModes get modes {
     _ensureNotDisposed();
+
+    bool mode(int id, {required bool isAnsi}) {
+      return bindings.terminalGetMode(_handle, id, isAnsi: isAnsi);
+    }
+
     return TerminalModes(
       alternateScreen: bindings.terminalIsAlternateScreen(_handle),
-      bracketedPaste: bindings.terminalGetMode(_handle, 2004, false),
-      cursorKeyApplication: bindings.terminalGetMode(_handle, 1, true),
-      autoWrap: bindings.terminalGetMode(_handle, 7, true),
-      originMode: bindings.terminalGetMode(_handle, 6, true),
-      insertMode: bindings.terminalGetMode(_handle, 4, false),
+      bracketedPaste: mode(_modeBracketedPaste, isAnsi: false),
+      cursorKeyApplication: mode(_modeCursorKeys, isAnsi: true),
+      keypadApplication: mode(_modeKeypadApplication, isAnsi: true),
+      autoWrap: mode(_modeAutoWrap, isAnsi: true),
+      originMode: mode(_modeOrigin, isAnsi: true),
+      insertMode: mode(_modeInsert, isAnsi: false),
     );
   }
 
@@ -133,6 +146,7 @@ class Terminal {
   }
 
   void clearContentChanges() {
+    _ensureNotDisposed();
     _hasContentChanges = false;
     bindings.renderStateMarkClean(_handle);
   }

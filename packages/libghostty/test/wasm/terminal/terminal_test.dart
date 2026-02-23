@@ -106,9 +106,7 @@ void main() {
       test('onTitleChanged fires', () {
         String? title;
         terminal.onTitleChanged.listen((t) => title = t);
-        terminal.write(
-          Uint8List.fromList('\x1b]0;Test Title\x07'.codeUnits),
-        );
+        terminal.write(Uint8List.fromList('\x1b]0;Test Title\x07'.codeUnits));
         expect(title, 'Test Title');
       });
 

@@ -1,8 +1,6 @@
 @Tags(['ffi'])
 library;
 
-import 'dart:typed_data';
-
 import 'package:libghostty/libghostty.dart';
 import 'package:test/test.dart';
 
@@ -26,66 +24,70 @@ void main() {
     });
 
     test('write bytes and read screen', () {
-      terminal.write(Uint8List.fromList('Hello'.codeUnits));
+      terminal.write(.fromList('Hello'.codeUnits));
       expect(terminal.screen.cellAt(0, 0).content, 'H');
       expect(terminal.screen.cellAt(0, 4).content, 'o');
     });
 
     test('cursor tracks position', () {
-      terminal.write(Uint8List.fromList('Hi'.codeUnits));
+      terminal.write(.fromList('Hi'.codeUnits));
       expect(terminal.cursor.col, 2);
       expect(terminal.cursor.row, 0);
     });
 
     test('cursor visibility', () {
-      terminal.write(Uint8List.fromList('\x1b[?25l'.codeUnits));
+      terminal.write(.fromList('\x1b[?25l'.codeUnits));
       expect(terminal.cursor.visible, isFalse);
-      terminal.write(Uint8List.fromList('\x1b[?25h'.codeUnits));
+
+      terminal.write(.fromList('\x1b[?25h'.codeUnits));
       expect(terminal.cursor.visible, isTrue);
     });
 
     test('modes track terminal state', () {
-      terminal.write(Uint8List.fromList('\x1b[?2004h'.codeUnits));
+      terminal.write(.fromList('\x1b[?2004h'.codeUnits));
       expect(terminal.modes.bracketedPaste, isTrue);
     });
 
     test('alternate screen switch', () {
-      terminal.write(Uint8List.fromList('Primary'.codeUnits));
-      terminal.write(Uint8List.fromList('\x1b[?1049h'.codeUnits));
+      terminal.write(.fromList('Primary'.codeUnits));
+      terminal.write(.fromList('\x1b[?1049h'.codeUnits));
+
       expect(terminal.modes.alternateScreen, isTrue);
       expect(terminal.screen.cellAt(0, 0), Cell.empty);
-      terminal.write(Uint8List.fromList('\x1b[?1049l'.codeUnits));
+
+      terminal.write(.fromList('\x1b[?1049l'.codeUnits));
+
       expect(terminal.modes.alternateScreen, isFalse);
       expect(terminal.screen.cellAt(0, 0).content, 'P');
     });
 
     test('styled text', () {
-      terminal.write(Uint8List.fromList('\x1b[1;31mBold Red'.codeUnits));
+      terminal.write(.fromList('\x1b[1;31mBold Red'.codeUnits));
       final cell = terminal.screen.cellAt(0, 0);
       expect(cell.content, 'B');
       expect(cell.style.bold, isTrue);
-      expect(cell.foreground, isA<RgbColor>());
+      expect(cell.foreground, const RgbColor(204, 102, 102));
     });
 
     test('multi-byte UTF-8', () {
-      terminal.write(Uint8List.fromList([0xC3, 0xA9])); // é
+      terminal.write(.fromList([0xC3, 0xA9])); // é
       expect(terminal.screen.cellAt(0, 0).content, '\u00E9');
     });
 
     test('split UTF-8 across writes', () {
-      terminal.write(Uint8List.fromList([0xC3]));
-      terminal.write(Uint8List.fromList([0xA9]));
+      terminal.write(.fromList([0xC3]));
+      terminal.write(.fromList([0xA9]));
       expect(terminal.screen.cellAt(0, 0).content, '\u00E9');
     });
 
     test('lineAt returns line content', () {
-      terminal.write(Uint8List.fromList('Hello World'.codeUnits));
+      terminal.write(.fromList('Hello World'.codeUnits));
       final line = terminal.screen.lineAt(0);
       expect(line.text, startsWith('Hello World'));
     });
 
     test('CRLF line breaks', () {
-      terminal.write(Uint8List.fromList('Line1\r\nLine2'.codeUnits));
+      terminal.write(.fromList('Line1\r\nLine2'.codeUnits));
       expect(terminal.screen.cellAt(0, 0).content, 'L');
       expect(terminal.screen.cellAt(1, 0).content, 'L');
       expect(terminal.screen.lineAt(0).text, startsWith('Line1'));
@@ -96,21 +98,21 @@ void main() {
       test('onBell fires', () {
         var bellCount = 0;
         terminal.onBell.listen((_) => bellCount++);
-        terminal.write(Uint8List.fromList([0x07]));
+        terminal.write(.fromList([0x07]));
         expect(bellCount, 1);
       });
 
       test('onTitleChanged fires', () {
         String? title;
         terminal.onTitleChanged.listen((t) => title = t);
-        terminal.write(Uint8List.fromList('\x1b]0;Test Title\x07'.codeUnits));
+        terminal.write(.fromList('\x1b]0;Test Title\x07'.codeUnits));
         expect(title, 'Test Title');
       });
 
       test('onScreenChanged fires on write', () {
         var changeCount = 0;
         terminal.onScreenChanged.listen((_) => changeCount++);
-        terminal.write(Uint8List.fromList('A'.codeUnits));
+        terminal.write(.fromList('A'.codeUnits));
         expect(changeCount, greaterThan(0));
       });
 
@@ -125,27 +127,27 @@ void main() {
     group('hasContentChanges', () {
       test('writing content sets hasContentChanges', () {
         terminal.clearContentChanges();
-        terminal.write(Uint8List.fromList('A'.codeUnits));
+        terminal.write(.fromList('A'.codeUnits));
         expect(terminal.hasContentChanges, isTrue);
       });
 
       test('clearContentChanges resets the flag', () {
-        terminal.write(Uint8List.fromList('A'.codeUnits));
+        terminal.write(.fromList('A'.codeUnits));
         terminal.clearContentChanges();
         expect(terminal.hasContentChanges, isFalse);
       });
 
       test('cursor-only move does not set hasContentChanges', () {
-        terminal.write(Uint8List.fromList('Hello'.codeUnits));
+        terminal.write(.fromList('Hello'.codeUnits));
         terminal.clearContentChanges();
-        terminal.write(Uint8List.fromList('\x1b[H'.codeUnits));
+        terminal.write(.fromList('\x1b[H'.codeUnits));
         expect(terminal.hasContentChanges, isFalse);
       });
 
       test('accumulates across multiple writes', () {
         terminal.clearContentChanges();
-        terminal.write(Uint8List.fromList('X'.codeUnits));
-        terminal.write(Uint8List.fromList('\x1b[H'.codeUnits));
+        terminal.write(.fromList('X'.codeUnits));
+        terminal.write(.fromList('\x1b[H'.codeUnits));
         expect(terminal.hasContentChanges, isTrue);
       });
     });
@@ -158,7 +160,7 @@ void main() {
       });
 
       test('clamps cursor', () {
-        terminal.write(Uint8List.fromList('\x1b[24;80H'.codeUnits));
+        terminal.write(.fromList('\x1b[24;80H'.codeUnits));
         terminal.resize(cols: 40, rows: 10);
         expect(terminal.cursor.row, lessThan(10));
         expect(terminal.cursor.col, lessThan(40));
@@ -168,7 +170,7 @@ void main() {
         final t = Terminal(cols: 10, rows: 5);
         addTearDown(t.dispose);
         for (var i = 0; i < 5; i++) {
-          t.write(Uint8List.fromList('Line$i\r\n'.codeUnits));
+          t.write(.fromList('Line$i\r\n'.codeUnits));
         }
 
         final scrollbackBefore = t.scrollback.length;
@@ -179,7 +181,7 @@ void main() {
       test('shrinking rows preserves content in scrollback', () {
         final t = Terminal(cols: 10, rows: 4);
         addTearDown(t.dispose);
-        t.write(Uint8List.fromList('AAA\r\nBBB\r\nCCC\r\nDDD'.codeUnits));
+        t.write(.fromList('AAA\r\nBBB\r\nCCC\r\nDDD'.codeUnits));
         expect(t.screen.cellAt(0, 0).content, 'A');
         expect(t.screen.cellAt(3, 0).content, 'D');
 
@@ -200,7 +202,7 @@ void main() {
       test('shrinking rows adjusts cursor position', () {
         final t = Terminal(cols: 10, rows: 5);
         addTearDown(t.dispose);
-        t.write(Uint8List.fromList('A\r\nB\r\nC\r\nD\r\nE'.codeUnits));
+        t.write(.fromList('A\r\nB\r\nC\r\nD\r\nE'.codeUnits));
         expect(t.cursor.row, 4);
 
         t.resize(cols: 10, rows: 3);
@@ -210,7 +212,7 @@ void main() {
       test('growing rows does not affect scrollback', () {
         final t = Terminal(cols: 10, rows: 3);
         addTearDown(t.dispose);
-        t.write(Uint8List.fromList('AAA\r\nBBB\r\nCCC'.codeUnits));
+        t.write(.fromList('AAA\r\nBBB\r\nCCC'.codeUnits));
 
         final scrollbackBefore = t.scrollback.length;
         t.resize(cols: 10, rows: 6);
@@ -221,7 +223,7 @@ void main() {
         final t = Terminal(cols: 10, rows: 6);
         addTearDown(t.dispose);
         for (var i = 0; i < 6; i++) {
-          t.write(Uint8List.fromList('Row_$i\r\n'.codeUnits));
+          t.write(.fromList('Row_$i\r\n'.codeUnits));
         }
 
         t.resize(cols: 10, rows: 3);
@@ -232,9 +234,7 @@ void main() {
       test('content order preserved after shrink', () {
         final t = Terminal(cols: 10, rows: 5);
         addTearDown(t.dispose);
-        t.write(
-          Uint8List.fromList('AAA\r\nBBB\r\nCCC\r\nDDD\r\nEEE'.codeUnits),
-        );
+        t.write(.fromList('AAA\r\nBBB\r\nCCC\r\nDDD\r\nEEE'.codeUnits));
 
         t.resize(cols: 10, rows: 3);
 
@@ -249,9 +249,7 @@ void main() {
       test('all content accessible after shrink', () {
         final t = Terminal(cols: 10, rows: 5);
         addTearDown(t.dispose);
-        t.write(
-          Uint8List.fromList('AAA\r\nBBB\r\nCCC\r\nDDD\r\nEEE'.codeUnits),
-        );
+        t.write(.fromList('AAA\r\nBBB\r\nCCC\r\nDDD\r\nEEE'.codeUnits));
 
         t.resize(cols: 10, rows: 3);
 
@@ -262,11 +260,7 @@ void main() {
       test('shrink-grow cycle preserves screen content', () {
         final t = Terminal(cols: 10, rows: 6);
         addTearDown(t.dispose);
-        t.write(
-          Uint8List.fromList(
-            'AAA\r\nBBB\r\nCCC\r\nDDD\r\nEEE\r\nFFF'.codeUnits,
-          ),
-        );
+        t.write(.fromList('AAA\r\nBBB\r\nCCC\r\nDDD\r\nEEE\r\nFFF'.codeUnits));
 
         t.resize(cols: 10, rows: 3);
         final afterShrink = TerminalDump.screenContent(
@@ -287,7 +281,7 @@ void main() {
         final t = Terminal(cols: 10, rows: 8);
         addTearDown(t.dispose);
         for (var i = 0; i < 8; i++) {
-          t.write(Uint8List.fromList('Line$i\r\n'.codeUnits));
+          t.write(.fromList('Line$i\r\n'.codeUnits));
         }
 
         t.resize(cols: 10, rows: 4);
@@ -316,10 +310,10 @@ void main() {
       test('styled content survives resize in scrollback', () {
         final t = Terminal(cols: 20, rows: 4);
         addTearDown(t.dispose);
-        t.write(Uint8List.fromList('\x1b[1;31mBoldRed\x1b[0m\r\n'.codeUnits));
-        t.write(Uint8List.fromList('Normal\r\n'.codeUnits));
-        t.write(Uint8List.fromList('Row3\r\n'.codeUnits));
-        t.write(Uint8List.fromList('Row4'.codeUnits));
+        t.write(.fromList('\x1b[1;31mBoldRed\x1b[0m\r\n'.codeUnits));
+        t.write(.fromList('Normal\r\n'.codeUnits));
+        t.write(.fromList('Row3\r\n'.codeUnits));
+        t.write(.fromList('Row4'.codeUnits));
 
         t.resize(cols: 20, rows: 2);
 
@@ -330,13 +324,13 @@ void main() {
         final cell = firstScrollbackLine.cellAt(0);
         expect(cell.content, 'B');
         expect(cell.style.bold, isTrue);
-        expect(cell.foreground, isA<RgbColor>());
+        expect(cell.foreground, const RgbColor(204, 102, 102));
       });
 
       test('column shrink preserves content within new width', () {
         final t = Terminal(cols: 10, rows: 3);
         addTearDown(t.dispose);
-        t.write(Uint8List.fromList('ABCDEFGHIJ'.codeUnits));
+        t.write(.fromList('ABCDEFGHIJ'.codeUnits));
 
         t.resize(cols: 5, rows: 3);
 
@@ -347,7 +341,7 @@ void main() {
       test('column grow pads with empty cells', () {
         final t = Terminal(cols: 5, rows: 3);
         addTearDown(t.dispose);
-        t.write(Uint8List.fromList('ABCDE'.codeUnits));
+        t.write(.fromList('ABCDE'.codeUnits));
 
         t.resize(cols: 10, rows: 3);
 
@@ -381,7 +375,7 @@ void main() {
 
         test('recreated terminal has all empty cells', () {
           var t = Terminal(cols: 80, rows: 24);
-          t.write(Uint8List.fromList('Hello World'.codeUnits));
+          t.write(.fromList('Hello World'.codeUnits));
           t.dispose();
 
           t = Terminal(cols: 80, rows: 24);
@@ -391,7 +385,7 @@ void main() {
 
         test('recreated terminal has empty scrollback', () {
           var t = Terminal(cols: 80, rows: 24);
-          t.write(Uint8List.fromList('Hello\r\nWorld\r\n'.codeUnits));
+          t.write(.fromList('Hello\r\nWorld\r\n'.codeUnits));
           t.dispose();
 
           t = Terminal(cols: 80, rows: 24);
@@ -403,7 +397,7 @@ void main() {
           for (var i = 0; i < 5; i++) {
             final t = Terminal(cols: 40, rows: 10);
             _expectAllCellsEmpty(t);
-            t.write(Uint8List.fromList('Cycle $i data fill'.codeUnits));
+            t.write(.fromList('Cycle $i data fill'.codeUnits));
             t.dispose();
           }
         });
@@ -412,7 +406,7 @@ void main() {
           'recreated terminal with different dimensions has all empty cells',
           () {
             var t = Terminal(cols: 80, rows: 24);
-            t.write(Uint8List.fromList('Fill the screen'.codeUnits));
+            t.write(.fromList('Fill the screen'.codeUnits));
             t.dispose();
 
             t = Terminal(cols: 120, rows: 40);
@@ -429,8 +423,8 @@ void main() {
           final t2 = Terminal(cols: 80, rows: 24);
           addTearDown(t2.dispose);
 
-          t1.write(Uint8List.fromList('Terminal One'.codeUnits));
-          t2.write(Uint8List.fromList('Terminal Two'.codeUnits));
+          t1.write(.fromList('Terminal One'.codeUnits));
+          t2.write(.fromList('Terminal Two'.codeUnits));
 
           expect(t1.screen.cellAt(0, 0).content, 'T');
           expect(t1.screen.cellAt(0, 9).content, 'O');
@@ -444,7 +438,7 @@ void main() {
           final t2 = Terminal(cols: 80, rows: 24);
           addTearDown(t2.dispose);
 
-          t1.write(Uint8List.fromList('AAAA'.codeUnits));
+          t1.write(.fromList('AAAA'.codeUnits));
           _expectAllCellsEmpty(t2);
         });
 
@@ -453,18 +447,18 @@ void main() {
           final t2 = Terminal(cols: 80, rows: 24);
           addTearDown(t2.dispose);
 
-          t2.write(Uint8List.fromList('Still alive'.codeUnits));
+          t2.write(.fromList('Still alive'.codeUnits));
           t1.dispose();
 
           expect(t2.screen.cellAt(0, 0).content, 'S');
           expect(t2.screen.cellAt(0, 6).content, 'a');
-          t2.write(Uint8List.fromList('\r\nMore data'.codeUnits));
+          t2.write(.fromList('\r\nMore data'.codeUnits));
           expect(t2.screen.cellAt(1, 0).content, 'M');
         });
 
         test('new terminal created after dispose has clean screen', () {
           final t1 = Terminal(cols: 80, rows: 24);
-          t1.write(Uint8List.fromList('Fill with data'.codeUnits));
+          t1.write(.fromList('Fill with data'.codeUnits));
           t1.dispose();
 
           final t2 = Terminal(cols: 80, rows: 24);
@@ -483,27 +477,23 @@ void main() {
         terminal.dispose();
       });
 
-      test('prevents further use', () {
+      test('all public members throw after dispose', () {
         terminal.dispose();
-        expect(
-          () => terminal.write(Uint8List.fromList([0x41])),
-          throwsA(isA<DisposedException>()),
-        );
-      });
 
-      test('accessing screen after dispose throws', () {
-        terminal.dispose();
-        expect(() => terminal.screen, throwsA(isA<DisposedException>()));
-      });
+        final publicMembers = <String, void Function()>{
+          'write': () => terminal.write(.fromList([0x41])),
+          'screen': () => terminal.screen,
+          'cursor': () => terminal.cursor,
+          'modes': () => terminal.modes,
+          'scrollback': () => terminal.scrollback,
+          'hasContentChanges': () => terminal.hasContentChanges,
+          'clearContentChanges': () => terminal.clearContentChanges(),
+          'resize': () => terminal.resize(cols: 40, rows: 10),
+        };
 
-      test('accessing cursor after dispose throws', () {
-        terminal.dispose();
-        expect(() => terminal.cursor, throwsA(isA<DisposedException>()));
-      });
-
-      test('accessing modes after dispose throws', () {
-        terminal.dispose();
-        expect(() => terminal.modes, throwsA(isA<DisposedException>()));
+        for (final MapEntry(:key, :value) in publicMembers.entries) {
+          expect(value, throwsA(isA<DisposedException>()), reason: key);
+        }
       });
     });
   });

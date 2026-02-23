@@ -49,7 +49,7 @@ class KeyEvent {
 
   set composing(bool value) {
     _ensureNotDisposed();
-    bindings.keyEventSetComposing(_handle, value);
+    bindings.keyEventSetComposing(_handle, composing: value);
   }
 
   /// Modifier flags already consumed by the input method.

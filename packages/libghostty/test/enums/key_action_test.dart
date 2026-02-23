@@ -15,9 +15,10 @@ void main() {
       expect(KeyAction.repeat.nativeValue, 2);
     });
 
-    test('fromNative throws for out-of-bounds value', () {
-      expect(() => KeyAction.fromNative(-1), throwsA(isA<Error>()));
-      expect(() => KeyAction.fromNative(3), throwsA(isA<Error>()));
+    test('fromNative defaults to press for unknown values', () {
+      expect(KeyAction.fromNative(-1), KeyAction.press);
+      expect(KeyAction.fromNative(3), KeyAction.press);
+      expect(KeyAction.fromNative(999), KeyAction.press);
     });
 
     test('nativeValue round-trips for all values', () {
