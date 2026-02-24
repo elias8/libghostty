@@ -5,7 +5,7 @@ virtual terminal emulator library from [Ghostty](https://ghostty.org).
 
 | Android | iOS | macOS | Linux | Windows | Web |
 |:-------:|:---:|:-----:|:-----:|:-------:|:---:|
-|    ✅    |  ✅  |   ✅   |  🚧   |   🚧    | ⚠️  |
+|    ✅    |  ✅  |   ✅   |   ✅   |    ✅    |  ✅  |
 
 ## Getting started
 
