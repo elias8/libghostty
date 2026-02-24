@@ -8,6 +8,38 @@ const ghosttySrcEnvKey = 'GHOSTTY_SRC';
 
 const _defaultTarballBase = 'https://github.com/ghostty-org/ghostty/archive';
 
+Future<void> applyPatches(Directory sourceDir, Uri packageRoot) async {
+  final patchDir = Directory.fromUri(packageRoot.resolve('patches/'));
+  if (!patchDir.existsSync()) return;
+
+  final patches =
+      patchDir
+          .listSync()
+          .whereType<File>()
+          .where((f) => f.path.endsWith('.patch'))
+          .toList()
+        ..sort((a, b) => a.path.compareTo(b.path));
+
+  for (final patch in patches) {
+    final result = Process.runSync('patch', [
+      '-p1',
+      '-d',
+      sourceDir.path,
+      '-i',
+      patch.path,
+    ]);
+    if (result.exitCode != 0) {
+      sourceDir.deleteSync(recursive: true);
+      throw Exception(
+        'Failed to apply patch ${patch.uri.pathSegments.last}:\n'
+        '${result.stderr}\n'
+        'The upstream Ghostty source may have changed. Rebase the fork '
+        'and regenerate patches.',
+      );
+    }
+  }
+}
+
 /// Downloads a source tarball, extracts it, applies patches, and caches
 /// the result.
 ///
@@ -66,7 +98,7 @@ Future<Directory> downloadSource(
 
   tarball.deleteSync();
 
-  await _applyPatches(cacheDir, packageRoot);
+  await applyPatches(cacheDir, packageRoot);
 
   return cacheDir;
 }
@@ -107,38 +139,6 @@ Future<Directory> resolveSource({
   if (localGhostty.existsSync()) return localGhostty;
 
   return downloadSource(cacheBase, packageRoot: packageRoot);
-}
-
-Future<void> _applyPatches(Directory sourceDir, Uri packageRoot) async {
-  final patchDir = Directory.fromUri(packageRoot.resolve('patches/'));
-  if (!patchDir.existsSync()) return;
-
-  final patches =
-      patchDir
-          .listSync()
-          .whereType<File>()
-          .where((f) => f.path.endsWith('.patch'))
-          .toList()
-        ..sort((a, b) => a.path.compareTo(b.path));
-
-  for (final patch in patches) {
-    final result = Process.runSync('patch', [
-      '-p1',
-      '-d',
-      sourceDir.path,
-      '-i',
-      patch.path,
-    ]);
-    if (result.exitCode != 0) {
-      sourceDir.deleteSync(recursive: true);
-      throw Exception(
-        'Failed to apply patch ${patch.uri.pathSegments.last}:\n'
-        '${result.stderr}\n'
-        'The upstream Ghostty source may have changed. Rebase the fork '
-        'and regenerate patches.',
-      );
-    }
-  }
 }
 
 String _patchesHash(Uri packageRoot) {

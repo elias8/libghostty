@@ -6,3 +6,15 @@ environment:
 
 workspace:
   - packages/libghostty
+
+hooks:
+  user_defines:
+    libghostty:
+      # How to obtain the native library binary.
+      # - `prebuilt` (default): Download from GitHub Releases
+      # - `compile`: Build from source using Zig
+      source: compile
+      # How to download source code when source=compile.
+      # - `tarball` (default): Download tarball from GitHub Releases
+      # - `git`: Clone from GitHub
+      download: tarball

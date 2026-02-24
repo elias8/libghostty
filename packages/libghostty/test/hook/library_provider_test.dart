@@ -4,100 +4,41 @@ library;
 import 'dart:io';
 
 import 'package:code_assets/code_assets.dart';
+import 'package:hooks/hooks.dart';
 import 'package:libghostty/src/hook/library_provider.dart';
 import 'package:test/test.dart';
 
-void main() {
-  group('PrebuiltLocal', () {
-    late Directory tmpDir;
+BuildInput createTestBuildInput({
+  OS os = OS.macOS,
+  Architecture arch = Architecture.arm64,
+}) {
+  final tmp = Directory.systemTemp.createTempSync('build_input_test_');
+  addTearDown(() => tmp.deleteSync(recursive: true));
 
-    setUp(() {
-      tmpDir = Directory.systemTemp.createTempSync('prebuilt_local_test_');
-    });
-
-    tearDown(() {
-      tmpDir.deleteSync(recursive: true);
-    });
-
-    test('copies source file to target', () async {
-      final source = File('${tmpDir.path}/source.dylib')
-        ..writeAsBytesSync([0xDE, 0xAD, 0xBE, 0xEF]);
-      final target = File('${tmpDir.path}/output/lib/target.dylib');
-
-      await PrebuiltLocal(source.path).provide(target);
-
-      expect(target.existsSync(), isTrue);
-      expect(target.readAsBytesSync(), equals([0xDE, 0xAD, 0xBE, 0xEF]));
-    });
-
-    test('creates parent directories for target', () async {
-      final source = File('${tmpDir.path}/source.dylib')
-        ..writeAsBytesSync([1, 2, 3]);
-      final target = File('${tmpDir.path}/deep/nested/dir/target.dylib');
-
-      await PrebuiltLocal(source.path).provide(target);
-
-      expect(target.existsSync(), isTrue);
-    });
-
-    test('throws when source file does not exist', () {
-      final target = File('${tmpDir.path}/target.dylib');
-
-      expect(
-        () => const PrebuiltLocal('/nonexistent/path.dylib').provide(target),
-        throwsA(isA<Exception>()),
-      );
-    });
-
-    test('error message includes the missing path', () {
-      final target = File('${tmpDir.path}/target.dylib');
-      const missingPath = '/does/not/exist/lib.dylib';
-
-      expect(
-        () => const PrebuiltLocal(missingPath).provide(target),
-        throwsA(
-          isA<Exception>().having(
-            (e) => e.toString(),
-            'message',
-            contains(missingPath),
-          ),
-        ),
-      );
-    });
+  return BuildInput(<String, dynamic>{
+    'package_name': 'test_package',
+    'package_root': tmp.path,
+    'out_dir': '${tmp.path}/out',
+    'out_dir_shared': '${tmp.path}/shared',
+    'user_defines': <String, String>{},
+    'config': <String, dynamic>{
+      'build_code_assets': true,
+      'build_asset_types': <String>[],
+      'extensions': <String, dynamic>{
+        'code_assets': <String, dynamic>{
+          'target_os': os.name,
+          'target_architecture': arch.name,
+          'ios': <String, dynamic>{'target_sdk': 'iphoneos'},
+        },
+      },
+    },
   });
+}
 
+void main() {
   group('zigAvailable', () {
     test('returns a boolean', () {
       expect(LibraryProvider.zigAvailable(), isA<bool>());
-    });
-  });
-
-  group('sourceAvailable', () {
-    late Directory tmpDir;
-
-    setUp(() {
-      tmpDir = Directory.systemTemp.createTempSync('source_available_test_');
-    });
-
-    tearDown(() {
-      tmpDir.deleteSync(recursive: true);
-    });
-
-    test('returns true when ghostty/ exists at workspace root', () {
-      final packageRoot = Directory(
-        '${tmpDir.path}/workspace/packages/libghostty',
-      )..createSync(recursive: true);
-      Directory('${tmpDir.path}/workspace/ghostty').createSync(recursive: true);
-
-      expect(LibraryProvider.sourceAvailable(packageRoot.uri), isTrue);
-    });
-
-    test('returns false when ghostty/ does not exist', () {
-      final packageRoot = Directory(
-        '${tmpDir.path}/workspace/packages/libghostty',
-      )..createSync(recursive: true);
-
-      expect(LibraryProvider.sourceAvailable(packageRoot.uri), isFalse);
     });
   });
 
@@ -105,37 +46,16 @@ void main() {
     test('pattern match covers all subtypes', () {
       String describe(LibraryProvider p) {
         return switch (p) {
-          PrebuiltLocal() => 'prebuilt',
           CompileFromSource() => 'compile',
           DownloadPrebuilt() => 'download',
         };
       }
 
-      expect(describe(const PrebuiltLocal('/tmp/lib.dylib')), 'prebuilt');
-      expect(
-        describe(
-          DownloadPrebuilt(
-            targetOS: OS.macOS,
-            targetArch: Architecture.arm64,
-            packageRoot: Uri.directory('/tmp/pkg/'),
-            cacheBase: Uri.directory('/tmp/'),
-          ),
-        ),
-        'download',
-      );
+      expect(describe(DownloadPrebuilt(createTestBuildInput())), 'download');
     });
 
     test('all subtypes are LibraryProvider', () {
-      expect(const PrebuiltLocal('/tmp/lib.dylib'), isA<LibraryProvider>());
-      expect(
-        DownloadPrebuilt(
-          targetOS: OS.macOS,
-          targetArch: Architecture.arm64,
-          packageRoot: Uri.directory('/tmp/pkg/'),
-          cacheBase: Uri.directory('/tmp/'),
-        ),
-        isA<LibraryProvider>(),
-      );
+      expect(DownloadPrebuilt(createTestBuildInput()), isA<LibraryProvider>());
     });
   });
 }

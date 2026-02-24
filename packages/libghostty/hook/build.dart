@@ -27,7 +27,6 @@ Future<void> _build(BuildInput input, BuildOutputBuilder output) async {
       'Native library not found at ${libFile.path} after build.\n'
       'Options:\n'
       '  - Install Zig (https://ziglang.org) to compile from source\n'
-      '  - Set ${PrebuiltLocal.envKey} to a local binary path\n'
       '  - Ensure a GitHub Release exists for the current version',
     );
   }

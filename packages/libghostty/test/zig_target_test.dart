@@ -52,14 +52,16 @@ void main() {
         expect(target, 'x86_64-linux-android');
       });
 
-      test('arm produces arm-linux-android', () {
+      test('arm produces arm-linux-androideabi', () {
         final target = zigTarget(OS.android, Architecture.arm);
-        expect(target, 'arm-linux-android');
+        expect(target, 'arm-linux-androideabi');
       });
 
-      test('ia32 produces x86-linux-android', () {
-        final target = zigTarget(OS.android, Architecture.ia32);
-        expect(target, 'x86-linux-android');
+      test('throws for unsupported Android architecture', () {
+        expect(
+          () => zigTarget(OS.android, Architecture.ia32),
+          throwsA(isA<ArgumentError>()),
+        );
       });
     });
 
@@ -81,9 +83,9 @@ void main() {
     });
 
     group('host target', () {
-      test('returns null for current OS and architecture', () {
+      test('returns target for current OS and architecture', () {
         final target = zigTarget(OS.current, Architecture.current);
-        expect(target, isNull);
+        expect(target, isNotNull);
       });
     });
 

@@ -33,6 +33,7 @@ dependencies:
 
 dev_dependencies:
   ffigen: ^20.0.0
+  path: ^1.8.0
   shelf: ^1.4.0
   shelf_static: ^1.1.0
   stream_channel: ^2.1.0
