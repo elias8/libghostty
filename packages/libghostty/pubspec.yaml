@@ -1,8 +1,24 @@
 name: libghostty
-description: Dart FFI bindings to libghostty-vt — the virtual terminal emulator library from Ghostty.
+description: Dart FFI bindings to libghostty-vt, the VT emulator library from Ghostty.
 version: 0.0.1-dev.1
-repository: https://github.com/elias8/libghostty
+repository: https://github.com/elias8/libghostty/packages/libghostty
 resolution: workspace
+
+# This package supports all platforms listed below.
+platforms:
+  android:
+  ios:
+  linux:
+  macos:
+  web:
+  windows:
+
+topics:
+  - terminal
+  - emulator
+  - ffi
+  - ghostty
+  - libghostty
 
 environment:
   sdk: ^3.11.0

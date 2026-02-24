@@ -1,7 +1,9 @@
 # libghostty
 
-Dart bindings to [libghostty-vt](https://github.com/ghostty-org/ghostty) — the
-virtual terminal emulator library from [Ghostty](https://ghostty.org).
+[![pub package](https://img.shields.io/pub/v/libghostty)](https://pub.dev/packages/libghostty)
+
+Dart FFI bindings to [libghostty-vt](https://github.com/ghostty-org/ghostty), the VT emulator library 
+from [Ghostty](https://ghostty.org).
 
 | Android | iOS | macOS | Linux | Windows | Web |
 |:-------:|:---:|:-----:|:-----:|:-------:|:---:|
@@ -107,4 +109,4 @@ pasteIsSafe('\x1b[201~inject'); // false
 ## Clean up
 
 All native backed objects require `dispose()` when no longer needed. Using 
-disposed object throws `DisposedException`. Double dispose is a safe.
+disposed object throws `DisposedException`. Double dispose is a no-op.
