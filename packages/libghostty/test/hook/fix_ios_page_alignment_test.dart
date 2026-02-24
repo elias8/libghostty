@@ -4,9 +4,8 @@ library;
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:libghostty/src/hook/fix_ios_page_alignment.dart';
 import 'package:test/test.dart';
-
-import '../../hook/src/fix_ios_page_alignment.dart';
 
 const _machoMagic64 = 0xFEEDFACF;
 const _lcSegment64 = 0x19;

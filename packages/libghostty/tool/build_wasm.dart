@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import '../hook/src/ghostty_source.dart';
+import 'package:libghostty/src/hook/ghostty_source.dart';
 
 void main() async {
   final packageRoot = _findPackageRoot();

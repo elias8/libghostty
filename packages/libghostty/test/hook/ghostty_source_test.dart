@@ -3,9 +3,9 @@ library;
 
 import 'dart:io';
 
+import 'package:libghostty/src/hook/ghostty_source.dart';
 import 'package:test/test.dart';
 
-import '../../hook/src/ghostty_source.dart';
 import 'helpers/test_server.dart';
 
 void main() {

@@ -2,9 +2,8 @@
 library;
 
 import 'package:code_assets/code_assets.dart';
+import 'package:libghostty/src/hook/zig_target.dart';
 import 'package:test/test.dart';
-
-import '../hook/src/zig_target.dart';
 
 void main() {
   group('zigTarget', () {

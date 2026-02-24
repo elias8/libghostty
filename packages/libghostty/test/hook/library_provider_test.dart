@@ -4,9 +4,8 @@ library;
 import 'dart:io';
 
 import 'package:code_assets/code_assets.dart';
+import 'package:libghostty/src/hook/library_provider.dart';
 import 'package:test/test.dart';
-
-import '../../hook/src/library_provider.dart';
 
 void main() {
   group('PrebuiltLocal', () {

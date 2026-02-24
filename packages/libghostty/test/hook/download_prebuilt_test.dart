@@ -5,11 +5,11 @@ import 'dart:io';
 
 import 'package:code_assets/code_assets.dart';
 import 'package:crypto/crypto.dart';
+import 'package:libghostty/src/hook/ghostty_source.dart';
+import 'package:libghostty/src/hook/library_provider.dart';
+import 'package:libghostty/src/hook/platform.dart';
 import 'package:test/test.dart';
 
-import '../../hook/src/ghostty_source.dart';
-import '../../hook/src/library_provider.dart';
-import '../../hook/src/platform.dart';
 import 'helpers/test_server.dart';
 
 void main() {
