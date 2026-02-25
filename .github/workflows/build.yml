@@ -1,0 +1,197 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: build-libghostty
+  cancel-in-progress: false
+
+env:
+  ZIG_VERSION: "0.15.2"
+  DART_SDK: "3.11.0"
+
+jobs:
+  validate:
+    name: validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - name: check ghostty commit exists
+        run: |
+          COMMIT=$(cat packages/libghostty/ghostty.version)
+          curl -fsSL -o /dev/null "https://github.com/ghostty-org/ghostty/archive/$COMMIT.tar.gz"
+
+  checks:
+    needs: [validate]
+    uses: ./.github/workflows/checks.yml
+
+  build-native:
+    name: build-${{ matrix.target }}
+    needs: [checks]
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-macos
+            runner: macos-latest
+            ext: dylib
+          - target: x86_64-macos
+            runner: macos-latest
+            ext: dylib
+          - target: aarch64-ios
+            runner: macos-latest
+            ext: dylib
+          - target: x86_64-linux
+            runner: ubuntu-latest
+            ext: so
+          - target: aarch64-linux
+            runner: ubuntu-latest
+            ext: so
+          - target: x86_64-linux-musl
+            runner: ubuntu-latest
+            ext: so
+          - target: x86_64-windows
+            runner: ubuntu-latest
+            ext: dll
+          - target: aarch64-linux-android
+            runner: ubuntu-latest
+            ext: so
+          - target: x86_64-linux-android
+            runner: ubuntu-latest
+            ext: so
+          - target: arm-linux-androideabi
+            runner: ubuntu-latest
+            ext: so
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
+        with:
+          version: ${{ env.ZIG_VERSION }}
+      - name: resolve ghostty source
+        id: ghostty
+        run: |
+          COMMIT=$(cat packages/libghostty/ghostty.version)
+          echo "full=$COMMIT" >> "$GITHUB_OUTPUT"
+          echo "short=${COMMIT:0:7}" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
+        id: ghostty-cache
+        with:
+          path: ${{ runner.temp }}/ghostty-src
+          key: ghostty-src-${{ steps.ghostty.outputs.full }}-${{ hashFiles('packages/libghostty/patches/*.patch') }}
+      - name: download ghostty source
+        if: steps.ghostty-cache.outputs.cache-hit != 'true'
+        run: |
+          curl -fsSL "https://github.com/ghostty-org/ghostty/archive/${{ steps.ghostty.outputs.full }}.tar.gz" -o ghostty.tar.gz
+          mkdir -p "$RUNNER_TEMP/ghostty-src"
+          tar xzf ghostty.tar.gz -C "$RUNNER_TEMP/ghostty-src" --strip-components=1
+          rm ghostty.tar.gz
+      - name: apply patches
+        if: steps.ghostty-cache.outputs.cache-hit != 'true'
+        run: |
+          for p in packages/libghostty/patches/*.patch; do
+            [ -f "$p" ] || continue
+            git apply --unsafe-paths --ignore-whitespace --whitespace=nowarn --directory="$RUNNER_TEMP/ghostty-src" "$p"
+          done
+      - name: compile
+        working-directory: ${{ runner.temp }}/ghostty-src
+        run: zig build lib-vt --release=fast -Dtarget=${{ matrix.target }}
+      - name: prepare artifact
+        id: artifact
+        run: |
+          FILENAME="libghostty-${{ matrix.target }}.${{ matrix.ext }}"
+          cp "$RUNNER_TEMP"/ghostty-src/zig-out/*/*ghostty-vt.${{ matrix.ext }} "$FILENAME"
+          echo "filename=$FILENAME" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ${{ steps.artifact.outputs.filename }}
+          path: ${{ steps.artifact.outputs.filename }}
+          retention-days: 1
+
+  build-wasm:
+    name: build-wasm
+    needs: [checks]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
+        with:
+          version: ${{ env.ZIG_VERSION }}
+      - name: resolve ghostty source
+        id: ghostty
+        run: |
+          COMMIT=$(cat packages/libghostty/ghostty.version)
+          echo "full=$COMMIT" >> "$GITHUB_OUTPUT"
+          echo "short=${COMMIT:0:7}" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
+        id: ghostty-cache
+        with:
+          path: ${{ runner.temp }}/ghostty-src
+          key: ghostty-src-${{ steps.ghostty.outputs.full }}-${{ hashFiles('packages/libghostty/patches/*.patch') }}
+      - name: download ghostty source
+        if: steps.ghostty-cache.outputs.cache-hit != 'true'
+        run: |
+          curl -fsSL "https://github.com/ghostty-org/ghostty/archive/${{ steps.ghostty.outputs.full }}.tar.gz" -o ghostty.tar.gz
+          mkdir -p "$RUNNER_TEMP/ghostty-src"
+          tar xzf ghostty.tar.gz -C "$RUNNER_TEMP/ghostty-src" --strip-components=1
+          rm ghostty.tar.gz
+      - name: apply patches
+        if: steps.ghostty-cache.outputs.cache-hit != 'true'
+        run: |
+          for p in packages/libghostty/patches/*.patch; do
+            [ -f "$p" ] || continue
+            git apply --unsafe-paths --ignore-whitespace --whitespace=nowarn --directory="$RUNNER_TEMP/ghostty-src" "$p"
+          done
+      - name: compile wasm
+        working-directory: ${{ runner.temp }}/ghostty-src
+        run: zig build lib-vt -Dtarget=wasm32-freestanding -Doptimize=ReleaseSmall
+      - name: prepare artifact
+        id: artifact
+        run: |
+          FILENAME="libghostty-wasm32-freestanding.wasm"
+          cp "$RUNNER_TEMP/ghostty-src/zig-out/bin/ghostty-vt.wasm" "$FILENAME"
+          echo "filename=$FILENAME" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ${{ steps.artifact.outputs.filename }}
+          path: ${{ steps.artifact.outputs.filename }}
+          retention-days: 1
+
+  update-hashes:
+    name: update-hashes
+    needs: [build-native, build-wasm]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: download ghostty source
+        run: |
+          COMMIT=$(cat packages/libghostty/ghostty.version)
+          curl -fsSL "https://github.com/ghostty-org/ghostty/archive/$COMMIT.tar.gz" -o ghostty.tar.gz
+          mkdir -p ghostty
+          tar xzf ghostty.tar.gz -C ghostty --strip-components=1
+          rm ghostty.tar.gz
+      - name: isolate from repo git
+        run: touch ghostty/.git
+      - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
+        with:
+          version: ${{ env.ZIG_VERSION }}
+      - uses: dart-lang/setup-dart@e51d8e571e22473a2ddebf0ef8a2123f0ab2c02c # v1.7.1
+        with:
+          sdk: ${{ env.DART_SDK }}
+      - name: generate asset hashes
+        working-directory: packages/libghostty
+        run: |
+          dart pub get
+          dart run tool/generate_binary_hash.dart ../../artifacts
+      - name: upload asset hashes
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: asset-hashes
+          path: packages/libghostty/lib/src/hook/asset_hashes.dart
+          retention-days: 1

@@ -1,0 +1,21 @@
+name: pr-check
+run-name: pr-check
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'packages/libghostty/**'
+      - '.github/workflows/ci.yml'
+      - '.github/workflows/checks.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    uses: ./.github/workflows/checks.yml
