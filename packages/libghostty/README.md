@@ -8,7 +8,7 @@ from [Ghostty](https://ghostty.org).
 
 | Android | iOS | macOS | Linux | Windows | Web |
 |:-------:|:---:|:-----:|:-----:|:-------:|:---:|
-|    ✅    |  ✅  |   ✅   |   ⚠️   |    ⚠️    |  ✅  |
+|    ✅    |  ✅  |   ✅   |  ⚠️   |   ⚠️    |  ✅  |
 
 > Linux and Windows binaries are built but unconfirmed locally.
 

@@ -1,0 +1,1 @@
+packages/libghostty/README.md
