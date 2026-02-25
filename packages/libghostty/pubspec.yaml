@@ -1,6 +1,6 @@
 name: libghostty
 description: Dart FFI bindings to libghostty-vt, the VT emulator library from Ghostty.
-version: 0.0.1-dev.1
+version: 0.0.1-dev.2
 repository: https://github.com/elias8/libghostty/packages/libghostty
 resolution: workspace
 
