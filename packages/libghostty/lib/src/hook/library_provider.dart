@@ -6,8 +6,14 @@ import 'package:hooks/hooks.dart';
 
 import 'asset_hashes.dart';
 import 'ghostty_source.dart';
-import 'platform.dart';
 import 'zig_target.dart';
+
+/// Returns the dynamic library file extension for [os].
+String libraryExtension(OS os) => switch (os) {
+  OS.macOS || OS.iOS => 'dylib',
+  OS.windows => 'dll',
+  _ => 'so',
+};
 
 /// Environment variable for local Ghostty source path.
 const ghosttySrcEnvKey = 'GHOSTTY_SRC';
@@ -118,6 +124,12 @@ final class CompileFromSource extends LibraryProvider {
         'stderr: ${result.stderr}',
       );
     }
+
+    // Rename from libghostty-vt to libghostty
+    final ext = libraryExtension(os);
+    final srcFile = File('${installDir.toFilePath()}/lib/libghostty-vt.$ext');
+    final dstFile = File('${installDir.toFilePath()}/lib/libghostty.$ext');
+    if (srcFile.existsSync()) srcFile.renameSync(dstFile.path);
   }
 
   Future<Directory> _downloadTarball() async {

@@ -58,4 +58,14 @@ void main() {
       expect(DownloadPrebuilt(createTestBuildInput()), isA<LibraryProvider>());
     });
   });
+
+  group('libraryExtension', () {
+    test('maps OS to native library file extension', () {
+      expect(libraryExtension(OS.macOS), 'dylib');
+      expect(libraryExtension(OS.iOS), 'dylib');
+      expect(libraryExtension(OS.windows), 'dll');
+      expect(libraryExtension(OS.linux), 'so');
+      expect(libraryExtension(OS.android), 'so');
+    });
+  });
 }

@@ -4,6 +4,7 @@ import 'package:code_assets/code_assets.dart';
 import 'package:hooks/hooks.dart';
 import 'package:libghostty/src/hook/fix_ios_page_alignment.dart';
 import 'package:libghostty/src/hook/library_provider.dart';
+import 'package:libghostty/src/hook/zig_target.dart';
 
 void main(List<String> args) async {
   await build(args, _build);
@@ -12,8 +13,15 @@ void main(List<String> args) async {
 Future<void> _build(BuildInput input, BuildOutputBuilder output) async {
   if (!input.config.buildCodeAssets) return;
 
+  // Skip if target OS is not supported for native builds (e.g., web)
+  try {
+    if (input.targetTriple() == null) return;
+  } on ArgumentError {
+    return;
+  }
+
   final targetOS = input.config.code.targetOS;
-  final libFileName = targetOS.dylibFileName('ghostty-vt');
+  final libFileName = targetOS.dylibFileName('ghostty');
   final installDir = input.outputDirectory;
   final libFile = File.fromUri(installDir.resolve('lib/$libFileName'));
 

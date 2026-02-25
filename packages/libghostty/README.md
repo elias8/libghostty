@@ -24,7 +24,7 @@ import 'package:libghostty/libghostty.dart';
 
 Future<void> main() async {
   // Required on web only. You can safely call this on other platforms.
-  // await initializeForWeb(Uri.parse('assets/ghostty-vt.wasm'));
+  // await initializeForWeb(Uri.parse('assets/libghostty.wasm'));
 
   final terminal = Terminal(cols: 80, rows: 24);
   terminal.write(Uint8List.fromList('Hello, terminal!\r\n'.codeUnits));

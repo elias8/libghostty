@@ -26,7 +26,7 @@ GhosttyBindings get bindings =>
 /// Loads the libghostty-vt WASM module and initializes bindings for web use.
 ///
 /// ```dart
-/// await initializeForWeb(Uri.parse('assets/ghostty-vt.wasm'));
+/// await initializeForWeb(Uri.parse('assets/libghostty.wasm'));
 /// ```
 Future<void> initializeForWeb(Uri wasmUri) async {
   final response = await web.window.fetch(wasmUri.toString().toJS).toDart;

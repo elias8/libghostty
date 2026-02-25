@@ -9,7 +9,7 @@ void main() async {
     cacheBase: packageRoot.uri.resolve('.dart_tool/'),
   );
 
-  stdout.writeln('Compiling libghostty-vt for wasm32-freestanding...');
+  stdout.writeln('Compiling libghostty for wasm32-freestanding...');
   _compileWithZig(sourceDir);
 
   final wasmSource = File('${sourceDir.path}/zig-out/bin/ghostty-vt.wasm');
@@ -17,13 +17,13 @@ void main() async {
     throw Exception('WASM binary not found at ${wasmSource.path} after build.');
   }
 
-  final wasmTarget = File('${packageRoot.path}/lib/src/wasm/ghostty-vt.wasm');
+  final wasmTarget = File('${packageRoot.path}/lib/src/wasm/libghostty.wasm');
   wasmTarget.parent.createSync(recursive: true);
   wasmSource.copySync(wasmTarget.path);
 
   final size = wasmTarget.lengthSync();
   stdout.writeln(
-    'Copied ghostty-vt.wasm to lib/src/wasm/ghostty-vt.wasm '
+    'Copied libghostty.wasm to lib/src/wasm/ '
     '(${(size / 1024).toStringAsFixed(1)} KB)',
   );
 }

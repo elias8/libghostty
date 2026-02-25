@@ -5,7 +5,7 @@ Future<void> setUpWasm() async {
   final channel = spawnHybridUri('/test/wasm/helpers/asset_server.dart');
   final port = (await channel.stream.first as double).toInt();
   final wasmUri = Uri.parse(
-    'http://localhost:$port/lib/src/wasm/ghostty-vt.wasm',
+    'http://localhost:$port/lib/src/wasm/libghostty.wasm',
   );
   await initializeForWeb(wasmUri);
 }
