@@ -76,21 +76,10 @@ jobs:
             fi
             echo "Validated $filename"
           done
-      - name: rename artifacts with version
+      - name: prepare artifacts
         run: |
           # Remove asset-hashes directory (not needed for release)
           rm -rf artifacts/asset-hashes
-          VERSION="${GITHUB_REF_NAME#libghostty-v}"
-          for f in artifacts/libghostty-*; do
-            ext="${f##*.}"
-            case "$ext" in
-              dylib|so|dll|wasm) ;;
-              *) continue ;;
-            esac
-            target="${f#artifacts/libghostty-}"
-            target="${target%.*}"
-            mv "$f" "artifacts/libghostty-${VERSION}-${target}.${ext}"
-          done
       - name: extract release notes from CHANGELOG
         run: |
           VERSION="${GITHUB_REF_NAME#libghostty-v}"

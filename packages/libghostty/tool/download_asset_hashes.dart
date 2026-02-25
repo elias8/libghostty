@@ -64,7 +64,7 @@ void main() async {
     var content = downloaded.readAsStringSync();
     content = content.replaceFirst(
       RegExp("const releaseTag = (?:null|'[^']*')"),
-      "const releaseTag = 'v$version'",
+      "const releaseTag = 'libghostty-v$version'",
     );
 
     File('lib/src/hook/asset_hashes.dart').writeAsStringSync(content);
