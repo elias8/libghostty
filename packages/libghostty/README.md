@@ -1,13 +1,16 @@
 # libghostty
 
 [![pub package](https://img.shields.io/pub/v/libghostty)](https://pub.dev/packages/libghostty)
+[![GitHub Actions](https://github.com/elias8/libghostty/actions/workflows/build.yml/badge.svg)](https://github.com/elias8/libghostty/actions)
 
 Dart FFI bindings to [libghostty-vt](https://github.com/ghostty-org/ghostty), the VT emulator library 
 from [Ghostty](https://ghostty.org).
 
 | Android | iOS | macOS | Linux | Windows | Web |
 |:-------:|:---:|:-----:|:-----:|:-------:|:---:|
-|    ✅    |  ✅  |   ✅   |   ✅   |    ✅    |  ✅  |
+|    ✅    |  ✅  |   ✅   |   ⚠️   |    ⚠️    |  ✅  |
+
+> Linux and Windows binaries are built but unconfirmed locally.
 
 ## Getting started
 
