@@ -16,7 +16,7 @@ from [Ghostty](https://ghostty.org).
 
 ```yaml
 dependencies:
-  libghostty: ^0.0.1-dev.1
+  libghostty: ^0.0.1
 ```
 
 ```dart
