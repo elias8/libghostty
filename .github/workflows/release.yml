@@ -57,6 +57,25 @@ jobs:
             unzip -o "$f" -d artifacts/
             rm "$f"
           done
+      - name: validate asset hashes
+        run: |
+          for f in artifacts/libghostty-*; do
+            ext="${f##*.}"
+            case "$ext" in
+              dylib|so|dll|wasm) ;;
+              *) continue ;;
+            esac
+            filename=$(basename "$f")
+            hash=$(sha256sum "$f" | cut -d' ' -f1)
+            expected=$(grep "'$filename':" packages/libghostty/lib/src/hook/asset_hashes.dart | sed "s/.*': '\([^']*\)'.*/\1/")
+            if [ "$hash" != "$expected" ]; then
+              echo "::error::Hash mismatch for $filename"
+              echo "Expected: $expected"
+              echo "Actual:   $hash"
+              exit 1
+            fi
+            echo "Validated $filename"
+          done
       - name: rename artifacts with version
         run: |
           # Remove asset-hashes directory (not needed for release)

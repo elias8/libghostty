@@ -3,6 +3,8 @@ name: build
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - 'packages/libghostty/lib/src/hook/asset_hashes.dart'
 
 concurrency:
   group: build-libghostty
