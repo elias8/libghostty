@@ -44,6 +44,7 @@ linter:
   rules:
     # Conflicting rules — disable the losing side of each pair.
     always_specify_types: false # conflicts with omit_local_variable_types, omit_obvious_*
+    type_annotate_public_apis: false # conflicts with omit_obvious_property_types
     always_use_package_imports: false # conflicts with prefer_relative_imports
     prefer_double_quotes: false # conflicts with prefer_single_quotes
     prefer_final_parameters: false # conflicts with avoid_final_parameters
