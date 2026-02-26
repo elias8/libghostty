@@ -1,0 +1,20 @@
+name: libghostty_flutter
+description: "Flutter terminal renderer and composable widgets powered by libghostty."
+version: 0.0.1-dev.1
+homepage:
+repository: https://github.com/elias8/libghostty/tree/main/packages/libghostty_flutter
+resolution: workspace
+
+environment:
+  sdk: ^3.11.0
+  flutter: ">=3.27.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  libghostty: ^0.0.1
+  meta: ^1.16.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
