@@ -91,7 +91,7 @@ jobs:
       - run: dart pub global activate very_good_cli
       - name: run tests
         working-directory: packages/libghostty
-        run: very_good test
+        run: very_good test --no-optimization
 
   test-wasm:
     name: test-wasm
@@ -146,4 +146,4 @@ jobs:
         run: dart run tool/build_wasm.dart
       - name: run wasm tests
         working-directory: packages/libghostty
-        run: very_good test --platform=chrome
+        run: very_good test --platform=chrome test/wasm

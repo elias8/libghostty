@@ -56,7 +56,7 @@ void main() {
           cacheBase: Uri.directory('${tmpDir.path}/cache/'),
         );
 
-        expect(result.path, contains('workspace/ghostty'));
+        expect(result.uri.path, contains('workspace/ghostty'));
       },
     );
 
