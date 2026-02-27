@@ -14,7 +14,6 @@ class TerminalSize {
   /// Number of character rows.
   final int rows;
 
-  /// Creates a [TerminalSize] with the given [cols] and [rows].
   const TerminalSize({required this.cols, required this.rows});
 
   @override

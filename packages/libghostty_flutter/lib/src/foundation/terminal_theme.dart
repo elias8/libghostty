@@ -4,7 +4,6 @@ import 'package:meta/meta.dart';
 
 import 'color_palette.dart';
 
-// Default 16 ANSI colors for a dark-background terminal theme.
 const _defaultAnsiColors = [
   Color(0xFF282828), // 0: black
   Color(0xFFCC4242), // 1: red
@@ -40,7 +39,6 @@ class CursorTheme {
   /// Time between blink state toggles.
   final Duration blinkInterval;
 
-  /// Creates a [CursorTheme].
   const CursorTheme({
     this.shape = CursorShape.block,
     this.color,
@@ -100,11 +98,8 @@ class TerminalTheme {
   /// Font size in logical pixels.
   final double fontSize;
 
-  /// Creates a [TerminalTheme].
-  ///
   /// [ansiColors] must contain exactly 16 entries. The full 256-color palette
-  /// is auto-generated from these colors, [background], and [foreground] via
-  /// CIELAB-based interpolation.
+  /// is auto-generated via CIELAB-based interpolation.
   TerminalTheme({
     required this.foreground,
     required this.background,
@@ -157,20 +152,28 @@ class TerminalTheme {
     String? fontFamily,
     double? fontSize,
   }) {
-    if (ansiColors != null) {
+    final newForeground = foreground ?? this.foreground;
+    final newBackground = background ?? this.background;
+    final regenerate =
+        ansiColors != null ||
+        newForeground != this.foreground ||
+        newBackground != this.background;
+
+    if (regenerate) {
       return TerminalTheme(
-        foreground: foreground ?? this.foreground,
-        background: background ?? this.background,
-        ansiColors: ansiColors,
+        foreground: newForeground,
+        background: newBackground,
+        ansiColors: ansiColors ?? List<Color>.generate(16, (i) => palette[i]),
         cursor: cursor ?? this.cursor,
         fontFamily: fontFamily ?? this.fontFamily,
         fontSize: fontSize ?? this.fontSize,
       );
     }
+
     return TerminalTheme._withPalette(
-      foreground: foreground ?? this.foreground,
-      background: background ?? this.background,
       palette: palette,
+      foreground: newForeground,
+      background: newBackground,
       cursor: cursor ?? this.cursor,
       fontFamily: fontFamily ?? this.fontFamily,
       fontSize: fontSize ?? this.fontSize,

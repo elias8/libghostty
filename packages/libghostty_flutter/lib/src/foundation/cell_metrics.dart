@@ -23,7 +23,6 @@ class CellMetrics {
   /// Distance from the top of the cell to the alphabetic baseline.
   final double baseline;
 
-  /// Creates a [CellMetrics] with explicit dimensions.
   const CellMetrics({
     required this.cellWidth,
     required this.cellHeight,
@@ -41,12 +40,15 @@ class CellMetrics {
     final style = ParagraphStyle(fontFamily: fontFamily, fontSize: fontSize);
     final paragraph = (ParagraphBuilder(style)..addText('M')).build()
       ..layout(const ParagraphConstraints(width: double.infinity));
-
-    return CellMetrics(
+    final metrics = CellMetrics(
       cellHeight: paragraph.height,
       cellWidth: paragraph.longestLine,
       baseline: paragraph.alphabeticBaseline,
     );
+
+    paragraph.dispose();
+
+    return metrics;
   }
 
   @override

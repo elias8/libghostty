@@ -108,5 +108,25 @@ void main() {
       final modified = original.copyWith(foreground: const Color(0xFFFFFFFF));
       expect(original, isNot(equals(modified)));
     });
+
+    test('copyWith regenerates palette when foreground changes', () {
+      final original = TerminalTheme.defaults;
+      final modified = original.copyWith(foreground: const Color(0xFFFF0000));
+      expect(modified.palette, isNot(equals(original.palette)));
+    });
+
+    test('copyWith regenerates palette when background changes', () {
+      final original = TerminalTheme.defaults;
+      final modified = original.copyWith(background: const Color(0xFF000000));
+      expect(modified.palette, isNot(equals(original.palette)));
+    });
+
+    test('copyWith reuses palette when only cursor changes', () {
+      final original = TerminalTheme.defaults;
+      final modified = original.copyWith(
+        cursor: const CursorTheme(shape: CursorShape.bar),
+      );
+      expect(modified.palette, equals(original.palette));
+    });
   });
 }
