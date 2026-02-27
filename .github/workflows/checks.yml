@@ -5,7 +5,6 @@ on:
 
 env:
   ZIG_VERSION: "0.15.2"
-  DART_SDK: "3.11.0"
 
 jobs:
   analyze:
@@ -13,9 +12,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-      - uses: dart-lang/setup-dart@e51d8e571e22473a2ddebf0ef8a2123f0ab2c02c # v1.7.1
+      - uses: subosito/flutter-action@fd55f4c5af5b953cc57a2be44cb082c8f6635e8e # v2.21.0
         with:
-          sdk: ${{ env.DART_SDK }}
+          channel: stable
       - uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
         with:
           path: ~/.pub-cache
@@ -25,9 +24,9 @@ jobs:
         run: |
           COMMIT=$(cat packages/libghostty/ghostty.version)
           curl -fsSL -o /dev/null "https://github.com/ghostty-org/ghostty/archive/$COMMIT.tar.gz"
-      - run: dart pub get
-      - run: dart format --set-exit-if-changed packages/libghostty
-      - run: dart analyze packages/libghostty
+      - run: flutter pub get
+      - run: dart format --set-exit-if-changed .
+      - run: dart analyze .
       - name: publish dry run
         working-directory: packages/libghostty
         run: dart pub publish --dry-run
@@ -50,9 +49,9 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           fetch-tags: false
-      - uses: dart-lang/setup-dart@e51d8e571e22473a2ddebf0ef8a2123f0ab2c02c # v1.7.1
+      - uses: subosito/flutter-action@fd55f4c5af5b953cc57a2be44cb082c8f6635e8e # v2.21.0
         with:
-          sdk: ${{ env.DART_SDK }}
+          channel: stable
       - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
         with:
           version: ${{ env.ZIG_VERSION }}
@@ -88,7 +87,7 @@ jobs:
             [ -f "$p" ] || continue
             git apply --ignore-whitespace --whitespace=nowarn --directory=ghostty "$p"
           done
-      - run: dart pub get
+      - run: flutter pub get
       - run: dart pub global activate very_good_cli
       - name: run tests
         working-directory: packages/libghostty
@@ -102,9 +101,9 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           fetch-tags: false
-      - uses: dart-lang/setup-dart@e51d8e571e22473a2ddebf0ef8a2123f0ab2c02c # v1.7.1
+      - uses: subosito/flutter-action@fd55f4c5af5b953cc57a2be44cb082c8f6635e8e # v2.21.0
         with:
-          sdk: ${{ env.DART_SDK }}
+          channel: stable
       - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
         with:
           version: ${{ env.ZIG_VERSION }}
@@ -140,7 +139,7 @@ jobs:
           done
       - name: isolate from repo git
         run: touch ghostty/.git
-      - run: dart pub get
+      - run: flutter pub get
       - run: dart pub global activate very_good_cli
       - name: build wasm
         working-directory: packages/libghostty
