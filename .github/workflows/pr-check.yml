@@ -5,7 +5,7 @@ on:
   pull_request:
     branches: [ main ]
     paths:
-      - 'packages/libghostty/**'
+      - 'packages/**'
       - '.github/workflows/ci.yml'
       - '.github/workflows/checks.yml'
 

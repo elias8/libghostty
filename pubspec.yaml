@@ -6,6 +6,8 @@ environment:
 
 workspace:
   - packages/libghostty
+  - packages/libghostty_flutter
+  - packages/libghostty_flutter/example
 
 hooks:
   user_defines:

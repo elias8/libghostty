@@ -1,0 +1,19 @@
+name: libghostty_flutter_example
+description: Example app for libghostty_flutter.
+version: 0.0.1-dev.1
+resolution: workspace
+publish_to: none
+
+environment:
+  sdk: ^3.10.0
+  flutter: ">=3.32.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  libghostty_flutter:
+    path: ..
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter

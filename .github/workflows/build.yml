@@ -12,7 +12,6 @@ concurrency:
 
 env:
   ZIG_VERSION: "0.15.2"
-  DART_SDK: "3.11.0"
 
 jobs:
   validate:
@@ -183,13 +182,13 @@ jobs:
       - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
         with:
           version: ${{ env.ZIG_VERSION }}
-      - uses: dart-lang/setup-dart@e51d8e571e22473a2ddebf0ef8a2123f0ab2c02c # v1.7.1
+      - uses: subosito/flutter-action@fd55f4c5af5b953cc57a2be44cb082c8f6635e8e # v2.21.0
         with:
-          sdk: ${{ env.DART_SDK }}
+          channel: stable
       - name: generate asset hashes
         working-directory: packages/libghostty
         run: |
-          dart pub get
+          flutter pub get
           dart run tool/generate_binary_hash.dart ../../artifacts
       - name: upload asset hashes
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

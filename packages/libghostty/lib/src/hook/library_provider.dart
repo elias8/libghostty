@@ -106,9 +106,9 @@ final class CompileFromSource extends LibraryProvider {
       '-p',
       Directory.fromUri(installDir).path,
       '--release=fast',
-      if (os != OS.current || arch != Architecture.current) '-Dtarget=$zig',
-      if (ios == IOSSdk.iPhoneSimulator && arch == Architecture.arm64)
-        '-Dcpu=apple_a17',
+      if (os == .windows) ...['--global-cache-dir', _zigCacheDir(sourceDir)],
+      if (os != .current || arch != .current) '-Dtarget=$zig',
+      if (ios == .iPhoneSimulator && arch == .arm64) '-Dcpu=apple_a17',
     ];
 
     final result = Process.runSync(
@@ -125,11 +125,16 @@ final class CompileFromSource extends LibraryProvider {
       );
     }
 
-    // Rename from libghostty-vt to libghostty
-    final ext = libraryExtension(os);
-    final srcFile = File('${installDir.toFilePath()}/lib/libghostty-vt.$ext');
-    final dstFile = File('${installDir.toFilePath()}/lib/libghostty.$ext');
-    if (srcFile.existsSync()) srcFile.renameSync(dstFile.path);
+    final srcDir = os == .windows ? 'bin' : 'lib';
+    final srcFileName = os.dylibFileName('ghostty-vt');
+    final srcFile = File('${installDir.toFilePath()}/$srcDir/$srcFileName');
+    if (srcFile.existsSync()) srcFile.renameSync(target.path);
+  }
+
+  String _zigCacheDir(Directory sourceDir) {
+    final envDir = Platform.environment['ZIG_GLOBAL_CACHE_DIR'];
+    if (envDir != null && envDir.isNotEmpty) return envDir;
+    return '${sourceDir.path}${Platform.pathSeparator}.zig-cache';
   }
 
   Future<Directory> _downloadTarball() async {
@@ -198,8 +203,13 @@ final class DownloadPrebuilt extends LibraryProvider {
 
   final String baseUrl;
   final BuildInput input;
+  final Map<String, String> hashes;
 
-  const DownloadPrebuilt(this.input, {this.baseUrl = _defaultBaseUrl});
+  const DownloadPrebuilt(
+    this.input, {
+    this.baseUrl = _defaultBaseUrl,
+    Map<String, String>? hashes,
+  }) : hashes = hashes ?? assetHashes;
 
   @override
   Future<void> provide(File target) async {
@@ -276,7 +286,7 @@ final class DownloadPrebuilt extends LibraryProvider {
   }
 
   bool _validateHash(File file, String hashKey) {
-    final expectedHash = assetHashes[hashKey];
+    final expectedHash = hashes[hashKey];
     if (expectedHash == null) return true;
 
     final bytes = file.readAsBytesSync();
