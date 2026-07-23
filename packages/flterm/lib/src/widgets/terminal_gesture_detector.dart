@@ -70,6 +70,9 @@ class _TerminalGestureDetectorState extends State<TerminalGestureDetector> {
       // é neutralizado (`NeverScrollableScrollPhysics`) nesse modo no
       // `TerminalView`, evitando dois consumidores disputando o pointer signal.
       onPointerSignal: tracked ? _handlePointerSignal : null,
+      // macOS entrega o trackpad como pan/zoom; encaminha igual ao wheel.
+      onPointerPanZoomStart: tracked ? _handlePointerPanZoomStart : null,
+      onPointerPanZoomUpdate: tracked ? _handlePointerPanZoomUpdate : null,
       child: TerminalRawGestureDetector(
         onTapDown: _handleTapDown,
         onTapUp: _handleTapUp,
@@ -288,39 +291,69 @@ class _TerminalGestureDetectorState extends State<TerminalGestureDetector> {
   /// pequenos e frequentes; acumulamos pra não rolar rápido demais).
   double _wheelAccum = 0;
 
-  /// Encaminha o wheel pro app como reporte de mouse (botão 4 = cima,
-  /// 5 = baixo) quando o mouse tracking está ligado. Segurando Shift o app não
-  /// recebe (o terminal deixa o Shift+wheel pro scroll local), como o resto.
+  /// Pan acumulado do gesto pan/zoom em curso (o [PointerPanZoomUpdateEvent.pan]
+  /// é acumulado desde o start; derivamos o delta por update).
+  Offset _panZoomLast = Offset.zero;
+
+  /// Wheel via [PointerSignalEvent] — mouse de verdade e, no macOS, o scroll
+  /// sintetizado do trackpad. Encaminha pro app como reporte de mouse.
   void _handlePointerSignal(PointerSignalEvent event) {
     if (event is! PointerScrollEvent) return;
     if (!_isMouseTracked(HardwareKeyboard.instance.isShiftPressed)) return;
+    // Mouse = discreto (um notch por evento); trackpad = contínuo (acumula).
+    _forwardScroll(
+      event.scrollDelta.dy,
+      event.localPosition,
+      discrete: event.kind == PointerDeviceKind.mouse,
+    );
+  }
+
+  // No macOS o trackpad muitas vezes chega como gesto **pan/zoom** (não como
+  // PointerScrollEvent), então sem tratar isso o scroll de dois dedos não
+  // encaminha nada pro app. Mesmo caminho de forward do wheel, contínuo.
+  void _handlePointerPanZoomStart(PointerPanZoomStartEvent event) {
+    _panZoomLast = Offset.zero;
+    _wheelAccum = 0;
+  }
+
+  void _handlePointerPanZoomUpdate(PointerPanZoomUpdateEvent event) {
+    if (!_isMouseTracked(HardwareKeyboard.instance.isShiftPressed)) return;
+    final dy = event.pan.dy - _panZoomLast.dy;
+    _panZoomLast = event.pan;
+    // Pan tem sinal oposto ao scrollDelta (dedo pra cima = pan.dy negativo =
+    // ver conteúdo abaixo = scroll down); invertendo, reusa a convenção.
+    _forwardScroll(-dy, event.localPosition, discrete: false);
+  }
+
+  /// Converte um delta vertical (px, convenção de `scrollDelta`) em passos de
+  /// linha e encaminha ao app como wheel (botão 4 = cima, 5 = baixo).
+  /// [discrete] = mouse (≥1 linha/notch, sem acumular); contínuo = trackpad.
+  void _forwardScroll(double deltaY, Offset localPosition,
+      {required bool discrete}) {
     final cellHeight = widget.metrics.cellHeight;
     if (cellHeight <= 0) return;
-    final lines = event.scrollDelta.dy / cellHeight;
+    final lines = deltaY / cellHeight;
     if (lines == 0) return;
 
     final int steps;
-    if (event.kind == PointerDeviceKind.mouse) {
-      // Wheel de mouse é discreto (um notch por evento): garante ao menos 1
-      // linha no sentido; notches maiores rolam proporcional.
+    if (discrete) {
       final mag = lines.abs().round();
       steps = (mag < 1 ? 1 : mag) * (lines.isNegative ? -1 : 1);
     } else {
-      // Trackpad (contínuo): acumula a fração e só dispara em linhas inteiras.
       _wheelAccum += lines;
       steps = _wheelAccum.truncate();
       if (steps == 0) return;
       _wheelAccum -= steps;
     }
 
-    // scrollDelta.dy < 0 = rolar pra cima = botão 4; > 0 = baixo = botão 5.
+    // dy < 0 = rolar pra cima = botão 4; > 0 = baixo = botão 5.
     final button = steps < 0 ? MouseButton.four : MouseButton.five;
     for (var i = 0; i < steps.abs(); i++) {
       _binding.handleMouseEvent((
         action: MouseAction.press,
         button: button,
-        pixelX: event.localPosition.dx,
-        pixelY: event.localPosition.dy,
+        pixelX: localPosition.dx,
+        pixelY: localPosition.dy,
       ));
     }
   }
