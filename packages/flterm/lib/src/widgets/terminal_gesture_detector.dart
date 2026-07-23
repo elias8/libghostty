@@ -4,7 +4,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:libghostty/libghostty.dart'
-    show MouseAction, MouseTracking, Position;
+    show MouseAction, MouseButton, MouseTracking, Position;
 import 'package:meta/meta.dart';
 
 import '../foundation.dart';
@@ -63,6 +63,13 @@ class _TerminalGestureDetectorState extends State<TerminalGestureDetector> {
       onPointerDown: tracked ? _handleTrackedDown : null,
       onPointerMove: tracked ? _handleTrackedMove : null,
       onPointerUp: tracked ? _handleTrackedUp : null,
+      // Wheel com mouse tracking ligado (TUIs como claude/vim no alt-buffer) tem
+      // que virar reporte de mouse pro app, não rolar o scrollback do viewport.
+      // Sem isso o `Scrollable` filho engole o wheel (e no alt-buffer não há
+      // scrollback), então o scroll interno do app não funciona. O `Scrollable`
+      // é neutralizado (`NeverScrollableScrollPhysics`) nesse modo no
+      // `TerminalView`, evitando dois consumidores disputando o pointer signal.
+      onPointerSignal: tracked ? _handlePointerSignal : null,
       child: TerminalRawGestureDetector(
         onTapDown: _handleTapDown,
         onTapUp: _handleTapUp,
@@ -275,6 +282,47 @@ class _TerminalGestureDetectorState extends State<TerminalGestureDetector> {
       pixelX: position.dx,
       pixelY: position.dy,
     ));
+  }
+
+  /// Resíduo fracionário de linha ao encaminhar o wheel (trackpad manda deltas
+  /// pequenos e frequentes; acumulamos pra não rolar rápido demais).
+  double _wheelAccum = 0;
+
+  /// Encaminha o wheel pro app como reporte de mouse (botão 4 = cima,
+  /// 5 = baixo) quando o mouse tracking está ligado. Segurando Shift o app não
+  /// recebe (o terminal deixa o Shift+wheel pro scroll local), como o resto.
+  void _handlePointerSignal(PointerSignalEvent event) {
+    if (event is! PointerScrollEvent) return;
+    if (!_isMouseTracked(HardwareKeyboard.instance.isShiftPressed)) return;
+    final cellHeight = widget.metrics.cellHeight;
+    if (cellHeight <= 0) return;
+    final lines = event.scrollDelta.dy / cellHeight;
+    if (lines == 0) return;
+
+    final int steps;
+    if (event.kind == PointerDeviceKind.mouse) {
+      // Wheel de mouse é discreto (um notch por evento): garante ao menos 1
+      // linha no sentido; notches maiores rolam proporcional.
+      final mag = lines.abs().round();
+      steps = (mag < 1 ? 1 : mag) * (lines.isNegative ? -1 : 1);
+    } else {
+      // Trackpad (contínuo): acumula a fração e só dispara em linhas inteiras.
+      _wheelAccum += lines;
+      steps = _wheelAccum.truncate();
+      if (steps == 0) return;
+      _wheelAccum -= steps;
+    }
+
+    // scrollDelta.dy < 0 = rolar pra cima = botão 4; > 0 = baixo = botão 5.
+    final button = steps < 0 ? MouseButton.four : MouseButton.five;
+    for (var i = 0; i < steps.abs(); i++) {
+      _binding.handleMouseEvent((
+        action: MouseAction.press,
+        button: button,
+        pixelX: event.localPosition.dx,
+        pixelY: event.localPosition.dy,
+      ));
+    }
   }
 
   void _startAutoScroll() {
