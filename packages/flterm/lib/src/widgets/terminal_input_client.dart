@@ -22,6 +22,7 @@ final class TerminalInputClient with DeltaTextInputClient {
   TextInputConnection? _connection;
   TextEditingValue _value = _sentinel;
   Brightness _keyboardAppearance = .dark;
+  int? _viewId;
   Timer? _newlineActionDedupeTimer;
   var _suppressNextNewlineDelta = false;
   var _suppressNextNewlineAction = false;
@@ -51,6 +52,19 @@ final class TerminalInputClient with DeltaTextInputClient {
     _connection?.updateConfig(_configuration);
   }
 
+  /// The id of the [FlutterView] hosting the terminal.
+  ///
+  /// Desktop embedders route the IME to a specific view, so the platform
+  /// text input control needs this id to resolve the target view when the
+  /// client attaches. Windows rejects the attach outright when it is null
+  /// (`Could not set client, view ID is null.`); macOS and Linux fall back
+  /// to the implicit view, which is why the omission only broke Windows.
+  set viewId(int? value) {
+    if (_viewId == value) return;
+    _viewId = value;
+    _connection?.updateConfig(_configuration);
+  }
+
   set onDelete(ValueChanged<int>? callback) => _onDelete = callback;
 
   set onNewline(VoidCallback? callback) => _onNewline = callback;
@@ -76,6 +90,7 @@ final class TerminalInputClient with DeltaTextInputClient {
       enableInteractiveSelection: false,
       enableIMEPersonalizedLearning: false,
       keyboardAppearance: _keyboardAppearance,
+      viewId: _viewId,
     );
   }
 

@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **Windows keyboard input**: the text input client now reports the hosting
+  `FlutterView` id when attaching, so desktop embedders can resolve the
+  target view. This fixes typing being dead on Windows, where the attach
+  failed with `Could not set client, view ID is null.`.
+
 ## 0.0.4
 
 ### Breaking

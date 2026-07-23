@@ -13,6 +13,12 @@ abstract interface class TerminalViewBinding {
   /// Sets the theme brightness for color scheme queries and text input.
   set brightness(Brightness value);
 
+  /// Sets the id of the [FlutterView] hosting the terminal.
+  ///
+  /// Forwarded to the platform text input so the IME can resolve the target
+  /// view on desktop embedders. Windows requires it to attach the client.
+  set viewId(int? value);
+
   /// Whether the cursor should actively blink right now.
   ///
   /// Combines DEC mode 12, focus state, and viewport scroll position.

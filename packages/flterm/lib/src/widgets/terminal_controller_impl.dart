@@ -101,6 +101,9 @@ class TerminalControllerImpl extends TerminalController
   }
 
   @override
+  set viewId(int? value) => _textInput.viewId = value;
+
+  @override
   TerminalConfig get config => _config;
 
   @override

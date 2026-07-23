@@ -169,6 +169,11 @@ class _TerminalViewState extends State<TerminalView> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    // Desktop embedders route the IME to a specific FlutterView. Feed the
+    // hosting view id to the text input so the platform can resolve the
+    // target view when the client attaches; Windows fails the attach
+    // otherwise ("Could not set client, view ID is null.").
+    _binding.viewId = View.of(context).viewId;
     final devicePixelRatio = MediaQuery.devicePixelRatioOf(context);
     if (_devicePixelRatio == devicePixelRatio) return;
 
@@ -187,6 +192,7 @@ class _TerminalViewState extends State<TerminalView> {
       _binding.detach();
       _binding = _asBinding(_controller);
       _binding.brightness = _themeBrightness;
+      _binding.viewId = View.of(context).viewId;
       _binding.attach(_focusNode, _scrollController);
       _controller.addListener(_onControllerChanged);
       _links.invalidateContent();

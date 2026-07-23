@@ -915,6 +915,48 @@ void main() {
         expect(config['keyboardAppearance'], Brightness.light.toString());
         expect(config['autofill'], isNull);
       });
+
+      test('omits view id until one is provided', () {
+        final calls = recordTextInputCalls();
+
+        handler.attach();
+
+        expect(textInputConfig(calls)['viewId'], isNull);
+      });
+
+      test('includes the view id so desktop embedders resolve the view', () {
+        final calls = recordTextInputCalls();
+
+        handler.viewId = 7;
+        handler.attach();
+
+        expect(textInputConfig(calls)['viewId'], 7);
+      });
+    });
+
+    group('viewId', () {
+      test('pushes an updated view id to the live connection', () {
+        final calls = recordTextInputCalls();
+        handler.viewId = 1;
+        handler.attach();
+
+        handler.viewId = 2;
+
+        expect(textInputUpdateConfig(calls)['viewId'], 2);
+      });
+
+      test('ignores a redundant view id assignment', () {
+        final calls = recordTextInputCalls();
+        handler.viewId = 3;
+        handler.attach();
+
+        handler.viewId = 3;
+
+        expect(
+          calls.where((call) => call.method == 'TextInput.updateConfig'),
+          isEmpty,
+        );
+      });
     });
 
     group('detach', () {
