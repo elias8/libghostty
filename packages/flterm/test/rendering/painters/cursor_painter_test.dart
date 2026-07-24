@@ -4,12 +4,13 @@ library;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
-import 'package:flterm/src/foundation.dart' show CellMetrics, TerminalTheme;
+import 'package:flterm/src/foundation.dart'
+    show CellMetrics, CursorTheme, TerminalTheme;
 import 'package:flterm/src/rendering/atlas/atlas.dart';
 import 'package:flterm/src/rendering/paint_state.dart';
 import 'package:flterm/src/rendering/painters/cursor_painter.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:libghostty/libghostty.dart' show Cursor;
+import 'package:libghostty/libghostty.dart' show Cursor, CursorShape, Position;
 
 void main() {
   group('CursorPainter', () {
@@ -27,13 +28,18 @@ void main() {
       );
     }
 
-    Future<ByteData> render({bool preeditActive = false}) async {
+    Future<ByteData> render({
+      bool preeditActive = false,
+      Cursor cursor = const Cursor(),
+      CursorTheme? cursorTheme,
+    }) async {
       final atlas = Atlas(config());
       addTearDown(atlas.dispose);
-      final state = TerminalPaintState(TerminalTheme.dark(), metrics)
+      final theme = TerminalTheme.dark().copyWith(cursor: cursorTheme);
+      final state = TerminalPaintState(theme, metrics)
         ..cols = 2
         ..rows = 1
-        ..cursor = const Cursor()
+        ..cursor = cursor
         ..cursorColorArgb = 0xFF0000FF
         ..preeditActive = preeditActive;
 
@@ -76,6 +82,28 @@ void main() {
         final cursorPixel = pixel(bytes, x: 1, y: 1);
 
         expect(cursorPixel, 0xFFFF0000);
+      });
+
+      test('keeps hollow cursor stroke inside its cell', () async {
+        final bytes = await render(
+          cursor: const Cursor(
+            position: Position(row: 0, col: 1),
+            shape: CursorShape.blockHollow,
+          ),
+        );
+
+        expect(pixel(bytes, x: 12, y: 0), 0xFF0000FF);
+        expect(pixel(bytes, x: 15, y: 8), 0xFF0000FF);
+      });
+
+      test('uses the configured bar cursor width ratio', () async {
+        final bytes = await render(
+          cursor: const Cursor(shape: CursorShape.bar),
+          cursorTheme: const CursorTheme(barWidthRatio: 0.5),
+        );
+
+        expect(pixel(bytes, x: 3, y: 8), 0xFF0000FF);
+        expect(pixel(bytes, x: 4, y: 8), 0xFFFF0000);
       });
     });
   });

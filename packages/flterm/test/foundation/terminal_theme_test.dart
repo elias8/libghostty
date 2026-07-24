@@ -13,6 +13,7 @@ void main() {
         expect(cursor.color, isNull);
         expect(cursor.blinkInterval, const Duration(milliseconds: 600));
         expect(cursor.opacity, 1.0);
+        expect(cursor.barWidthRatio, 1 / 6);
       });
 
       test('stores custom values', () {
@@ -22,6 +23,7 @@ void main() {
           text: DynamicColor.cellBackground(),
           blinkInterval: Duration(milliseconds: 500),
           opacity: 0.7,
+          barWidthRatio: 0.5,
         );
 
         expect(cursor.shape, CursorShape.bar);
@@ -29,6 +31,12 @@ void main() {
         expect(cursor.text, const DynamicColor.cellBackground());
         expect(cursor.blinkInterval, const Duration(milliseconds: 500));
         expect(cursor.opacity, 0.7);
+        expect(cursor.barWidthRatio, 0.5);
+      });
+
+      test('requires a positive ratio within one cell', () {
+        expect(() => CursorTheme(barWidthRatio: 0), throwsAssertionError);
+        expect(() => CursorTheme(barWidthRatio: 1.1), throwsAssertionError);
       });
     });
 
@@ -41,6 +49,7 @@ void main() {
         expect(a.hashCode, b.hashCode);
         expect(a, isNot(equals(const CursorTheme(shape: CursorShape.bar))));
         expect(a, isNot(equals(const CursorTheme(opacity: 0.5))));
+        expect(a, isNot(equals(const CursorTheme(barWidthRatio: 0.5))));
         expect(
           a,
           isNot(equals(const CursorTheme(text: DynamicColor.cellBackground()))),
@@ -54,23 +63,27 @@ void main() {
           color: DynamicColor.fixed(Color(0xFF000000)),
           blinkInterval: Duration(milliseconds: 400),
           opacity: 0.2,
+          barWidthRatio: 0.2,
         );
         const b = CursorTheme(
           shape: CursorShape.bar,
           color: DynamicColor.fixed(Color(0xFFFFFFFF)),
           blinkInterval: Duration(milliseconds: 800),
           opacity: 0.8,
+          barWidthRatio: 0.6,
         );
 
         final at0 = CursorTheme.lerp(a, b, 0.0)!;
         expect(at0.shape, CursorShape.block);
         expect(at0.blinkInterval, const Duration(milliseconds: 400));
         expect(at0.opacity, 0.2);
+        expect(at0.barWidthRatio, 0.2);
 
         final at1 = CursorTheme.lerp(a, b, 1.0)!;
         expect(at1.shape, CursorShape.bar);
         expect(at1.blinkInterval, const Duration(milliseconds: 800));
         expect(at1.opacity, 0.8);
+        expect(at1.barWidthRatio, 0.6);
       });
 
       test('interpolates opacity and snaps shape at midpoint', () {
@@ -80,6 +93,7 @@ void main() {
         final mid = CursorTheme.lerp(a, b, 0.5)!;
 
         expect(mid.opacity, 0.5);
+        expect(mid.barWidthRatio, 1 / 6);
         expect(CursorTheme.lerp(a, b, 0.49)!.shape, CursorShape.block);
         expect(CursorTheme.lerp(a, b, 0.5)!.shape, CursorShape.bar);
       });

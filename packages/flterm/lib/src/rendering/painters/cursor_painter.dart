@@ -110,10 +110,11 @@ class CursorPainter implements TerminalPainter {
         }
 
       case .blockHollow:
+        const strokeWidth = 1.5;
         _paint
           ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.5;
-        canvas.drawRect(rect, _paint);
+          ..strokeWidth = strokeWidth;
+        canvas.drawRect(rect.deflate(strokeWidth / 2), _paint);
 
       case .underline:
         final thickness = metrics.underlineThickness;
@@ -124,7 +125,8 @@ class CursorPainter implements TerminalPainter {
         );
 
       case .bar:
-        final barWidth = (metrics.cellWidth / 6).clamp(1.0, 3.0);
+        final barWidth = (metrics.cellWidth * _state.theme.cursor.barWidthRatio)
+            .clamp(1.0, metrics.cellWidth);
         canvas.drawRect(
           .fromLTWH(rect.left, rect.top, barWidth, rect.height),
           _paint,
