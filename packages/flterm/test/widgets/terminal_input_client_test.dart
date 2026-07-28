@@ -810,6 +810,25 @@ void main() {
 
         expect(textInputSetClientCalls(calls), hasLength(1));
       });
+
+      test('reopens a connection orphaned by another client', () {
+        handler.attach();
+        expect(handler.isAttached, isTrue);
+
+        // Another client stealing the global TextInput singleton orphans us
+        // without a connectionClosed() callback.
+        final other = TerminalInputClient()..viewId = 0;
+        addTearDown(other.detach);
+        other.attach();
+
+        expect(handler.isAttached, isFalse);
+
+        final calls = recordTextInputCalls();
+        handler.ensureAttached();
+
+        expect(textInputSetClientCalls(calls), hasLength(1));
+        expect(handler.isAttached, isTrue);
+      });
     });
 
     group('viewId', () {

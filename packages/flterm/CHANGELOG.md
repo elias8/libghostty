@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **Dead keys / IME stop working after focus churn**: the text input client
+  tracked attachment by connection non-nullness, but Flutter's `TextInput` is a
+  process-wide singleton — another pane, text field, or the composer stealing
+  the global connection silently orphaned this client without a
+  `connectionClosed` callback. Composition keys were then forwarded to a dead
+  connection and accents (dead key + vowel) stopped reaching the IME. The
+  client now consults `TextInputConnection.attached` and reopens an orphaned
+  connection on the next attach.
+
 ## 0.0.4
 
 ### Breaking

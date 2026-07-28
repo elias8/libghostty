@@ -44,12 +44,24 @@ final class TerminalInputClient with DeltaTextInputClient {
   /// preedit text should be rendered.
   bool get hasActiveComposition => _value.hasTerminalComposingRange;
 
-  bool get isAttached => _connection != null;
+  /// Whether this client still owns the global platform text input.
+  ///
+  /// [TextInput] is a process-wide singleton: when any other client (another
+  /// terminal pane, an app text field, the composer) calls [TextInput.attach],
+  /// the global connection switches to it and this client is *not* told via
+  /// [connectionClosed] — that only reaches the current client. Our
+  /// [_connection] therefore stays non-null while silently orphaned, so we must
+  /// consult [TextInputConnection.attached] (the authoritative
+  /// `_currentConnection == this`) rather than mere non-nullness.
+  bool get isAttached => _connection?.attached ?? false;
 
   set keyboardAppearance(Brightness value) {
     if (_keyboardAppearance == value) return;
     _keyboardAppearance = value;
-    _connection?.updateConfig(_configuration);
+    final connection = _connection;
+    if (connection != null && connection.attached) {
+      connection.updateConfig(_configuration);
+    }
   }
 
   set onDelete(ValueChanged<int>? callback) => _onDelete = callback;
@@ -124,7 +136,9 @@ final class TerminalInputClient with DeltaTextInputClient {
   void ensureAttached({Brightness keyboardAppearance = Brightness.dark}) {
     _keyboardAppearance = keyboardAppearance;
     final connection = _connection;
-    if (connection == null) return _openConnection();
+    // Reopen when the connection is gone *or* orphaned by another client's
+    // attach; updating a detached connection is a no-op (and asserts in debug).
+    if (connection == null || !connection.attached) return _openConnection();
     connection.updateConfig(_configuration);
   }
 
@@ -209,7 +223,7 @@ final class TerminalInputClient with DeltaTextInputClient {
     required Rect composingRect,
   }) {
     final connection = _connection;
-    if (connection == null) return;
+    if (connection == null || !connection.attached) return;
     connection
       ..setEditableSizeAndTransform(editableSize, transform)
       ..setCaretRect(caretRect)
@@ -359,7 +373,10 @@ final class TerminalInputClient with DeltaTextInputClient {
 
   void _resetBuffer() {
     _value = _sentinel;
-    _connection?.setEditingState(_value);
+    final connection = _connection;
+    if (connection != null && connection.attached) {
+      connection.setEditingState(_value);
+    }
   }
 
   void _resetInputState() {
