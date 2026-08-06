@@ -1089,18 +1089,11 @@ class WasmBindings implements GhosttyBindings {
   }
 
   @override
-  CResult<int> terminalNew(int cols, int rows, int maxScrollback) {
+  CResult<int> terminalNew(int cols, int rows) {
     final outPtr = _exports.ghostty_wasm_alloc_opaque();
-    final optsPtr = _exports.ghostty_wasm_alloc_u8_array(
-      _layout.terminalOptsSize,
-    );
-    _mem.writeU16(optsPtr, cols);
-    _mem.writeU16(optsPtr + _layout.terminalOptsRows, rows);
-    _mem.writeU32(optsPtr + _layout.terminalOptsMaxScrollback, maxScrollback);
-    final result = _exports.ghostty_terminal_new(0, outPtr, optsPtr);
+    final result = _exports.ghostty_terminal_new(0, outPtr, cols, rows);
     final handle = _mem.readPtr(outPtr);
     _exports.ghostty_wasm_free_opaque(outPtr);
-    _exports.ghostty_wasm_free_u8_array(optsPtr, _layout.terminalOptsSize);
     return (.fromValue(result), handle);
   }
 
@@ -1499,6 +1492,16 @@ class WasmBindings implements GhosttyBindings {
   }
 
   @override
+  CResult<int> terminalGetScrollbackMaxBytes(int handle) {
+    return _terminalGetU64(handle, .scrollbackMaxBytes);
+  }
+
+  @override
+  CResult<int> terminalGetScrollbackMaxLines(int handle) {
+    return _terminalGetU64(handle, .scrollbackMaxLines);
+  }
+
+  @override
   CResult<bool> terminalGetKittyImageMediumFile(int handle) {
     return _terminalGetBool(handle, .kittyImageMediumFile);
   }
@@ -1535,12 +1538,22 @@ class WasmBindings implements GhosttyBindings {
 
   @override
   Result terminalSetApcBufferLimit(int handle, int? bytes) {
-    return _terminalSetApcSize(handle, .apcMaxBytes, bytes);
+    return _terminalSetSize(handle, .apcMaxBytes, bytes);
   }
 
   @override
   Result terminalSetKittyApcBufferLimit(int handle, int? bytes) {
-    return _terminalSetApcSize(handle, .apcMaxBytesKitty, bytes);
+    return _terminalSetSize(handle, .apcMaxBytesKitty, bytes);
+  }
+
+  @override
+  Result terminalSetScrollbackMaxBytes(int handle, int? bytes) {
+    return _terminalSetSize(handle, .scrollbackMaxBytes, bytes);
+  }
+
+  @override
+  Result terminalSetScrollbackMaxLines(int handle, int? lines) {
+    return _terminalSetSize(handle, .scrollbackMaxLines, lines);
   }
 
   @override
@@ -1693,6 +1706,85 @@ class WasmBindings implements GhosttyBindings {
       }).toJS,
       ['i32', 'i32', 'i32'],
       results: ['i32'],
+      reuseIndex: reuseIndex,
+    );
+    map[option] = (index, callback);
+    _exports.ghostty_terminal_set(handle, option.value, index);
+  }
+
+  @override
+  void terminalSetOnDesktopNotification(
+    int handle,
+    DesktopNotificationCallback? callback,
+  ) {
+    final map = _callbacks.putIfAbsent(handle, () => {});
+    const option = TerminalOption.desktopNotification;
+    if (callback == null) {
+      final existing = map.remove(option);
+      if (existing != null) _table.set(existing.$1);
+      _exports.ghostty_terminal_set(handle, option.value, 0);
+      return;
+    }
+    final reuseIndex = map[option]?.$1;
+    final index = _registerCallback(
+      ((int terminal, int userdata, int notificationPtr) {
+        try {
+          if (_mem.readU32(notificationPtr) < _layout.desktopNotificationSize) {
+            return;
+          }
+          callback((
+            title: _readString(
+              notificationPtr + _layout.desktopNotificationTitle,
+            ),
+            body: _readString(
+              notificationPtr + _layout.desktopNotificationBody,
+            ),
+          ));
+        } on Object catch (error, stackTrace) {
+          _captureCallbackError(error, stackTrace);
+        }
+      }).toJS,
+      ['i32', 'i32', 'i32'],
+      reuseIndex: reuseIndex,
+    );
+    map[option] = (index, callback);
+    _exports.ghostty_terminal_set(handle, option.value, index);
+  }
+
+  @override
+  void terminalSetOnProgressReport(
+    int handle,
+    TerminalProgressCallback? callback,
+  ) {
+    final map = _callbacks.putIfAbsent(handle, () => {});
+    const option = TerminalOption.progressReport;
+    if (callback == null) {
+      final existing = map.remove(option);
+      if (existing != null) _table.set(existing.$1);
+      _exports.ghostty_terminal_set(handle, option.value, 0);
+      return;
+    }
+    final reuseIndex = map[option]?.$1;
+    final index = _registerCallback(
+      ((int terminal, int userdata, int reportPtr) {
+        try {
+          if (_mem.readU32(reportPtr) < _layout.terminalProgressReportSize) {
+            return;
+          }
+          final rawProgress = _mem.readU8(
+            reportPtr + _layout.terminalProgressReportProgress,
+          );
+          callback((
+            state: TerminalProgressState.fromValue(
+              _mem.readU32(reportPtr + _layout.terminalProgressReportState),
+            ),
+            progress: rawProgress == 0xff ? null : rawProgress,
+          ));
+        } on Object catch (error, stackTrace) {
+          _captureCallbackError(error, stackTrace);
+        }
+      }).toJS,
+      ['i32', 'i32', 'i32'],
       reuseIndex: reuseIndex,
     );
     map[option] = (index, callback);
@@ -4367,6 +4459,12 @@ class WasmBindings implements GhosttyBindings {
     return (.fromValue(result), value);
   }
 
+  String _readString(int pointer) {
+    final data = _mem.readPtr(pointer);
+    final length = _mem.readU32(pointer + _layout.stringLen);
+    return length == 0 ? '' : utf8.decode(_mem.readBytes(data, length));
+  }
+
   CResult<Style> _terminalGetStyle(int handle, TerminalData data) {
     final stylePtr = _exports.ghostty_wasm_alloc_u8_array(_layout.styleSize);
     _mem.writeU32(stylePtr, _layout.styleSize);
@@ -4410,7 +4508,7 @@ class WasmBindings implements GhosttyBindings {
     return .fromValue(result);
   }
 
-  Result _terminalSetApcSize(int handle, TerminalOption option, int? value) {
+  Result _terminalSetSize(int handle, TerminalOption option, int? value) {
     if (value == null) {
       return .fromValue(_exports.ghostty_terminal_set(handle, option.value, 0));
     }

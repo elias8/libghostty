@@ -1,6 +1,6 @@
 name: libghostty
 description: Dart bindings to libghostty-vt, the terminal emulator library from Ghostty.
-version: 0.0.11
+version: 0.0.12
 repository: https://github.com/elias8/libghostty/tree/main/packages/libghostty
 resolution: workspace
 
@@ -24,15 +24,15 @@ environment:
   sdk: ^3.11.0
 
 dependencies:
-  code_assets: ^1.0.0
+  code_assets: ^1.2.1
   crypto: ^3.0.7
   ffi: ^2.2.0
   hooks: ^2.0.2
-  meta: ^1.16.0
+  meta: ^1.18.0
   web: ^1.1.1
 
 dev_dependencies:
-  ffigen: ^20.1.1
+  ffigen: ^21.0.0
   logging: ^1.3.0
   path: ^1.9.1
   shelf: ^1.4.2

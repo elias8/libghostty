@@ -495,9 +495,7 @@ class NativeBindings implements GhosttyBindings {
   @override
   void mouseEventSetPosition(int handle, double x, double y) {
     using((arena) {
-      final pos = arena<MousePosition>();
-      pos.ref.x = x;
-      pos.ref.y = y;
+      final pos = MousePosition.$allocate(arena, x: x, y: y);
       ghostty_mouse_event_set_position(Pointer.fromAddress(handle), pos.ref);
     });
   }
@@ -565,17 +563,18 @@ class NativeBindings implements GhosttyBindings {
   @override
   void mouseEncoderSetSize(int handle, MouseEncoderSize size) {
     using((arena) {
-      final ptr = arena<native.MouseEncoderSize>();
-      ptr.ref
-        ..size = sizeOf<native.MouseEncoderSize>()
-        ..screen_width = size.screenWidth
-        ..screen_height = size.screenHeight
-        ..cell_width = size.cellWidth
-        ..cell_height = size.cellHeight
-        ..padding_top = size.paddingTop
-        ..padding_bottom = size.paddingBottom
-        ..padding_left = size.paddingLeft
-        ..padding_right = size.paddingRight;
+      final ptr = native.MouseEncoderSize.$allocate(
+        arena,
+        size: sizeOf<native.MouseEncoderSize>(),
+        screen_width: size.screenWidth,
+        screen_height: size.screenHeight,
+        cell_width: size.cellWidth,
+        cell_height: size.cellHeight,
+        padding_top: size.paddingTop,
+        padding_bottom: size.paddingBottom,
+        padding_left: size.paddingLeft,
+        padding_right: size.paddingRight,
+      );
       ghostty_mouse_encoder_setopt(
         Pointer.fromAddress(handle),
         MouseEncoderOption.size,
@@ -735,10 +734,8 @@ class NativeBindings implements GhosttyBindings {
   @override
   double colorContrast(RgbColor a, RgbColor b) {
     return using((arena) {
-      final aPtr = arena<ColorRgb>();
-      final bPtr = arena<ColorRgb>();
-      _writeColorRgb(aPtr.ref, a);
-      _writeColorRgb(bPtr.ref, b);
+      final aPtr = ColorRgb.$allocate(arena, r: a.r, g: a.g, b: a.b);
+      final bPtr = ColorRgb.$allocate(arena, r: b.r, g: b.g, b: b.b);
       return ghostty_color_contrast(aPtr, bPtr);
     });
   }
@@ -746,8 +743,7 @@ class NativeBindings implements GhosttyBindings {
   @override
   double colorLuminance(RgbColor color) {
     return using((arena) {
-      final ptr = arena<ColorRgb>();
-      _writeColorRgb(ptr.ref, color);
+      final ptr = ColorRgb.$allocate(arena, r: color.r, g: color.g, b: color.b);
       return ghostty_color_luminance(ptr);
     });
   }
@@ -755,8 +751,7 @@ class NativeBindings implements GhosttyBindings {
   @override
   double colorPerceivedLuminance(RgbColor color) {
     return using((arena) {
-      final ptr = arena<ColorRgb>();
-      _writeColorRgb(ptr.ref, color);
+      final ptr = ColorRgb.$allocate(arena, r: color.r, g: color.g, b: color.b);
       return ghostty_color_perceived_luminance(ptr);
     });
   }
@@ -794,10 +789,18 @@ class NativeBindings implements GhosttyBindings {
           skipPtr.ref.bits[index >> 6] |= 1 << (index & 63);
         }
       }
-      final bgPtr = arena<ColorRgb>();
-      final fgPtr = arena<ColorRgb>();
-      _writeColorRgb(bgPtr.ref, background);
-      _writeColorRgb(fgPtr.ref, foreground);
+      final bgPtr = ColorRgb.$allocate(
+        arena,
+        r: background.r,
+        g: background.g,
+        b: background.b,
+      );
+      final fgPtr = ColorRgb.$allocate(
+        arena,
+        r: foreground.r,
+        g: foreground.g,
+        b: foreground.b,
+      );
       final out = arena<ColorRgb>(256);
       ghostty_color_palette_generate(
         basePtr,
@@ -917,14 +920,10 @@ class NativeBindings implements GhosttyBindings {
   }
 
   @override
-  CResult<int> terminalNew(int cols, int rows, int maxScrollback) {
+  CResult<int> terminalNew(int cols, int rows) {
     return using((arena) {
       final ptr = arena<Pointer<TerminalImpl>>();
-      final opts = arena<TerminalOptions>();
-      opts.ref.cols = cols;
-      opts.ref.rows = rows;
-      opts.ref.max_scrollback = maxScrollback;
-      final result = ghostty_terminal_new(nullptr, ptr, opts.ref);
+      final result = ghostty_terminal_new(nullptr, ptr, cols, rows);
       return (result, ptr.value.address);
     });
   }
@@ -1167,6 +1166,16 @@ class NativeBindings implements GhosttyBindings {
   }
 
   @override
+  CResult<int> terminalGetScrollbackMaxBytes(int handle) {
+    return _terminalGetSize(handle, .scrollbackMaxBytes);
+  }
+
+  @override
+  CResult<int> terminalGetScrollbackMaxLines(int handle) {
+    return _terminalGetSize(handle, .scrollbackMaxLines);
+  }
+
+  @override
   CResult<int> terminalGetWidthPx(int handle) {
     return _terminalGetU32(handle, .widthPx);
   }
@@ -1358,12 +1367,22 @@ class NativeBindings implements GhosttyBindings {
 
   @override
   Result terminalSetApcBufferLimit(int handle, int? bytes) {
-    return _terminalSetApcSize(handle, .apcMaxBytes, bytes);
+    return _terminalSetSize(handle, .apcMaxBytes, bytes);
   }
 
   @override
   Result terminalSetKittyApcBufferLimit(int handle, int? bytes) {
-    return _terminalSetApcSize(handle, .apcMaxBytesKitty, bytes);
+    return _terminalSetSize(handle, .apcMaxBytesKitty, bytes);
+  }
+
+  @override
+  Result terminalSetScrollbackMaxBytes(int handle, int? bytes) {
+    return _terminalSetSize(handle, .scrollbackMaxBytes, bytes);
+  }
+
+  @override
+  Result terminalSetScrollbackMaxLines(int handle, int? lines) {
+    return _terminalSetSize(handle, .scrollbackMaxLines, lines);
   }
 
   @override
@@ -1717,11 +1736,12 @@ class NativeBindings implements GhosttyBindings {
   @override
   CResult<({int startCol, int endCol})> rowIteratorGetSelection(int iterator) {
     return using((arena) {
-      final selection = arena<RenderStateRowSelection>();
-      selection.ref
-        ..size = sizeOf<RenderStateRowSelection>()
-        ..start_x = 0
-        ..end_x = 0;
+      final selection = RenderStateRowSelection.$allocate(
+        arena,
+        size: sizeOf<RenderStateRowSelection>(),
+        start_x: 0,
+        end_x: 0,
+      );
       final result = ghostty_render_state_row_get(
         Pointer.fromAddress(iterator),
         RenderStateRowData.selection,
@@ -1838,12 +1858,8 @@ class NativeBindings implements GhosttyBindings {
   CResult<String> rowCellsGetGraphemesUtf8(int cells) {
     return using((arena) {
       const inlineCap = 64;
-      final buffer = arena<Buffer>();
       var data = arena<Uint8>(inlineCap);
-      buffer.ref
-        ..ptr = data
-        ..cap = inlineCap
-        ..len = 0;
+      final buffer = Buffer.$allocate(arena, ptr: data, cap: inlineCap, len: 0);
 
       var result = ghostty_render_state_row_cells_get(
         Pointer.fromAddress(cells),
@@ -2132,11 +2148,13 @@ class NativeBindings implements GhosttyBindings {
     }
     return using((arena) {
       final encoded = utf8.encode(value);
-      final strPtr = arena<native.String>();
       final bytesPtr = arena<Uint8>(encoded.length);
       bytesPtr.asTypedList(encoded.length).setAll(0, encoded);
-      strPtr.ref.ptr = bytesPtr;
-      strPtr.ref.len = encoded.length;
+      final strPtr = native.String.$allocate(
+        arena,
+        ptr: bytesPtr,
+        len: encoded.length,
+      );
       return ghostty_terminal_set(
         Pointer.fromAddress(handle),
         option,
@@ -2208,7 +2226,7 @@ class NativeBindings implements GhosttyBindings {
     );
   }
 
-  Result _terminalSetApcSize(int handle, TerminalOption option, int? value) {
+  Result _terminalSetSize(int handle, TerminalOption option, int? value) {
     if (value == null) {
       return ghostty_terminal_set(Pointer.fromAddress(handle), option, nullptr);
     }
@@ -2554,13 +2572,15 @@ class NativeBindings implements GhosttyBindings {
     int cellHeight,
   ) {
     return using((arena) {
-      final size = arena<SizeReportSize>();
       final outLen = arena<Size>();
       final buf = arena<Char>(64);
-      size.ref.rows = rows;
-      size.ref.columns = columns;
-      size.ref.cell_width = cellWidth;
-      size.ref.cell_height = cellHeight;
+      final size = SizeReportSize.$allocate(
+        arena,
+        rows: rows,
+        columns: columns,
+        cell_width: cellWidth,
+        cell_height: cellHeight,
+      );
       final result = ghostty_size_report_encode(
         style,
         size.ref,
@@ -2655,8 +2675,13 @@ class NativeBindings implements GhosttyBindings {
   @override
   CResult<int> gridRefCell(RawGridRef ref) {
     return using((arena) {
-      final gridRef = arena<GridRef>();
-      _writeGridRef(gridRef.ref, ref);
+      final gridRef = GridRef.$allocate(
+        arena,
+        size: sizeOf<GridRef>(),
+        node: Pointer<Void>.fromAddress(ref.node),
+        x: ref.x,
+        y: ref.y,
+      );
       final result = ghostty_grid_ref_cell(gridRef, _outU64.cast());
       return (result, _outU64.value);
     });
@@ -2665,8 +2690,13 @@ class NativeBindings implements GhosttyBindings {
   @override
   CResult<int> gridRefRow(RawGridRef ref) {
     return using((arena) {
-      final gridRef = arena<GridRef>();
-      _writeGridRef(gridRef.ref, ref);
+      final gridRef = GridRef.$allocate(
+        arena,
+        size: sizeOf<GridRef>(),
+        node: Pointer<Void>.fromAddress(ref.node),
+        x: ref.x,
+        y: ref.y,
+      );
       final result = ghostty_grid_ref_row(gridRef, _outU64.cast());
       return (result, _outU64.value);
     });
@@ -2675,8 +2705,13 @@ class NativeBindings implements GhosttyBindings {
   @override
   CResult<Style> gridRefStyle(RawGridRef ref) {
     return using((arena) {
-      final gridRef = arena<GridRef>();
-      _writeGridRef(gridRef.ref, ref);
+      final gridRef = GridRef.$allocate(
+        arena,
+        size: sizeOf<GridRef>(),
+        node: Pointer<Void>.fromAddress(ref.node),
+        x: ref.x,
+        y: ref.y,
+      );
       _outStyle.ref.size = sizeOf<native.Style>();
       final result = ghostty_grid_ref_style(gridRef, _outStyle);
       return (result, _readNativeStyle(_outStyle.ref));
@@ -2686,9 +2721,14 @@ class NativeBindings implements GhosttyBindings {
   @override
   CResult<List<int>> gridRefGraphemes(RawGridRef ref) {
     return using((arena) {
-      final gridRef = arena<GridRef>();
       final outLen = arena<Size>();
-      _writeGridRef(gridRef.ref, ref);
+      final gridRef = GridRef.$allocate(
+        arena,
+        size: sizeOf<GridRef>(),
+        node: Pointer<Void>.fromAddress(ref.node),
+        x: ref.x,
+        y: ref.y,
+      );
       var result = ghostty_grid_ref_graphemes(
         gridRef,
         _graphemeBuf,
@@ -2711,10 +2751,15 @@ class NativeBindings implements GhosttyBindings {
   @override
   CResult<String> gridRefHyperlinkUri(RawGridRef ref) {
     return using((arena) {
-      final gridRef = arena<GridRef>();
       final outLen = arena<Size>();
       var buf = arena<Uint8>(256);
-      _writeGridRef(gridRef.ref, ref);
+      final gridRef = GridRef.$allocate(
+        arena,
+        size: sizeOf<GridRef>(),
+        node: Pointer<Void>.fromAddress(ref.node),
+        x: ref.x,
+        y: ref.y,
+      );
       var result = ghostty_grid_ref_hyperlink_uri(gridRef, buf, 256, outLen);
       var len = outLen.value;
 
@@ -2790,9 +2835,14 @@ class NativeBindings implements GhosttyBindings {
     PointTag pointTag,
   ) {
     return using((arena) {
-      final gridRef = arena<GridRef>();
       final out = arena<PointCoordinate>();
-      _writeGridRef(gridRef.ref, ref);
+      final gridRef = GridRef.$allocate(
+        arena,
+        size: sizeOf<GridRef>(),
+        node: Pointer<Void>.fromAddress(ref.node),
+        x: ref.x,
+        y: ref.y,
+      );
       final result = ghostty_terminal_point_from_grid_ref(
         Pointer.fromAddress(terminal),
         gridRef,
@@ -2937,9 +2987,14 @@ class NativeBindings implements GhosttyBindings {
   @override
   CResult<RawSelection?> terminalSelectOutput(int terminal, RawGridRef ref) {
     return using((arena) {
-      final gridRef = arena<GridRef>();
       final out = arena<Selection>();
-      _writeGridRef(gridRef.ref, ref);
+      final gridRef = GridRef.$allocate(
+        arena,
+        size: sizeOf<GridRef>(),
+        node: Pointer<Void>.fromAddress(ref.node),
+        x: ref.x,
+        y: ref.y,
+      );
       out.ref.size = sizeOf<Selection>();
       final result = ghostty_terminal_select_output(
         Pointer.fromAddress(terminal),
@@ -3063,19 +3118,21 @@ class NativeBindings implements GhosttyBindings {
     RawSelection? selection,
   }) {
     return using((arena) {
-      final opts = arena<TerminalSelectionFormatOptions>();
-      opts.ref
-        ..size = sizeOf<TerminalSelectionFormatOptions>()
-        ..emitAsInt = format.value
-        ..unwrap = unwrap
-        ..trim = trim;
+      late final Pointer<Selection> selected;
       if (selection == null) {
-        opts.ref.selection = nullptr;
+        selected = nullptr;
       } else {
-        final sel = arena<Selection>();
-        _writeSelection(sel.ref, selection);
-        opts.ref.selection = sel;
+        selected = arena<Selection>();
+        _writeSelection(selected.ref, selection);
       }
+      final opts = TerminalSelectionFormatOptions.$allocate(
+        arena,
+        size: sizeOf<TerminalSelectionFormatOptions>(),
+        emit: format,
+        unwrap: unwrap,
+        trim: trim,
+        selection: selected,
+      );
       var result = ghostty_terminal_selection_format_buf(
         Pointer.fromAddress(terminal),
         opts.ref,
@@ -3173,8 +3230,13 @@ class NativeBindings implements GhosttyBindings {
   @override
   Result selectionGestureEventSetRef(int event, RawGridRef ref) {
     return using((arena) {
-      final value = arena<GridRef>();
-      _writeGridRef(value.ref, ref);
+      final value = GridRef.$allocate(
+        arena,
+        size: sizeOf<GridRef>(),
+        node: Pointer<Void>.fromAddress(ref.node),
+        x: ref.x,
+        y: ref.y,
+      );
       return ghostty_selection_gesture_event_set(
         Pointer.fromAddress(event),
         .ref,
@@ -3186,10 +3248,7 @@ class NativeBindings implements GhosttyBindings {
   @override
   Result selectionGestureEventSetPosition(int event, double x, double y) {
     return using((arena) {
-      final value = arena<SurfacePosition>();
-      value.ref
-        ..x = x
-        ..y = y;
+      final value = SurfacePosition.$allocate(arena, x: x, y: y);
       return ghostty_selection_gesture_event_set(
         Pointer.fromAddress(event),
         .position,
@@ -3243,10 +3302,11 @@ class NativeBindings implements GhosttyBindings {
     List<int> codepoints,
   ) {
     return using((arena) {
-      final ptr = arena<Codepoints>();
-      ptr.ref
-        ..ptr = _writeCodepoints(arena, codepoints)
-        ..len = codepoints.length;
+      final ptr = Codepoints.$allocate(
+        arena,
+        ptr: _writeCodepoints(arena, codepoints),
+        len: codepoints.length,
+      );
       return ghostty_selection_gesture_event_set(
         Pointer.fromAddress(event),
         .wordBoundaryCodepoints,
@@ -3263,11 +3323,12 @@ class NativeBindings implements GhosttyBindings {
     SelectionGestureBehavior tripleClick,
   ) {
     return using((arena) {
-      final ptr = arena<SelectionGestureBehaviors>();
-      ptr.ref
-        ..single_clickAsInt = singleClick.value
-        ..double_clickAsInt = doubleClick.value
-        ..triple_clickAsInt = tripleClick.value;
+      final ptr = SelectionGestureBehaviors.$allocate(
+        arena,
+        single_click: singleClick,
+        double_click: doubleClick,
+        triple_click: tripleClick,
+      );
       return ghostty_selection_gesture_event_set(
         Pointer.fromAddress(event),
         .behaviors,
@@ -3298,12 +3359,13 @@ class NativeBindings implements GhosttyBindings {
     required int screenHeight,
   }) {
     return using((arena) {
-      final ptr = arena<SelectionGestureGeometry>();
-      ptr.ref
-        ..columns = columns
-        ..cell_width = cellWidth
-        ..padding_left = paddingLeft
-        ..screen_height = screenHeight;
+      final ptr = SelectionGestureGeometry.$allocate(
+        arena,
+        columns: columns,
+        cell_width: cellWidth,
+        padding_left: paddingLeft,
+        screen_height: screenHeight,
+      );
       return ghostty_selection_gesture_event_set(
         Pointer.fromAddress(event),
         .geometry,
@@ -3318,10 +3380,11 @@ class NativeBindings implements GhosttyBindings {
     required Position position,
   }) {
     return using((arena) {
-      final ptr = arena<PointCoordinate>();
-      ptr.ref
-        ..x = position.col
-        ..y = position.row;
+      final ptr = PointCoordinate.$allocate(
+        arena,
+        x: position.col,
+        y: position.row,
+      );
       return ghostty_selection_gesture_event_set(
         Pointer.fromAddress(event),
         .viewport,
@@ -3664,6 +3727,95 @@ class NativeBindings implements GhosttyBindings {
   }
 
   @override
+  void terminalSetOnDesktopNotification(
+    int handle,
+    DesktopNotificationCallback? callback,
+  ) {
+    final map = _callables.putIfAbsent(handle, () => {});
+    const option = TerminalOption.desktopNotification;
+    map[option]?.close();
+    if (callback == null) {
+      map.remove(option);
+      ghostty_terminal_set(Pointer.fromAddress(handle), option, nullptr);
+      return;
+    }
+    final callable =
+        NativeCallable<
+          Void Function(
+            Terminal,
+            Pointer<Void>,
+            Pointer<TerminalDesktopNotification>,
+          )
+        >.isolateLocal((
+          Terminal terminal,
+          Pointer<Void> userdata,
+          Pointer<TerminalDesktopNotification> notification,
+        ) {
+          try {
+            final value = notification.ref;
+            if (value.size < sizeOf<TerminalDesktopNotification>()) return;
+            callback((
+              title: utf8.decode(value.title.ptr.asTypedList(value.title.len)),
+              body: utf8.decode(value.body.ptr.asTypedList(value.body.len)),
+            ));
+          } on Object catch (error, stackTrace) {
+            _captureCallbackError(error, stackTrace);
+          }
+        });
+    map[option] = callable;
+    ghostty_terminal_set(
+      Pointer.fromAddress(handle),
+      option,
+      callable.nativeFunction.cast(),
+    );
+  }
+
+  @override
+  void terminalSetOnProgressReport(
+    int handle,
+    TerminalProgressCallback? callback,
+  ) {
+    final map = _callables.putIfAbsent(handle, () => {});
+    const option = TerminalOption.progressReport;
+    map[option]?.close();
+    if (callback == null) {
+      map.remove(option);
+      ghostty_terminal_set(Pointer.fromAddress(handle), option, nullptr);
+      return;
+    }
+    final callable =
+        NativeCallable<
+          Void Function(
+            Terminal,
+            Pointer<Void>,
+            Pointer<TerminalProgressReport>,
+          )
+        >.isolateLocal((
+          Terminal terminal,
+          Pointer<Void> userdata,
+          Pointer<TerminalProgressReport> report,
+        ) {
+          try {
+            final value = report.ref;
+            if (value.size < sizeOf<TerminalProgressReport>()) return;
+            final progress = value.progress;
+            callback((
+              state: value.state,
+              progress: progress < 0 ? null : progress,
+            ));
+          } on Object catch (error, stackTrace) {
+            _captureCallbackError(error, stackTrace);
+          }
+        });
+    map[option] = callable;
+    ghostty_terminal_set(
+      Pointer.fromAddress(handle),
+      option,
+      callable.nativeFunction.cast(),
+    );
+  }
+
+  @override
   void terminalSetOnTitleChanged(int handle, VoidCallback? callback) {
     final map = _callables.putIfAbsent(handle, () => {});
     map[TerminalOption.titleChanged]?.close();
@@ -3748,7 +3900,8 @@ class NativeBindings implements GhosttyBindings {
 
     final bufMap = _stringBuffers.putIfAbsent(handle, () => {});
     final strPtr =
-        bufMap[TerminalOption.enquiry]?.str ?? calloc<native.String>();
+        bufMap[TerminalOption.enquiry]?.str ??
+        native.String.$allocate(calloc, ptr: nullptr.cast(), len: 0);
     bufMap[TerminalOption.enquiry] = (
       str: strPtr,
       data: bufMap[TerminalOption.enquiry]?.data ?? nullptr.cast<Uint8>(),
@@ -3800,7 +3953,8 @@ class NativeBindings implements GhosttyBindings {
 
     final bufMap = _stringBuffers.putIfAbsent(handle, () => {});
     final strPtr =
-        bufMap[TerminalOption.xtversion]?.str ?? calloc<native.String>();
+        bufMap[TerminalOption.xtversion]?.str ??
+        native.String.$allocate(calloc, ptr: nullptr.cast(), len: 0);
     bufMap[TerminalOption.xtversion] = (
       str: strPtr,
       data: bufMap[TerminalOption.xtversion]?.data ?? nullptr.cast<Uint8>(),

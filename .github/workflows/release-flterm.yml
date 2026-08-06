@@ -58,7 +58,7 @@ jobs:
     needs: [github-release]
     permissions:
       id-token: write
-    uses: dart-lang/setup-dart/.github/workflows/publish.yml@v1
+    uses: dart-lang/setup-dart/.github/workflows/publish.yml@v1.8.0
     with:
       environment: pub.dev
       working-directory: packages/flterm

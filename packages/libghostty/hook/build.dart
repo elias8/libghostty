@@ -2,7 +2,6 @@ import 'dart:io';
 
 import 'package:code_assets/code_assets.dart';
 import 'package:hooks/hooks.dart';
-import 'package:libghostty/src/hook/fix_ios_page_alignment.dart';
 import 'package:libghostty/src/hook/library_provider.dart';
 
 void main(List<String> args) async {
@@ -32,8 +31,6 @@ Future<void> _build(BuildInput input, BuildOutputBuilder output) async {
       '  - Ensure a GitHub Release exists for the current version',
     );
   }
-
-  if (targetOS == OS.iOS) fixIosPageAlignment(libFile);
 
   output.assets.code.add(
     CodeAsset(

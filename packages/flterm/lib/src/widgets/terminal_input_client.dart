@@ -44,12 +44,20 @@ final class TerminalInputClient with DeltaTextInputClient {
   /// preedit text should be rendered.
   bool get hasActiveComposition => _value.hasTerminalComposingRange;
 
-  bool get isAttached => _connection != null;
+  /// Whether this client owns the platform text input connection.
+  ///
+  /// Text input accepts one client at a time. Another client can replace this
+  /// connection without invoking [connectionClosed], so non-nullness alone
+  /// does not prove ownership.
+  bool get isAttached => _connection?.attached ?? false;
 
   set keyboardAppearance(Brightness value) {
     if (_keyboardAppearance == value) return;
     _keyboardAppearance = value;
-    _connection?.updateConfig(_configuration);
+    final connection = _connection;
+    if (connection != null && connection.attached) {
+      connection.updateConfig(_configuration);
+    }
   }
 
   set onDelete(ValueChanged<int>? callback) => _onDelete = callback;
@@ -125,6 +133,10 @@ final class TerminalInputClient with DeltaTextInputClient {
     _keyboardAppearance = keyboardAppearance;
     final connection = _connection;
     if (connection == null) return _openConnection();
+    if (!connection.attached) {
+      _closeConnection();
+      return _openConnection();
+    }
     connection.updateConfig(_configuration);
   }
 
@@ -209,7 +221,7 @@ final class TerminalInputClient with DeltaTextInputClient {
     required Rect composingRect,
   }) {
     final connection = _connection;
-    if (connection == null) return;
+    if (connection == null || !connection.attached) return;
     connection
       ..setEditableSizeAndTransform(editableSize, transform)
       ..setCaretRect(caretRect)
@@ -359,7 +371,10 @@ final class TerminalInputClient with DeltaTextInputClient {
 
   void _resetBuffer() {
     _value = _sentinel;
-    _connection?.setEditingState(_value);
+    final connection = _connection;
+    if (connection != null && connection.attached) {
+      connection.setEditingState(_value);
+    }
   }
 
   void _resetInputState() {

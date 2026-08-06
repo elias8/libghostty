@@ -53,8 +53,13 @@ int? sessionPid(int sessionHandle) {
 @internal
 void sessionResize(int sessionHandle, PtySize size) {
   using((arena) {
-    final nativeSize = arena<native.size>();
-    setNativeSize(nativeSize.ref, size);
+    final nativeSize = native.ptyx_size.$allocate(
+      arena,
+      rows: size.rows,
+      columns: size.columns,
+      pixel_width: size.pixelWidth,
+      pixel_height: size.pixelHeight,
+    );
     checkStatus(
       native.ptyx_resize(.fromAddress(sessionHandle), nativeSize.ref),
     );

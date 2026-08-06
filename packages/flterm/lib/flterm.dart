@@ -13,6 +13,7 @@ export 'package:libghostty/libghostty.dart'
         ClipboardWriteCallback,
         ClipboardWriteResult,
         CursorShape,
+        DesktopNotification,
         DeviceAttributesResponse,
         Formatter,
         FormatterExtra,
@@ -26,6 +27,8 @@ export 'package:libghostty/libghostty.dart'
         SelectionGestureBehavior,
         SelectionGestureBehaviors,
         TerminalMode,
+        TerminalProgress,
+        TerminalProgressState,
         TerminalScreen,
         UnderlineStyle,
         initializeForWeb;

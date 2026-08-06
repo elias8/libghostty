@@ -91,18 +91,17 @@ final class Terminal with Listenable {
   final int _handle;
   bool _disposed;
 
-  /// Creates a terminal with the given grid dimensions and scrollback limit.
+  /// Creates a terminal with the given grid dimensions.
   ///
-  /// Both [cols] and [rows] must be greater than zero. [maxScrollback] controls
-  /// how many lines of history are preserved above the active grid.
+  /// Both [cols] and [rows] must be greater than zero.
   ///
   /// Throws [OutOfMemoryException] if the native allocation fails.
   ///
   /// ```dart
-  /// final terminal = Terminal(cols: 80, rows: 24, maxScrollback: 5000);
+  /// final terminal = Terminal(cols: 80, rows: 24);
   /// ```
-  Terminal({required int cols, required int rows, int maxScrollback = 10_000})
-    : _handle = check(bindings.terminalNew(cols, rows, maxScrollback)),
+  Terminal({required int cols, required int rows})
+    : _handle = check(bindings.terminalNew(cols, rows)),
       _disposed = false {
     _finalizer.attach(this, _handle, detach: this);
   }
@@ -120,7 +119,7 @@ final class Terminal with Listenable {
   /// Returns null if no color is configured (neither a default nor an OSC
   /// override).
   RgbColor? get background {
-    return _optionalColor(bindings.terminalGetColorBackground(_handle));
+    return _optionalValue(bindings.terminalGetColorBackground(_handle));
   }
 
   /// Sets the default background color, or clears it if null.
@@ -135,7 +134,7 @@ final class Terminal with Listenable {
   ///
   /// Returns null if no default has been configured.
   RgbColor? get backgroundDefault {
-    return _optionalColor(bindings.terminalGetColorBackgroundDefault(_handle));
+    return _optionalValue(bindings.terminalGetColorBackgroundDefault(_handle));
   }
 
   /// Opaque token that changes when scrollback compression may have new work.
@@ -158,7 +157,7 @@ final class Terminal with Listenable {
   ///
   /// Returns null if no color is configured.
   RgbColor? get cursorColor {
-    return _optionalColor(bindings.terminalGetColorCursor(_handle));
+    return _optionalValue(bindings.terminalGetColorCursor(_handle));
   }
 
   /// Sets the default cursor color, or clears it if null.
@@ -172,7 +171,7 @@ final class Terminal with Listenable {
   ///
   /// Returns null if no default has been configured.
   RgbColor? get cursorColorDefault {
-    return _optionalColor(bindings.terminalGetColorCursorDefault(_handle));
+    return _optionalValue(bindings.terminalGetColorCursorDefault(_handle));
   }
 
   /// The cursor's current SGR style (applied to newly printed characters).
@@ -193,7 +192,7 @@ final class Terminal with Listenable {
   /// Returns null if no color is configured (neither a default nor an OSC
   /// override).
   RgbColor? get foreground {
-    return _optionalColor(bindings.terminalGetColorForeground(_handle));
+    return _optionalValue(bindings.terminalGetColorForeground(_handle));
   }
 
   /// Sets the default foreground color, or clears it if null.
@@ -207,7 +206,7 @@ final class Terminal with Listenable {
   ///
   /// Returns null if no default has been configured.
   RgbColor? get foregroundDefault {
-    return _optionalColor(bindings.terminalGetColorForegroundDefault(_handle));
+    return _optionalValue(bindings.terminalGetColorForegroundDefault(_handle));
   }
 
   /// Current terminal dimensions in cells and pixels.
@@ -335,6 +334,22 @@ final class Terminal with Listenable {
     bindings.terminalSetOnClipboardWrite(_handle, value);
   }
 
+  /// Registers a callback for OSC 9 and OSC 777 desktop notifications.
+  ///
+  /// Requests are untrusted terminal content. The callback decides whether and
+  /// how to display them. Fires synchronously during [write]. Set to null to
+  /// ignore notifications.
+  set onDesktopNotification(DesktopNotificationCallback? value) {
+    bindings.terminalSetOnDesktopNotification(_handle, value);
+  }
+
+  /// Registers a callback for OSC 9;4 progress reports.
+  ///
+  /// Fires synchronously during [write]. Set to null to ignore reports.
+  set onProgressReport(TerminalProgressCallback? value) {
+    bindings.terminalSetOnProgressReport(_handle, value);
+  }
+
   /// Registers a callback for color scheme queries (CSI ? 996 n).
   ///
   /// Return the current [ColorScheme], or null to silently ignore the query.
@@ -438,6 +453,38 @@ final class Terminal with Listenable {
 
   /// Sets the working directory, or clears it if null.
   set pwd(String? value) => checkCode(bindings.terminalSetPwd(_handle, value));
+
+  /// Maximum bytes retained for scrollback, or null when unlimited.
+  ///
+  /// This limit and [scrollbackMaxLines] apply together. Ghostty prunes when
+  /// either limit is reached, at page granularity.
+  int? get scrollbackMaxBytes {
+    return _optionalValue(bindings.terminalGetScrollbackMaxBytes(_handle));
+  }
+
+  /// Sets the maximum bytes retained for scrollback.
+  ///
+  /// Set to null for no byte limit or zero to clear retained history and
+  /// disable scrollback by bytes.
+  set scrollbackMaxBytes(int? value) {
+    checkCode(bindings.terminalSetScrollbackMaxBytes(_handle, value));
+  }
+
+  /// Maximum physical lines retained for scrollback, or null when unlimited.
+  ///
+  /// This limit and [scrollbackMaxBytes] apply together. Ghostty prunes when
+  /// either limit is reached, at page granularity.
+  int? get scrollbackMaxLines {
+    return _optionalValue(bindings.terminalGetScrollbackMaxLines(_handle));
+  }
+
+  /// Sets the maximum physical lines retained for scrollback.
+  ///
+  /// Set to null for no line limit or zero to clear retained history and
+  /// disable scrollback by lines.
+  set scrollbackMaxLines(int? value) {
+    checkCode(bindings.terminalSetScrollbackMaxLines(_handle, value));
+  }
 
   /// Number of rows in the scrollback buffer (excluding the active grid).
   int get scrollbackRows => check(bindings.terminalGetScrollbackRows(_handle));
@@ -821,7 +868,7 @@ final class Terminal with Listenable {
     }
   }
 
-  static RgbColor? _optionalColor(CResult<RgbColor> result) {
+  static T? _optionalValue<T>(CResult<T> result) {
     return result.$1 == .noValue ? null : check(result);
   }
 }

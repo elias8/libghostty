@@ -46,7 +46,7 @@ void main() {
     late int renderState;
 
     setUp(() {
-      final (_, t) = bindings.terminalNew(80, 24, 0);
+      final (_, t) = bindings.terminalNew(80, 24);
       terminal = t;
       final (_, rs) = bindings.renderStateNew();
       renderState = rs;
@@ -79,7 +79,7 @@ void main() {
 
     group('terminalCompressionActivity', () {
       test('changes after terminal activity', () {
-        final subject = check(bindings.terminalNew(80, 24, 10_000_000));
+        final subject = check(bindings.terminalNew(80, 24));
         addTearDown(() => bindings.terminalFree(subject));
         final initial = check(bindings.terminalCompressionActivity(subject));
 
@@ -339,7 +339,7 @@ void main() {
       });
 
       test('omits viewport coordinates for an offscreen cursor', () {
-        final scrolledTerminal = check(bindings.terminalNew(5, 2, 100));
+        final scrolledTerminal = check(bindings.terminalNew(5, 2));
         addTearDown(() => bindings.terminalFree(scrolledTerminal));
         final scrolledRenderState = check(bindings.renderStateNew());
         addTearDown(() => bindings.renderStateFree(scrolledRenderState));
@@ -458,7 +458,7 @@ void main() {
 
     group('terminalGetViewportActive', () {
       test('returns false after scrollback navigation', () {
-        final (_, t) = bindings.terminalNew(5, 2, 100);
+        final (_, t) = bindings.terminalNew(5, 2);
         addTearDown(() => bindings.terminalFree(t));
         bindings.terminalVtWrite(
           t,
@@ -550,7 +550,7 @@ void main() {
         bindings.keyEventFree(event);
         bindings.keyEncoderFree(encoder);
 
-        final (_, t) = bindings.terminalNew(80, 24, 0);
+        final (_, t) = bindings.terminalNew(80, 24);
         final (_, enc) = bindings.keyEncoderNew();
         final (_, ev) = bindings.keyEventNew();
         checkCode(
@@ -652,7 +652,7 @@ void main() {
       test('uses mouse tracking mode from terminal options', () {
         bindings.mouseEncoderFree(encoder);
 
-        final (_, t) = bindings.terminalNew(80, 24, 0);
+        final (_, t) = bindings.terminalNew(80, 24);
         final (_, enc) = bindings.mouseEncoderNew();
         bindings.terminalVtWrite(
           t,
@@ -765,7 +765,7 @@ void main() {
     late int terminal;
 
     setUp(() {
-      final (_, t) = bindings.terminalNew(80, 24, 0);
+      final (_, t) = bindings.terminalNew(80, 24);
       terminal = t;
       bindings.terminalVtWrite(terminal, Uint8List.fromList('Hello'.codeUnits));
     });
@@ -790,7 +790,7 @@ void main() {
 
     group('gridRefStyle', () {
       test('reflects bold attribute', () {
-        final (_, t) = bindings.terminalNew(80, 24, 0);
+        final (_, t) = bindings.terminalNew(80, 24);
         addTearDown(() => bindings.terminalFree(t));
         bindings.terminalVtWrite(
           t,
@@ -877,7 +877,7 @@ void main() {
     late int terminal;
 
     setUp(() {
-      final (_, t) = bindings.terminalNew(80, 24, 0);
+      final (_, t) = bindings.terminalNew(80, 24);
       terminal = t;
     });
 
@@ -923,7 +923,7 @@ void main() {
 
   group('row iterator data', () {
     int firstRowIterator(String text) {
-      final terminal = check(bindings.terminalNew(10, 3, 0));
+      final terminal = check(bindings.terminalNew(10, 3));
       final renderState = check(bindings.renderStateNew());
       final iterator = check(bindings.rowIteratorNew());
       addTearDown(() => bindings.rowIteratorFree(iterator));
@@ -1098,7 +1098,7 @@ void main() {
   group('selection gesture data', () {
     group('selectionGestureGetState', () {
       test('returns the initial gesture state', () {
-        final terminal = check(bindings.terminalNew(80, 24, 0));
+        final terminal = check(bindings.terminalNew(80, 24));
         addTearDown(() => bindings.terminalFree(terminal));
         final gesture = check(bindings.selectionGestureNew());
         addTearDown(() => bindings.selectionGestureFree(gesture, terminal));
@@ -1118,7 +1118,7 @@ void main() {
       });
 
       test('rejects an invalid gesture handle', () {
-        final terminal = check(bindings.terminalNew(80, 24, 0));
+        final terminal = check(bindings.terminalNew(80, 24));
         addTearDown(() => bindings.terminalFree(terminal));
 
         final result = bindings.selectionGestureGetState(0, terminal);
@@ -1141,7 +1141,7 @@ void main() {
     late int terminal;
 
     setUp(() {
-      final (_, t) = bindings.terminalNew(80, 24, 0);
+      final (_, t) = bindings.terminalNew(80, 24);
       terminal = t;
     });
 
@@ -1243,7 +1243,7 @@ void main() {
     late int terminal;
 
     setUp(() {
-      final (_, t) = bindings.terminalNew(80, 24, 0);
+      final (_, t) = bindings.terminalNew(80, 24);
       terminal = t;
       bindings.terminalVtWrite(terminal, Uint8List.fromList('Hello'.codeUnits));
     });
@@ -1268,7 +1268,7 @@ void main() {
     late int terminal;
 
     setUp(() {
-      final (_, t) = bindings.terminalNew(80, 24, 0);
+      final (_, t) = bindings.terminalNew(80, 24);
       terminal = t;
       bindings.terminalVtWrite(terminal, Uint8List.fromList('Hello'.codeUnits));
     });
@@ -1297,7 +1297,7 @@ void main() {
     late int terminal;
 
     setUp(() {
-      final (_, t) = bindings.terminalNew(80, 24, 0);
+      final (_, t) = bindings.terminalNew(80, 24);
       terminal = t;
       bindings.terminalVtWrite(
         terminal,
@@ -1309,7 +1309,7 @@ void main() {
 
     group('formatterFormat', () {
       ({int terminal, String expected}) largeContentFixture() {
-        final terminal = check(bindings.terminalNew(6000, 1, 0));
+        final terminal = check(bindings.terminalNew(6000, 1));
         addTearDown(() => bindings.terminalFree(terminal));
         final expected = String.fromCharCodes(List<int>.filled(5000, 0x41));
         bindings.terminalVtWrite(
@@ -1422,7 +1422,7 @@ void main() {
       });
 
       test('restricts output to selection', () {
-        final (_, t) = bindings.terminalNew(80, 24, 0);
+        final (_, t) = bindings.terminalNew(80, 24);
         addTearDown(() => bindings.terminalFree(t));
         bindings.terminalVtWrite(
           t,
@@ -1472,7 +1472,7 @@ String _firstRowText(int renderState) {
 }
 
 int _firstCellCells(String text) {
-  final (_, terminal) = bindings.terminalNew(80, 24, 0);
+  final (_, terminal) = bindings.terminalNew(80, 24);
   final (_, renderState) = bindings.renderStateNew();
   final (_, rowIter) = bindings.rowIteratorNew();
   final (_, rowCells) = bindings.rowCellsNew();
@@ -1490,7 +1490,7 @@ int _firstCellCells(String text) {
 }
 
 int _selectedRowIterator(int row) {
-  final (_, terminal) = bindings.terminalNew(10, 3, 0);
+  final (_, terminal) = bindings.terminalNew(10, 3);
   final (_, renderState) = bindings.renderStateNew();
   final (_, rowIter) = bindings.rowIteratorNew();
   addTearDown(() => bindings.rowIteratorFree(rowIter));
@@ -1526,7 +1526,7 @@ int _selectedRowIterator(int row) {
 }
 
 int _selectedRowCells(int col) {
-  final (_, terminal) = bindings.terminalNew(10, 3, 0);
+  final (_, terminal) = bindings.terminalNew(10, 3);
   final (_, renderState) = bindings.renderStateNew();
   final (_, rowIter) = bindings.rowIteratorNew();
   final (_, rowCells) = bindings.rowCellsNew();

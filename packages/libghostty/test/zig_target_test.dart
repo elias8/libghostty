@@ -23,6 +23,28 @@ void main() {
           'x86_64-ios-simulator',
         );
       });
+
+      test('includes the device deployment version', () {
+        final target = zigTarget(
+          OS.iOS,
+          Architecture.arm64,
+          iOSSdk: IOSSdk.iPhoneOS,
+          iOSVersion: 13,
+        );
+
+        expect(target, 'aarch64-ios.13.0');
+      });
+
+      test('includes the simulator deployment version', () {
+        final target = zigTarget(
+          OS.iOS,
+          Architecture.arm64,
+          iOSSdk: IOSSdk.iPhoneSimulator,
+          iOSVersion: 13,
+        );
+
+        expect(target, 'aarch64-ios.13.0-simulator');
+      });
     });
 
     group('Android', () {

@@ -38,6 +38,64 @@ void main() {
       });
     });
 
+    group('scrollbackMaxLines', () {
+      test('gets the value set through the setter', () {
+        terminal.scrollbackMaxLines = 100;
+
+        expect(terminal.scrollbackMaxLines, 100);
+      });
+
+      test('returns null when cleared', () {
+        terminal.scrollbackMaxLines = null;
+
+        expect(terminal.scrollbackMaxLines, isNull);
+      });
+    });
+
+    group('scrollbackMaxBytes', () {
+      test('gets the value set through the setter', () {
+        terminal.scrollbackMaxBytes = 1024;
+
+        expect(terminal.scrollbackMaxBytes, 1024);
+      });
+    });
+
+    group('onDesktopNotification', () {
+      test('receives OSC 9 notifications', () {
+        DesktopNotification? notification;
+        terminal.onDesktopNotification = (value) => notification = value;
+
+        terminal.write(
+          Uint8List.fromList('\x1b]9;Build finished\x07'.codeUnits),
+        );
+
+        expect(notification, (title: '', body: 'Build finished'));
+      });
+    });
+
+    group('onProgressReport', () {
+      test('receives determinate OSC 9;4 reports', () {
+        TerminalProgress? report;
+        terminal.onProgressReport = (value) => report = value;
+
+        terminal.write(Uint8List.fromList('\x1b]9;4;1;42\x07'.codeUnits));
+
+        expect(report, (state: TerminalProgressState.set, progress: 42));
+      });
+
+      test('maps omitted progress to null', () {
+        TerminalProgress? report;
+        terminal.onProgressReport = (value) => report = value;
+
+        terminal.write(Uint8List.fromList('\x1b]9;4;3\x07'.codeUnits));
+
+        expect(report, (
+          state: TerminalProgressState.indeterminate,
+          progress: null,
+        ));
+      });
+    });
+
     group('dispose', () {
       test('succeeds after a callback error', () {
         final error = StateError('bell failed');

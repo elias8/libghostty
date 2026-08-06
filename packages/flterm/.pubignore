@@ -10,3 +10,5 @@
 /dart_test.yaml
 /test/
 /tool/
+/example/integration_test/flterm_benchmark.dart
+/example/test_driver/flterm_benchmark_driver.dart

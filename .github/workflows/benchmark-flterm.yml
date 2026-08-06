@@ -1,0 +1,67 @@
+name: benchmark flterm
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'packages/flterm/**'
+      - '!packages/flterm/**/*.md'
+      - 'packages/libghostty/**'
+      - '!packages/libghostty/**/*.md'
+      - 'pubspec.yaml'
+      - 'pubspec.lock'
+      - '.github/workflows/benchmark-flterm.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: benchmark-flterm-main
+  cancel-in-progress: false
+
+env:
+  ZIG_VERSION: "0.16.0"
+
+jobs:
+  benchmark:
+    name: benchmark-flterm-macos
+    runs-on: macos-15
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          cache: true
+      - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
+        with:
+          version: ${{ env.ZIG_VERSION }}
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.pub-cache
+          key: pub-benchmark-flterm-${{ hashFiles('**/pubspec.lock') }}
+          restore-keys: pub-benchmark-flterm-
+
+      - name: run benchmark
+        id: benchmark
+        run: |
+          flutter pub get
+          dart run packages/flterm/tool/benchmarks/run.dart \
+            --output "$RUNNER_TEMP/flterm-benchmark-results" \
+            --revision "$GITHUB_SHA"
+
+      - name: publish benchmark summary
+        if: steps.benchmark.outcome == 'success'
+        run: cat "$RUNNER_TEMP/flterm-benchmark-results/report.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: ${{ always() && steps.benchmark.outcome != 'skipped' }}
+        with:
+          name: flterm-benchmark-${{ github.sha }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/flterm-benchmark-results
+          retention-days: 90
+          if-no-files-found: warn

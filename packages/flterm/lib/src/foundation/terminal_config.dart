@@ -32,7 +32,7 @@ enum ScrollToBottom {
 /// ```dart
 /// final controller = TerminalController(
 ///   config: TerminalConfig(
-///     scrollbackLimit: 5_000_000,
+///     scrollbackMaxBytes: 5_000_000,
 ///     cursorBlink: true,
 ///     modes: {
 ///       ...TerminalConfig.defaultModes,
@@ -81,9 +81,17 @@ class TerminalConfig {
 
   /// Maximum scrollback buffer size in bytes.
   ///
-  /// Defaults to 10,000,000 bytes. Set to 0 to disable scrollback entirely.
-  /// The terminal discards the oldest lines when this limit is reached.
-  final int scrollbackLimit;
+  /// Defaults to 10,000 bytes. Set to null for no limit, or 0 to disable
+  /// scrollback. When this and [scrollbackMaxLines] are set, the oldest
+  /// complete pages are discarded when either limit is reached.
+  final int? scrollbackMaxBytes;
+
+  /// Maximum number of physical scrollback rows.
+  ///
+  /// Defaults to no limit. At least one normal page is retained. When this
+  /// and [scrollbackMaxBytes] are set, the oldest complete pages are
+  /// discarded when either limit is reached.
+  final int? scrollbackMaxLines;
 
   /// Maximum bytes of Kitty graphics image storage.
   ///
@@ -152,14 +160,22 @@ class TerminalConfig {
     this.enquiryResponse = '',
     this.modes = defaultModes,
     this.cursorStyle = .block,
-    this.scrollbackLimit = 10_000_000,
+    this.scrollbackMaxBytes = 10_000,
+    this.scrollbackMaxLines,
     this.kittyImageStorageLimit = 64 * 1024 * 1024,
     this.selectionClearOnTyping = true,
     this.scrollToBottom = .onKeystroke,
     this.deviceAttributes = const DeviceAttributesResponse(),
   }) : assert(cols > 0, 'cols must be positive'),
        assert(rows > 0, 'rows must be positive'),
-       assert(scrollbackLimit >= 0, 'scrollbackLimit must be non-negative'),
+       assert(
+         scrollbackMaxBytes == null || scrollbackMaxBytes >= 0,
+         'scrollbackMaxBytes must be non-negative',
+       ),
+       assert(
+         scrollbackMaxLines == null || scrollbackMaxLines >= 0,
+         'scrollbackMaxLines must be non-negative',
+       ),
        assert(
          kittyImageStorageLimit >= 0,
          'kittyImageStorageLimit must be non-negative',
@@ -170,7 +186,8 @@ class TerminalConfig {
   int get hashCode => Object.hash(
     cols,
     rows,
-    scrollbackLimit,
+    scrollbackMaxBytes,
+    scrollbackMaxLines,
     kittyImageStorageLimit,
     apcBufferLimit,
     glyphProtocol,
@@ -189,7 +206,8 @@ class TerminalConfig {
       other is TerminalConfig &&
           cols == other.cols &&
           rows == other.rows &&
-          scrollbackLimit == other.scrollbackLimit &&
+          scrollbackMaxBytes == other.scrollbackMaxBytes &&
+          scrollbackMaxLines == other.scrollbackMaxLines &&
           kittyImageStorageLimit == other.kittyImageStorageLimit &&
           apcBufferLimit == other.apcBufferLimit &&
           glyphProtocol == other.glyphProtocol &&
@@ -205,7 +223,8 @@ class TerminalConfig {
   TerminalConfig copyWith({
     int? cols,
     int? rows,
-    int? scrollbackLimit,
+    int? scrollbackMaxBytes,
+    int? scrollbackMaxLines,
     int? kittyImageStorageLimit,
     int? apcBufferLimit,
     bool? glyphProtocol,
@@ -220,7 +239,8 @@ class TerminalConfig {
     return TerminalConfig(
       cols: cols ?? this.cols,
       rows: rows ?? this.rows,
-      scrollbackLimit: scrollbackLimit ?? this.scrollbackLimit,
+      scrollbackMaxBytes: scrollbackMaxBytes ?? this.scrollbackMaxBytes,
+      scrollbackMaxLines: scrollbackMaxLines ?? this.scrollbackMaxLines,
       kittyImageStorageLimit:
           kittyImageStorageLimit ?? this.kittyImageStorageLimit,
       apcBufferLimit: apcBufferLimit ?? this.apcBufferLimit,
@@ -240,7 +260,8 @@ class TerminalConfig {
   String toString() =>
       'TerminalConfig('
       'cols: $cols, rows: $rows, '
-      'scrollbackLimit: $scrollbackLimit, '
+      'scrollbackMaxBytes: $scrollbackMaxBytes, '
+      'scrollbackMaxLines: $scrollbackMaxLines, '
       'modes: ${modes.length} entries)';
 
   static bool _modesEqual(

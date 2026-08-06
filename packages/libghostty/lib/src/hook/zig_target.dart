@@ -1,7 +1,12 @@
 import 'package:code_assets/code_assets.dart';
 import 'package:hooks/hooks.dart';
 
-String? zigTarget(OS targetOS, Architecture targetArch, {IOSSdk? iOSSdk}) {
+String? zigTarget(
+  OS targetOS,
+  Architecture targetArch, {
+  IOSSdk? iOSSdk,
+  int? iOSVersion,
+}) {
   final archStr = switch (targetArch) {
     Architecture.x64 => 'x86_64',
     Architecture.arm64 => 'aarch64',
@@ -14,7 +19,11 @@ String? zigTarget(OS targetOS, Architecture targetArch, {IOSSdk? iOSSdk}) {
     OS.macOS => 'macos',
     OS.linux => 'linux-gnu',
     OS.windows => 'windows',
-    OS.iOS => iOSSdk == IOSSdk.iPhoneSimulator ? 'ios-simulator' : 'ios',
+    OS.iOS => switch (iOSSdk) {
+      .iPhoneSimulator =>
+        'ios${iOSVersion == null ? '' : '.$iOSVersion.0'}-simulator',
+      _ => 'ios${iOSVersion == null ? '' : '.$iOSVersion.0'}',
+    },
     OS.android => switch (targetArch) {
       Architecture.arm64 => 'linux-android',
       Architecture.x64 => 'linux-android',

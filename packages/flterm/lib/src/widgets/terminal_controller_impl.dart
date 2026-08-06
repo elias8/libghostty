@@ -78,11 +78,7 @@ class TerminalControllerImpl extends TerminalController
        _keyEvent = vt.KeyEvent(),
        _mouseEvent = MouseEvent(),
        _textInput = TerminalInputClient(),
-       terminal = Terminal(
-         cols: config.cols,
-         rows: config.rows,
-         maxScrollback: config.scrollbackLimit,
-       ),
+       terminal = Terminal(cols: config.cols, rows: config.rows),
        super.base() {
     _selectionGesture = SelectionGestureDriver(terminal);
     _compressionScheduler = CompressionScheduler(
@@ -155,6 +151,14 @@ class TerminalControllerImpl extends TerminalController
     _onClipboardWrite = value;
     terminal.onClipboardWrite = value;
   }
+
+  @override
+  set onDesktopNotification(ValueChanged<DesktopNotification>? value) =>
+      terminal.onDesktopNotification = value;
+
+  @override
+  set onProgressReport(ValueChanged<TerminalProgress>? value) =>
+      terminal.onProgressReport = value;
 
   @override
   String get preeditText => _preeditText;
@@ -231,11 +235,7 @@ class TerminalControllerImpl extends TerminalController
   }
 
   @override
-  void clearSelection() {
-    if (terminal.selection == null) return;
-    _selectionGesture.reset();
-    _setSelection(null, clearIfNull: true);
-  }
+  void clearSelection() => _clearSelection(notify: true);
 
   @override
   void clearVirtualMods() {
@@ -486,6 +486,9 @@ class TerminalControllerImpl extends TerminalController
   void hideKeyboard() => _updateKeyboardState(.hidden);
 
   @override
+  void invalidateSelection() => _clearSelection(notify: false);
+
+  @override
   bool modeGet(TerminalMode mode) => terminal.modeGet(mode);
 
   @override
@@ -658,6 +661,8 @@ class TerminalControllerImpl extends TerminalController
   }
 
   void _applyTerminalOptions() {
+    terminal.scrollbackMaxBytes = _config.scrollbackMaxBytes;
+    terminal.scrollbackMaxLines = _config.scrollbackMaxLines;
     terminal.kittyImageStorageLimit = _config.kittyImageStorageLimit;
     terminal.setApcBufferLimit(_config.apcBufferLimit);
     terminal.setGlyphProtocol(enabled: _config.glyphProtocol);
@@ -677,6 +682,13 @@ class TerminalControllerImpl extends TerminalController
       row: _clampInt(position.row, 0, _lastRows - 1),
       col: _clampInt(position.col, 0, _lastCols - 1),
     );
+  }
+
+  void _clearSelection({required bool notify}) {
+    if (terminal.selection == null) return;
+    _selectionGesture.reset();
+    _mutateSelection(() => terminal.selection = null);
+    if (notify) super.notifyListeners();
   }
 
   bool _consumeCommittedCompositionEditKey(

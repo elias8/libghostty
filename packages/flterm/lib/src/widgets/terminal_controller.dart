@@ -41,6 +41,20 @@ abstract class TerminalController extends ChangeNotifier
   /// Called when the working directory changes. Read [pwd] for the value.
   VoidCallback? onPwdChanged;
 
+  /// Sets the callback for desktop notifications requested through OSC 9 or
+  /// OSC 777, or clears it if null.
+  ///
+  /// Requests are untrusted. The application decides whether and how to
+  /// display them. Fires synchronously during [write].
+  set onDesktopNotification(ValueChanged<DesktopNotification>? callback);
+
+  /// Sets the callback for program progress reported through OSC 9;4, or
+  /// clears it if null.
+  ///
+  /// The application decides how to present progress. Fires synchronously
+  /// during [write].
+  set onProgressReport(ValueChanged<TerminalProgress>? callback);
+
   /// Called when the grid dimensions change. Forward to your backend.
   OnResize? onResize;
 

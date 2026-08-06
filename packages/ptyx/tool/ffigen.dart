@@ -41,7 +41,6 @@ void _markGeneratedLibraryInternal() {
 FfiGenerator _createGenerator() => FfiGenerator(
   output: Output(
     dartFile: Uri.file(_nativeOutput),
-    sort: true,
     preamble: '// ignore_for_file: unused_field, type=lint',
     style: const NativeExternalBindings(assetId: 'package:ptyx/ptyx.dart'),
   ),
@@ -50,7 +49,7 @@ FfiGenerator _createGenerator() => FfiGenerator(
     include: (header) =>
         header.path.endsWith('/include/ptyx.h') ||
         header.path == 'include/ptyx.h',
-    compilerOptions: const ['-Iinclude'],
+    compilerOptions: [...defaultCompilerOpts(Logger.root), '-Iinclude'],
   ),
   functions: Functions(
     include: (declaration) {

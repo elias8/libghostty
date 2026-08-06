@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.0.12
 
 ### Breaking
 
@@ -11,13 +11,52 @@
 
 ### Added
 
+- **Clipboard writes**: `Terminal.onClipboardWrite` exposes atomic,
+  binary-safe OSC 52 and iTerm2 clipboard requests with normalized locations
+  and MIME representations. Clipboard reads remain disabled.
+- **Scrollback compression**: `Terminal.compress()` and
+  `Terminal.compressionActivity` support incremental or full compression of
+  eligible scrollback storage and report unsupported targets.
+- **Terminal geometry**: `Terminal.geometry` returns cell and pixel dimensions
+  in one query.
 - **VT processing diagnostics**: `Terminal.hasVtProcessingError` reports
-  non-gracefully handled terminal-owned semantic update failures.
+  errors during terminal-owned semantic updates that cannot be handled
+  gracefully.
+- **Kitty image usage hints**: transient images are prioritized for eviction
+  under memory pressure.
 
 ### Changed
 
+- **Resize side effects**: `Terminal.resize()` updates cell pixel geometry,
+  disables synchronized output, and emits an in-band size report when mode
+  2048 is enabled.
+- **Batched state queries**: `RenderState`, `RowIterator`, `CellIterator`,
+  `SelectionGesture`, and Kitty graphics reads use consolidated native and WASM
+  queries to reduce binding overhead.
+- **Formatter allocations**: `Formatter` and `Terminal.formatSelection()` reuse
+  growable buffers instead of allocating a native result for each call.
+- **Kitty graphics processing**: large APC payloads are dispatched in bulk,
+  reducing VT processing overhead for image transfers.
 - **Terminal callback errors**: `Terminal.write()` and callback-emitting
   `Terminal.resize()` rethrow the first effect error after processing completes.
+
+### Fixed
+
+- **Resize failure consistency**: failed resizes preserve screen dimensions,
+  tab stops, pixel geometry, and synchronized-output state.
+- **Selection and grid boundaries**: selection gestures, cloned selections,
+  and grid references clamp or reject invalid coordinates across mixed-width
+  pages, row boundaries, and extreme input values instead of failing at
+  runtime.
+- **Page traversal and references**: count-limited traversal crosses page
+  boundaries correctly, and row shifts, splits, erasures, and replacements
+  invalidate stale page references.
+- **Terminal boundary inputs**: empty cell and tab-stop ranges, minimum scroll
+  deltas, oversized cursor positions, and non-monotonic selection timestamps
+  are handled without runtime safety failures.
+- **Source builds in tagged repositories**: compiling Ghostty from source no
+  longer reads a consuming application's Git tag, preventing tagged builds
+  with non-Ghostty version formats from failing.
 
 ## 0.0.11
 

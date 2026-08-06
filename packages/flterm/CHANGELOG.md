@@ -1,5 +1,47 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **Text input recovery**: terminal clients reconnect when another input client
+  takes the platform text input connection, including while composition is
+  active.
+
+## 0.0.5
+
+### Added
+
+- **Clipboard writes**: `TerminalController.onClipboardWrite` forwards atomic,
+  binary-safe OSC 52 and iTerm2 clipboard requests so applications can apply
+  their own platform and security policies. If the callback throws, the
+  initiating write finishes terminal processing before rethrowing the error.
+- **Idle scrollback compression**: attached terminal views schedule bounded
+  compression after terminal and viewport activity settles, reducing retained
+  scrollback memory without competing with rendering.
+
+### Changed
+
+- **Kitty graphics caching**: unchanged placement snapshots are reused across
+  frames, while image generations invalidate cached images and stale pending
+  decodes. This avoids repeated traversal, sorting, and eviction work without
+  displaying stale image data.
+- **Color behavior**: `ColorPalette.generated()` uses libghostty palette
+  generation, and terminal color-scheme reports use perceived background
+  luminance.
+- **Published package contents**: tests, benchmark tooling, generated API
+  documentation, build outputs, and coverage data are excluded.
+
+### Fixed
+
+- **IME preedit layout**: ZWJ emoji, skin-tone emoji sequences, combining
+  marks, and variation selectors are measured as grapheme clusters using
+  libghostty's terminal width rules.
+- **Viewport scrolling**: scroll-controller pixel offsets map to absolute
+  terminal rows regardless of the current viewport position.
+- **Windows text input**: platform text input binds to the `TerminalView`'s
+  owning Flutter view and reconnects when that view changes.
+
 ## 0.0.4
 
 ### Breaking

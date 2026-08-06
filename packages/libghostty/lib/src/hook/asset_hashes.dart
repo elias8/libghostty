@@ -9,22 +9,22 @@
 // ignore_for_file: unnecessary_ignore, lines_longer_than_80_chars
 
 /// The release tag used for downloading prebuilt binaries.
-const releaseTag = 'libghostty-v0.0.11';
+const releaseTag = 'libghostty-v0.0.12';
 
 /// SHA256 hashes for pre-built native binaries. Keys are the artifact
 /// filenames.
 const assetHashes = <String, String>{
-  'libghostty-aarch64-ios-simulator.dylib': 'a48d21d2a7ff0649276621d4d4aa6a433d73175d80dd59a3036758ed026e9acf',
-  'libghostty-aarch64-ios.dylib': '567fc3dce3916d84416ee58efef824e6b702f65ca3ce6c84bfde7f8c07fcc080',
-  'libghostty-aarch64-linux-android.so': '867bfec3b1e19836e00c686d3c1204e49be20c3fd93ecb38f33725a9d39b28c3',
-  'libghostty-aarch64-linux-gnu.so': 'b73e1e5e6ed4d60278a60aef5e0b07877f1902febc36df57cb5e85dffae150b0',
-  'libghostty-aarch64-macos.dylib': '2dabdc1f968394f5edeece23988828ea3f18374907ed0eabf3228f12a6de60cc',
-  'libghostty-arm-linux-androideabi.so': 'eb9f93b799dbe5251c637293c2421617d62984c91c28a7c145bee6213f7ba606',
-  'libghostty-wasm32-freestanding.wasm': 'b0f39cfe981af36745c6b9c6919e9ac9cdf20aa507764e78bfb7a63ddc945c5b',
-  'libghostty-x86_64-ios-simulator.dylib': 'fff7f93a4e25fb7fe869b13bd8143e8fd947dae8ace5e5b3cf35b30441ce4239',
-  'libghostty-x86_64-linux-android.so': 'f08e56ce87b1da496e80488c6b54ec242185077e00c6f8721c9eba8c89fa859e',
-  'libghostty-x86_64-linux-gnu.so': '71232ea0852b1f7d6772156978f2295fda3db5d0b8ee96769cc26e17d0665800',
-  'libghostty-x86_64-linux-musl.so': 'a094cfad5953fe5cf5ac687ba2d4a3c4f5b5fcbe5d52a8db955e9aedda078035',
-  'libghostty-x86_64-macos.dylib': 'e06ce6a1a020d86ac29904aee7dff21fb48cc1482f923093e8547e98e9393b9c',
-  'libghostty-x86_64-windows.dll': '4d262e0931d1b1ac44d2bcf290003b540adf7a6542dd4d3d01605204e185d600',
+  'libghostty-aarch64-ios-simulator.dylib': '4e9188f56c6738f813c1aa289f6e38291332797ba21cac189305b1b7b3434602',
+  'libghostty-aarch64-ios.dylib': '3e5a5560bf5e6899f5c7e339da357a3a48ba6cd821f42ed9ac72a158d2a1c93d',
+  'libghostty-aarch64-linux-android.so': 'e47f9b2a9410bfecd51a6e56d2974eb2ed4ba21a5b41078791a391a66e667a50',
+  'libghostty-aarch64-linux-gnu.so': '4077bb9c47130278fc08d00e2058fc5a2851da1b4bf34c0d2bd5054c5b900aaf',
+  'libghostty-aarch64-macos.dylib': 'a148591a7853cbbc2a491c54b35dbe7ae1ee71692bcf2535e543c0108b84eaa5',
+  'libghostty-arm-linux-androideabi.so': 'b21d85003be4714368abda156388d59dc60ca604b611122a5d95c8dc86a8f126',
+  'libghostty-wasm32-freestanding.wasm': 'f6233fc8f4d723451660504959cac5eff80851eabc63578b0e218ce3669d1b8b',
+  'libghostty-x86_64-ios-simulator.dylib': 'f1a0f53f23f71d879b07f54664bf194c276a4349ba4fdc8ef6b7058e08e454fd',
+  'libghostty-x86_64-linux-android.so': '373e1ff319c34fb9197baf0314be7b935a48e0d73f31733695b5dba87bd82662',
+  'libghostty-x86_64-linux-gnu.so': '5f169d9dba40edf996e4565db3eed5a996ba25c7b3a20df918b0b63164d7e068',
+  'libghostty-x86_64-linux-musl.so': 'e78ce07d19b4aeade3b1e5b4b7f9778da6a1248b1b181cd2958aca7f1ec97e0e',
+  'libghostty-x86_64-macos.dylib': 'a39459ad9f5ff8f5ec44d96e70158db7171db9445b84bbda2963d78e16df3fac',
+  'libghostty-x86_64-windows.dll': 'c3f2073c387539fcfcb5c2e9f0bef6f28b21c35a60a152a424f0cb4836ed90fc',
 };

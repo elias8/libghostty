@@ -2774,7 +2774,25 @@ enum TerminalData {
   /// if there was some error that happened at some point during VT processing.
   ///
   /// Output type: bool *
-  vtProcessingError(33);
+  vtProcessingError(33),
+
+  /// The configured maximum scrollback allocation in bytes.
+  ///
+  /// This always reports the primary screen's configured value, including
+  /// while an alternate screen is active. Returns GHOSTTY_NO_VALUE when the
+  /// configured byte limit is unlimited.
+  ///
+  /// Output type: size_t *
+  scrollbackMaxBytes(34),
+
+  /// The configured maximum number of physical scrollback lines.
+  ///
+  /// This always reports the primary screen's configured value, including
+  /// while an alternate screen is active. Returns GHOSTTY_NO_VALUE when the
+  /// configured line limit is unlimited.
+  ///
+  /// Output type: size_t *
+  scrollbackMaxLines(35);
 
   final int value;
   const TerminalData(this.value);
@@ -2814,6 +2832,8 @@ enum TerminalData {
     31 => selection,
     32 => viewportActive,
     33 => vtProcessingError,
+    34 => scrollbackMaxBytes,
+    35 => scrollbackMaxLines,
     _ => throw ArgumentError('Unknown value for TerminalData: $value'),
   };
 }
@@ -3031,7 +3051,62 @@ enum TerminalOption {
   /// TerminalClipboardWriteFn.
   ///
   /// Input type: TerminalClipboardWriteFn
-  clipboardWrite(26);
+  clipboardWrite(26),
+
+  /// Set the maximum scrollback allocation in bytes.
+  ///
+  /// This is an estimate. Internally, libghostty only prunes bytes up
+  /// to a "page"-granularity. A page is the minimum allocated unit of
+  /// grid space within . A page at the time of writing these docs
+  /// is about 400KB, so the byte limit will be within this delta.
+  ///
+  /// This works alongside the line limit configuration. If both are set,
+  /// the first-reached limit is used first. Both limits are dependent
+  /// on external state (byte limit can be reached with less lines if
+  /// more styles are used for example, line limit can be reached with
+  /// a narrower terminal viewport). So, they are useful together.
+  ///
+  /// Lowering the limit immediately removes eligible complete historical
+  /// pages. A value of zero disables scrollback and erases retained history.
+  /// A NULL value pointer removes the byte limit.
+  ///
+  /// Input type: size_t*
+  scrollbackMaxBytes(27),
+
+  /// Set the maximum number of physical lines retained in scrollback.
+  ///
+  /// This is an estimate. Internally, libghostty only prunes lines up
+  /// to a "page"-granularity. A page is the minimum allocated unit of
+  /// grid space within . As a result, the actual available scrollback
+  /// lines will almost always be higher than configured. The magnitude
+  /// of the difference depends on the number of used styles, graphemes, etc.
+  /// since the row-count in a page is dynamic based on that. In general,
+  /// it ranges from dozens to a hundred or so lines.
+  ///
+  /// This works alongside the line limit configuration. If both are set,
+  /// the first-reached limit is used first. Both limits are dependent
+  /// on external state (byte limit can be reached with less lines if
+  /// more styles are used for example, line limit can be reached with
+  /// a narrower terminal viewport). So, they are useful together.
+  ///
+  /// Lowering the limit immediately removes eligible complete historical
+  /// pages. A NULL value pointer removes the line limit.
+  ///
+  /// Input type: size_t*
+  scrollbackMaxLines(28),
+
+  /// Callback invoked when the running program requests a desktop
+  /// notification via OSC 9 or OSC 777. Set to NULL to ignore desktop
+  /// notification requests.
+  ///
+  /// Input type: TerminalDesktopNotificationFn
+  desktopNotification(29),
+
+  /// Callback invoked when the running program reports progress via OSC 9;4.
+  /// Set to NULL to ignore progress reports.
+  ///
+  /// Input type: TerminalProgressReportFn
+  progressReport(30);
 
   final int value;
   const TerminalOption(this.value);
@@ -3064,7 +3139,43 @@ enum TerminalOption {
     24 => glyphProtocol,
     25 => pwdChanged,
     26 => clipboardWrite,
+    27 => scrollbackMaxBytes,
+    28 => scrollbackMaxLines,
+    29 => desktopNotification,
+    30 => progressReport,
     _ => throw ArgumentError('Unknown value for TerminalOption: $value'),
+  };
+}
+
+/// State of a terminal progress report.
+///
+/// @ingroup terminal
+enum TerminalProgressState {
+  /// Remove any visible progress indication.
+  remove(0),
+
+  /// Show determinate progress.
+  set(1),
+
+  /// Show a failed progress state.
+  error(2),
+
+  /// Show indeterminate progress.
+  indeterminate(3),
+
+  /// Show paused progress.
+  pause(4);
+
+  final int value;
+  const TerminalProgressState(this.value);
+
+  static TerminalProgressState fromValue(int value) => switch (value) {
+    0 => remove,
+    1 => set,
+    2 => error,
+    3 => indeterminate,
+    4 => pause,
+    _ => throw ArgumentError('Unknown value for TerminalProgressState: $value'),
   };
 }
 

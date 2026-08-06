@@ -106,7 +106,11 @@ Headers _headers({List<String> compilerOpts = const []}) => Headers(
     final path = header.path;
     return path.contains('ghostty/vt.h') || path.contains('ghostty/vt/');
   },
-  compilerOptions: [..._compilerOpts, ...compilerOpts],
+  compilerOptions: [
+    ...defaultCompilerOpts(Logger.root),
+    ..._compilerOpts,
+    ...compilerOpts,
+  ],
 );
 
 const _nonLeafFunctions = {
@@ -121,7 +125,6 @@ FfiGenerator _createGenerator({
 }) => FfiGenerator(
   output: Output(
     dartFile: Uri.file(_nativeOutput),
-    sort: true,
     preamble: '// ignore_for_file: unused_field',
     style: const NativeExternalBindings(
       assetId: 'package:libghostty/libghostty.dart',

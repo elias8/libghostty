@@ -86,6 +86,9 @@ abstract interface class TerminalViewBinding {
   /// listeners and may change [Terminal.compressionActivity].
   void handleViewportChanged();
 
+  /// Invalidates the current selection without publishing a controller change.
+  void invalidateSelection();
+
   /// Requests keyboard focus for the attached view.
   void requestFocus();
 

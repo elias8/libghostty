@@ -2502,16 +2502,22 @@ extension type GhosttyExports(JSObject _) implements JSObject {
 
   /// Create a new terminal instance.
   ///
+  /// The terminal starts with various reasonable defaults e.g. around
+  /// scrollback limits. Use ghostty_terminal_set() to change any options
+  /// prior to using the terminal.
+  ///
   /// @param allocator Pointer to allocator, or NULL to use the default allocator
   /// @param terminal Pointer to store the created terminal handle
-  /// @param options Terminal initialization options
+  /// @param cols Terminal width in cells (must be greater than zero)
+  /// @param rows Terminal height in cells (must be greater than zero)
   /// @return GHOSTTY_SUCCESS on success, or an error code on failure
   ///
   /// @ingroup terminal
   external int ghostty_terminal_new(
     Pointer allocator,
     Pointer terminal,
-    int options,
+    int cols,
+    int rows,
   );
 
   /// Convert a grid reference back to a point in the given coordinate system.
@@ -2918,7 +2924,8 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// write_pty callback and userdata pointer. The value is passed
   /// directly for pointer types (callbacks, userdata) or as a pointer
   /// to the value for non-pointer types (e.g. GhosttyString*).
-  /// NULL clears the option to its default.
+  /// The behavior of a NULL value is specific to each option and is
+  /// documented by the corresponding GhosttyTerminalOption value.
   ///
   /// Callbacks are invoked synchronously during ghostty_terminal_vt_write().
   /// Callbacks must not call ghostty_terminal_vt_write() on the same

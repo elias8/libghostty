@@ -810,6 +810,40 @@ void main() {
 
         expect(textInputSetClientCalls(calls), hasLength(1));
       });
+
+      test('reopens a connection orphaned by another client', () {
+        final calls = recordTextInputCalls();
+        handler.attach();
+        final other = TerminalInputClient()..viewId = 0;
+        addTearDown(other.detach);
+        other.attach();
+        calls.clear();
+
+        handler.ensureAttached();
+
+        expect(textInputSetClientCalls(calls), hasLength(1));
+      });
+
+      test('clears visible preedit when reopening an orphaned connection', () {
+        final preedit = <String>[];
+        handler.onPreeditChanged = preedit.add;
+        handler.attach();
+        handler.updateEditingValue(
+          const TextEditingValue(
+            text: ' ni',
+            selection: TextSelection.collapsed(offset: 3),
+            composing: TextRange(start: 1, end: 3),
+          ),
+        );
+        final other = TerminalInputClient()..viewId = 0;
+        addTearDown(other.detach);
+        other.attach();
+        preedit.clear();
+
+        handler.ensureAttached();
+
+        expect(preedit, ['']);
+      });
     });
 
     group('viewId', () {

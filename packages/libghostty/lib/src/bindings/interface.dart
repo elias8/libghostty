@@ -107,7 +107,7 @@ abstract interface class GhosttyBindings {
   int unicodeCodepointWidth(int codepoint);
   ({int consumed, int width}) unicodeGraphemeWidth(List<int> codepoints);
 
-  CResult<int> terminalNew(int cols, int rows, int maxScrollback);
+  CResult<int> terminalNew(int cols, int rows);
   void terminalFree(int handle);
   void terminalVtWrite(int handle, Uint8List data);
   Result terminalResize(
@@ -143,6 +143,8 @@ abstract interface class GhosttyBindings {
   CResult<String> terminalGetPwd(int handle);
   CResult<int> terminalGetTotalRows(int handle);
   CResult<int> terminalGetScrollbackRows(int handle);
+  CResult<int> terminalGetScrollbackMaxBytes(int handle);
+  CResult<int> terminalGetScrollbackMaxLines(int handle);
   CResult<int> terminalGetWidthPx(int handle);
   CResult<int> terminalGetHeightPx(int handle);
   CResult<TerminalGeometry> terminalGetGeometry(int handle);
@@ -181,6 +183,8 @@ abstract interface class GhosttyBindings {
   Result terminalSetKittyImageMediumSharedMem(int handle, {bool? enabled});
   Result terminalSetApcBufferLimit(int handle, int? bytes);
   Result terminalSetKittyApcBufferLimit(int handle, int? bytes);
+  Result terminalSetScrollbackMaxBytes(int handle, int? bytes);
+  Result terminalSetScrollbackMaxLines(int handle, int? lines);
 
   CResult<Uint8List> pasteEncode(String data, {required bool bracketed});
 
@@ -189,6 +193,14 @@ abstract interface class GhosttyBindings {
   void terminalSetOnClipboardWrite(
     int handle,
     ClipboardWriteCallback? callback,
+  );
+  void terminalSetOnDesktopNotification(
+    int handle,
+    DesktopNotificationCallback? callback,
+  );
+  void terminalSetOnProgressReport(
+    int handle,
+    TerminalProgressCallback? callback,
   );
   void terminalSetOnTitleChanged(int handle, VoidCallback? callback);
   void terminalSetOnPwdChanged(int handle, VoidCallback? callback);

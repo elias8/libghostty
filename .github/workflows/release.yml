@@ -106,7 +106,7 @@ jobs:
     if: startsWith(github.ref_name, 'libghostty-v')
     permissions:
       id-token: write
-    uses: dart-lang/setup-dart/.github/workflows/publish.yml@v1
+    uses: dart-lang/setup-dart/.github/workflows/publish.yml@v1.8.0
     with:
       environment: pub.dev
       working-directory: packages/libghostty

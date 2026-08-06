@@ -21,6 +21,16 @@ class Layouts {
   late final int clipboardWriteContents;
   late final int clipboardWriteContentsLen;
 
+  // GhosttyTerminalDesktopNotification
+  late final int desktopNotificationSize;
+  late final int desktopNotificationTitle;
+  late final int desktopNotificationBody;
+
+  // GhosttyTerminalProgressReport
+  late final int terminalProgressReportSize;
+  late final int terminalProgressReportState;
+  late final int terminalProgressReportProgress;
+
   // GhosttyColorRgb
   late final int colorRgbSize;
   late final int colorRgbG;
@@ -210,11 +220,6 @@ class Layouts {
   late final int styleColorG;
   late final int styleColorB;
 
-  // GhosttyTerminalOptions
-  late final int terminalOptsSize;
-  late final int terminalOptsRows;
-  late final int terminalOptsMaxScrollback;
-
   // GhosttyTerminalScrollbar
   late final int scrollbarSize;
   late final int scrollbarOffset;
@@ -242,6 +247,16 @@ class Layouts {
     clipboardWriteLocation = struct['location'];
     clipboardWriteContents = struct['contents'];
     clipboardWriteContentsLen = struct['contents_len'];
+
+    struct = _Struct(types, 'GhosttyTerminalDesktopNotification');
+    desktopNotificationSize = struct.size;
+    desktopNotificationTitle = struct['title'];
+    desktopNotificationBody = struct['body'];
+
+    struct = _Struct(types, 'GhosttyTerminalProgressReport');
+    terminalProgressReportSize = struct.size;
+    terminalProgressReportState = struct['state'];
+    terminalProgressReportProgress = struct['progress'];
 
     struct = _Struct(types, 'GhosttyColorRgb');
     colorRgbSize = struct.size;
@@ -457,11 +472,6 @@ class Layouts {
     styleColorR = scValueOff + sub['r'];
     styleColorG = scValueOff + sub['g'];
     styleColorB = scValueOff + sub['b'];
-
-    struct = _Struct(types, 'GhosttyTerminalOptions');
-    terminalOptsSize = struct.size;
-    terminalOptsRows = struct['rows'];
-    terminalOptsMaxScrollback = struct['max_scrollback'];
 
     struct = _Struct(types, 'GhosttyTerminalScrollbar');
     scrollbarSize = struct.size;

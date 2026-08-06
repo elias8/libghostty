@@ -92,7 +92,7 @@ class _TerminalGestureDetectorState extends State<TerminalGestureDetector> {
     super.didUpdateWidget(oldWidget);
     if (widget.metrics != oldWidget.metrics ||
         widget.binding != oldWidget.binding) {
-      _binding.clearSelection();
+      _binding.invalidateSelection();
       _stopAutoScroll();
       _drag = null;
       _pressCell = null;

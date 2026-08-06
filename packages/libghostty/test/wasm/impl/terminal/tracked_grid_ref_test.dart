@@ -154,7 +154,7 @@ void main() {
       });
 
       test('follows the cell after scrolling', () {
-        final scrolled = Terminal(cols: 8, rows: 3, maxScrollback: 100);
+        final scrolled = Terminal(cols: 8, rows: 3);
         addTearDown(scrolled.dispose);
         scrolled.write(
           Uint8List.fromList('alpha\r\nbravo\r\ncharlie'.codeUnits),
