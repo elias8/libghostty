@@ -81,32 +81,62 @@ void main() {
 
     tearDown(() => terminal.dispose());
 
-    testWidgets('snaps width to whole-cell multiples', (tester) async {
+    testWidgets('fills bounded width while grid uses whole cells', (
+      tester,
+    ) async {
+      int? reportedCols;
       await tester.pumpWidget(
         wrap(
           terminal,
           maxWidth: 163.7,
           maxHeight: defaultRows * defaultMetrics.cellHeight,
+          onResize: (cols, _) => reportedCols = cols,
         ),
       );
       final box = tester.renderObject<TerminalRenderBox>(
         find.byType(TerminalRenderer),
       );
-      expect(box.size.width, 160.0);
+      expect(box.size.width, 163.7);
+      expect(reportedCols, 20);
     });
 
-    testWidgets('snaps height to whole-cell multiples', (tester) async {
+    testWidgets('fills bounded height while grid uses whole cells', (
+      tester,
+    ) async {
+      int? reportedRows;
       await tester.pumpWidget(
         wrap(
           terminal,
           maxWidth: defaultCols * defaultMetrics.cellWidth,
           maxHeight: 85.3,
+          onResize: (_, rows) => reportedRows = rows,
         ),
       );
       final box = tester.renderObject<TerminalRenderBox>(
         find.byType(TerminalRenderer),
       );
-      expect(box.size.height, 80.0);
+      expect(box.size.height, 85.3);
+      expect(reportedRows, 5);
+    });
+
+    testWidgets('viewport pixels change without redundant grid resize', (
+      tester,
+    ) async {
+      final reported = <(int, int)>[];
+      void recordResize(int cols, int rows) => reported.add((cols, rows));
+
+      await tester.pumpWidget(
+        wrap(terminal, maxWidth: 163.7, onResize: recordResize),
+      );
+      await tester.pumpWidget(
+        wrap(terminal, maxWidth: 167.9, onResize: recordResize),
+      );
+
+      final box = tester.renderObject<TerminalRenderBox>(
+        find.byType(TerminalRenderer),
+      );
+      expect(box.size.width, 167.9);
+      expect(reported, [(20, defaultRows)]);
     });
 
     testWidgets('metrics change triggers layout', (tester) async {

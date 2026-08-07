@@ -82,16 +82,27 @@ final class CursorTheme {
   /// Cursor opacity from 0.0 (invisible) to 1.0 (fully opaque).
   final double opacity;
 
+  /// Width of a bar cursor as a fraction of one terminal cell.
+  ///
+  /// Must be greater than zero and at most one. The rendered width is never
+  /// less than one logical pixel.
+  final double barWidthRatio;
+
   const CursorTheme({
     this.shape = CursorShape.block,
     this.color,
     this.text,
     this.blinkInterval = const Duration(milliseconds: 600),
     this.opacity = 1.0,
-  });
+    this.barWidthRatio = 1 / 6,
+  }) : assert(
+         barWidthRatio > 0 && barWidthRatio <= 1,
+         'barWidthRatio must be greater than zero and at most one',
+       );
 
   @override
-  int get hashCode => Object.hash(shape, color, text, blinkInterval, opacity);
+  int get hashCode =>
+      Object.hash(shape, color, text, blinkInterval, opacity, barWidthRatio);
 
   @override
   bool operator ==(Object other) =>
@@ -100,12 +111,14 @@ final class CursorTheme {
       other.color == color &&
       other.text == text &&
       other.blinkInterval == blinkInterval &&
-      other.opacity == opacity;
+      other.opacity == opacity &&
+      other.barWidthRatio == barWidthRatio;
 
   @override
   String toString() =>
       'CursorTheme(shape: $shape, color: $color, text: $text, '
-      'blinkInterval: $blinkInterval, opacity: $opacity)';
+      'blinkInterval: $blinkInterval, opacity: $opacity, '
+      'barWidthRatio: $barWidthRatio)';
 
   /// Linearly interpolates between two cursor themes.
   ///
@@ -125,6 +138,7 @@ final class CursorTheme {
         )!.round(),
       ),
       opacity: lerpDouble(a.opacity, b.opacity, t)!,
+      barWidthRatio: lerpDouble(a.barWidthRatio, b.barWidthRatio, t)!,
     );
   }
 }

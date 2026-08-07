@@ -18,9 +18,9 @@ import 'terminal_render_pipeline.dart';
 /// terminal resize), frame sync, and a paint stack.
 ///
 /// Sizing is determined by the parent constraints and cell metrics: the
-/// widget computes how many columns and rows fit, then sizes itself to
-/// exactly that grid. When the grid dimensions change, the terminal is
-/// resized and [onResize] fires.
+/// widget fills the bounded viewport while the terminal grid uses only the
+/// whole columns and rows that fit inside it. When the grid dimensions change,
+/// the terminal is resized and [onResize] fires.
 ///
 /// ```dart
 /// TerminalRenderer(
@@ -433,6 +433,7 @@ class TerminalRenderBox extends RenderBox {
 
     canvas.save();
     canvas.translate(offset.dx, offset.dy);
+    canvas.clipRect(Offset.zero & size);
     _pipeline.paint(canvas);
     canvas.restore();
   }
@@ -441,15 +442,19 @@ class TerminalRenderBox extends RenderBox {
   void performLayout() {
     _performingLayout = true;
 
-    final maxW = constraints.hasBoundedWidth ? constraints.maxWidth : 0.0;
-    final maxH = constraints.hasBoundedHeight ? constraints.maxHeight : 0.0;
-    final (newCols, newRows) = _paintState.metrics.gridSize(maxW, maxH);
-
     size = constraints.constrain(
       Size(
-        newCols * _paintState.metrics.cellWidth,
-        newRows * _paintState.metrics.cellHeight,
+        constraints.hasBoundedWidth
+            ? constraints.maxWidth
+            : constraints.minWidth,
+        constraints.hasBoundedHeight
+            ? constraints.maxHeight
+            : constraints.minHeight,
       ),
+    );
+    final (newCols, newRows) = _paintState.metrics.gridSize(
+      size.width,
+      size.height,
     );
 
     final dpr = _currentDevicePixelRatio;
