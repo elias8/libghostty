@@ -31,6 +31,11 @@ class Layouts {
   late final int terminalProgressReportState;
   late final int terminalProgressReportProgress;
 
+  // GhosttyTerminalModeConfig
+  late final int terminalModeConfigSize;
+  late final int terminalModeConfigMode;
+  late final int terminalModeConfigValue;
+
   // GhosttyColorRgb
   late final int colorRgbSize;
   late final int colorRgbG;
@@ -257,6 +262,11 @@ class Layouts {
     terminalProgressReportSize = struct.size;
     terminalProgressReportState = struct['state'];
     terminalProgressReportProgress = struct['progress'];
+
+    struct = _Struct(types, 'GhosttyTerminalModeConfig');
+    terminalModeConfigSize = struct.size;
+    terminalModeConfigMode = struct['mode'];
+    terminalModeConfigValue = struct['value'];
 
     struct = _Struct(types, 'GhosttyColorRgb');
     colorRgbSize = struct.size;

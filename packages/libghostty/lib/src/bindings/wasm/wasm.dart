@@ -1297,18 +1297,64 @@ class WasmBindings implements GhosttyBindings {
 
   @override
   CResult<bool> terminalModeGet(int handle, int mode) {
-    final outPtr = _exports.ghostty_wasm_alloc_u8();
-    final result = _exports.ghostty_terminal_mode_get(handle, mode, outPtr);
-    final value = _mem.readU8(outPtr) != 0;
-    _exports.ghostty_wasm_free_u8(outPtr);
+    final modePtr = _exports.ghostty_wasm_alloc_u8_array(
+      _layout.terminalModeConfigSize,
+    );
+    _mem.writeU16(modePtr + _layout.terminalModeConfigMode, mode);
+    final result = _exports.ghostty_terminal_get(
+      handle,
+      TerminalData.mode.value,
+      modePtr,
+    );
+    final value = _mem.readU8(modePtr + _layout.terminalModeConfigValue) != 0;
+    _exports.ghostty_wasm_free_u8_array(
+      modePtr,
+      _layout.terminalModeConfigSize,
+    );
     return (.fromValue(result), value);
   }
 
   @override
   Result terminalModeSet(int handle, int mode, {required bool value}) {
-    return .fromValue(
-      _exports.ghostty_terminal_mode_set(handle, mode, value ? 1 : 0),
+    final modePtr = _exports.ghostty_wasm_alloc_u8_array(
+      _layout.terminalModeConfigSize,
     );
+    _mem.writeU16(modePtr + _layout.terminalModeConfigMode, mode);
+    _mem.writeU8(modePtr + _layout.terminalModeConfigValue, value ? 1 : 0);
+    final result = _exports.ghostty_terminal_set(
+      handle,
+      TerminalOption.mode.value,
+      modePtr,
+    );
+    _exports.ghostty_wasm_free_u8_array(
+      modePtr,
+      _layout.terminalModeConfigSize,
+    );
+    return .fromValue(result);
+  }
+
+  @override
+  Result terminalModeSetDefault(int handle, int mode, {required bool value}) {
+    final modePtr = _exports.ghostty_wasm_alloc_u8_array(
+      _layout.terminalModeConfigSize,
+    );
+    _mem.writeU16(modePtr + _layout.terminalModeConfigMode, mode);
+    _mem.writeU8(modePtr + _layout.terminalModeConfigValue, value ? 1 : 0);
+    final result = _exports.ghostty_terminal_set(
+      handle,
+      TerminalOption.modeDefault.value,
+      modePtr,
+    );
+    _exports.ghostty_wasm_free_u8_array(
+      modePtr,
+      _layout.terminalModeConfigSize,
+    );
+    return .fromValue(result);
+  }
+
+  @override
+  Result terminalSetTitleReport(int handle, {required bool enabled}) {
+    return _terminalSetBool(handle, TerminalOption.titleReport, enabled);
   }
 
   @override
@@ -1365,6 +1411,50 @@ class WasmBindings implements GhosttyBindings {
   @override
   CResult<bool> terminalGetVtProcessingError(int handle) {
     return _terminalGetBool(handle, .vtProcessingError);
+  }
+
+  @override
+  CResult<Uint8List> terminalContinuationGet(int handle) {
+    final outWritten = _allocateSize();
+    try {
+      var result = Result.fromValue(
+        _exports.ghostty_terminal_continuation_buf(handle, 0, 0, outWritten),
+      );
+      if (result != .outOfSpace) return (result, Uint8List(0));
+
+      final capacity = _mem.readU32(outWritten);
+      if (capacity == 0) return (Result.success, Uint8List(0));
+      final buffer = _allocateBytes(capacity);
+      try {
+        result = Result.fromValue(
+          _exports.ghostty_terminal_continuation_buf(
+            handle,
+            buffer,
+            capacity,
+            outWritten,
+          ),
+        );
+        final written = _mem.readU32(outWritten);
+        final continuation = result == .success
+            ? Uint8List.fromList(_mem.readBytes(buffer, written))
+            : Uint8List(0);
+        return (result, continuation);
+      } finally {
+        _exports.ghostty_wasm_free_u8_array(buffer, capacity);
+      }
+    } finally {
+      _exports.ghostty_wasm_free_usize(outWritten);
+    }
+  }
+
+  @override
+  CResult<int> terminalGetContinuationMaxBytes(int handle) {
+    return _terminalGetU32(handle, .continuationMaxBytes);
+  }
+
+  @override
+  Result terminalSetContinuationMaxBytes(int handle, int? bytes) {
+    return _terminalSetSize(handle, .continuationMaxBytes, bytes);
   }
 
   @override

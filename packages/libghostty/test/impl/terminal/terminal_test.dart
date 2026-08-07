@@ -80,6 +80,38 @@ void main() {
       });
     });
 
+    group('continuationMaxBytes', () {
+      test('gets the value set through the setter', () {
+        terminal.continuationMaxBytes = 128;
+
+        expect(terminal.continuationMaxBytes, 128);
+      });
+
+      test('rejects negative values', () {
+        expect(
+          () => terminal.continuationMaxBytes = -1,
+          throwsA(isA<RangeError>()),
+        );
+      });
+    });
+
+    group('continuation', () {
+      test('returns unfinished input after tracking is enabled', () {
+        terminal.continuationMaxBytes = 128;
+
+        terminal.write(Uint8List.fromList([0x1b, 0x5d]));
+
+        expect(terminal.continuation, [0x1b, 0x5d]);
+      });
+
+      test('throws when tracking is disabled', () {
+        expect(
+          () => terminal.continuation,
+          throwsA(isA<InvalidValueException>()),
+        );
+      });
+    });
+
     group('onDesktopNotification', () {
       test('receives OSC 9 notifications', () {
         DesktopNotification? notification;
@@ -473,6 +505,15 @@ void main() {
 
         terminal.write(Uint8List.fromList('\x1b[4l'.codeUnits));
         expect(terminal.modeGet(const .insert()), isFalse);
+      });
+
+      test('restores a configured default after reset', () {
+        terminal.modeSetDefault(const .bracketedPaste(), value: true);
+        terminal.modeSet(const .bracketedPaste(), value: false);
+
+        terminal.reset();
+
+        expect(terminal.modeGet(const .bracketedPaste()), isTrue);
       });
 
       group('mouseTracking', () {
@@ -1095,6 +1136,29 @@ void main() {
         terminal.dispose();
 
         expect(output, [0x1b, 0x5b, 0x30, 0x6e]);
+      });
+    });
+
+    group('setTitleReports', () {
+      test('does not report titles by default', () {
+        Uint8List? output;
+        terminal.title = 'example';
+        terminal.onWritePty = (data) => output = data;
+
+        terminal.write(Uint8List.fromList('\x1b[21t'.codeUnits));
+
+        expect(output, isNull);
+      });
+
+      test('writes the title when reports are enabled', () {
+        Uint8List? output;
+        terminal.title = 'example';
+        terminal.onWritePty = (data) => output = data;
+        terminal.setTitleReports(enabled: true);
+
+        terminal.write(Uint8List.fromList('\x1b[21t'.codeUnits));
+
+        expect(String.fromCharCodes(output!), contains('example'));
       });
     });
 

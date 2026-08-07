@@ -139,6 +139,8 @@ abstract interface class GhosttyBindings {
   CResult<Scrollbar> terminalGetScrollbar(int handle);
   CResult<bool> terminalModeGet(int handle, int mode);
   Result terminalModeSet(int handle, int mode, {required bool value});
+  Result terminalModeSetDefault(int handle, int mode, {required bool value});
+  Result terminalSetTitleReport(int handle, {required bool enabled});
   CResult<String> terminalGetTitle(int handle);
   CResult<String> terminalGetPwd(int handle);
   CResult<int> terminalGetTotalRows(int handle);
@@ -150,6 +152,9 @@ abstract interface class GhosttyBindings {
   CResult<TerminalGeometry> terminalGetGeometry(int handle);
   CResult<bool> terminalGetViewportActive(int handle);
   CResult<bool> terminalGetVtProcessingError(int handle);
+  CResult<Uint8List> terminalContinuationGet(int handle);
+  CResult<int> terminalGetContinuationMaxBytes(int handle);
+  Result terminalSetContinuationMaxBytes(int handle, int? bytes);
   Result terminalSetTitle(int handle, String? title);
   Result terminalSetPwd(int handle, String? pwd);
   Result terminalSetDefaultCursorShape(int handle, CursorShape? shape);

@@ -2248,6 +2248,270 @@ extension type GhosttyExports(JSObject _) implements JSObject {
     Pointer out_written,
   );
 
+  /// Decode and validate one complete snapshot.
+  ///
+  /// This is the one-shot form of READY followed by all history pages through
+  /// FINISH. It may only be called before decoding starts. Bytes following FINISH
+  /// are left unread. On success terminal receives a caller-owned terminal with
+  /// its persistent VT stream restored. Continuation tracking on the returned
+  /// terminal is disabled and GHOSTTY_TERMINAL_DATA_CONTINUATION_MAX_BYTES
+  /// returns zero. terminal is set to NULL on every error.
+  /// A decoding, I/O, or allocation error after input consumption begins poisons
+  /// the decoder, after which it must be freed. An invalid argument or
+  /// lifecycle error detected before the operation consumes input does not
+  /// poison it.
+  ///
+  /// @param decoder Decoder handle (must not be NULL)
+  /// @param[out] terminal Pointer to receive the terminal (must not be NULL)
+  /// @return GHOSTTY_SUCCESS on success, or an error code on failure
+  ///
+  /// @ingroup snapshot
+  external int ghostty_snapshot_decoder_decode(int decoder, Pointer terminal);
+
+  /// Free a snapshot decoder.
+  ///
+  /// This does not release the caller's ownership of a terminal returned by
+  /// ready or decode. Abandoning an incremental decode leaves that terminal
+  /// usable with whatever history had already been restored.
+  ///
+  /// @param decoder Decoder to free (may be NULL)
+  ///
+  /// @ingroup snapshot
+  external void ghostty_snapshot_decoder_free(int decoder);
+
+  /// Get typed data from a snapshot decoder.
+  ///
+  /// The output pointer must have the type documented by data. A phase-dependent
+  /// value that is not currently available returns GHOSTTY_NO_VALUE.
+  ///
+  /// @param decoder Decoder handle (must not be NULL)
+  /// @param data Data kind to query
+  /// @param[out] out Pointer to receive the value (must not be NULL)
+  /// @return GHOSTTY_SUCCESS on success, GHOSTTY_NO_VALUE if the requested data
+  /// is unavailable, or another error code on failure
+  ///
+  /// @ingroup snapshot
+  external int ghostty_snapshot_decoder_get(int decoder, int data, Pointer out);
+
+  /// Get multiple snapshot decoder data fields in a single call.
+  ///
+  /// Each keys element selects a data kind and the corresponding values element
+  /// points to storage of the documented output type. Processing stops at the
+  /// first error. On success out_written is set to count; on error it is set to
+  /// the number of values written before the failing key. Invalid array arguments
+  /// report zero values written.
+  ///
+  /// @param decoder Decoder handle (must not be NULL)
+  /// @param count Number of key/value pairs
+  /// @param keys Array of data kinds to query
+  /// @param values Array of output pointers corresponding to keys
+  /// @param[out] out_written Number of successfully written values (may be NULL)
+  /// @return GHOSTTY_SUCCESS if every query succeeds, or the first error
+  ///
+  /// @ingroup snapshot
+  external int ghostty_snapshot_decoder_get_multi(
+    int decoder,
+    int count,
+    Pointer keys,
+    Pointer values,
+    Pointer out_written,
+  );
+
+  /// Create a snapshot decoder that reads from a caller-provided reader.
+  ///
+  /// The decoder stores a copy of reader. Its read callback must not be NULL, and
+  /// both the callback and its caller-owned context must remain valid until
+  /// FINISH is reached or the decoder is freed. Reads are synchronous and occur
+  /// only during ready, next, or decode calls. A zero-byte successful read is
+  /// permanent end-of-file, not temporary starvation; nonblocking sources must
+  /// wait outside the decoder or block in their callback. The read callback must
+  /// not call APIs, including ghostty_snapshot_decoder_free(), on the decoder
+  /// that owns it. Returning false reports GHOSTTY_IO_ERROR; returning true with
+  /// zero bytes before a required marker reports truncated snapshot data as
+  /// GHOSTTY_INVALID_VALUE.
+  ///
+  /// @param allocator Allocator for decoder and decoded terminal state, or NULL
+  /// for the default allocator
+  /// @param decoder Pointer to receive the decoder handle (must not be NULL)
+  /// @param reader Snapshot source reader
+  /// @return GHOSTTY_SUCCESS on success, or an error code on failure
+  ///
+  /// @ingroup snapshot
+  external int ghostty_snapshot_decoder_new(
+    Pointer allocator,
+    Pointer decoder,
+    int reader,
+  );
+
+  /// Create a snapshot decoder over a borrowed byte buffer.
+  ///
+  /// The bytes are not copied. ptr must remain valid and immutable until FINISH
+  /// is reached or the decoder is freed. Bytes after FINISH are not consumed;
+  /// query GHOSTTY_SNAPSHOT_DECODER_DATA_SOURCE_OFFSET to locate them.
+  ///
+  /// @param allocator Allocator for decoder and decoded terminal state, or NULL
+  /// for the default allocator
+  /// @param decoder Pointer to receive the decoder handle (must not be NULL)
+  /// @param ptr Snapshot source bytes
+  /// @param len Number of source bytes
+  /// @return GHOSTTY_SUCCESS on success, or an error code on failure
+  ///
+  /// @ingroup snapshot
+  external int ghostty_snapshot_decoder_new_buf(
+    Pointer allocator,
+    Pointer decoder,
+    Pointer ptr,
+    int len,
+  );
+
+  /// Decode one history page into the terminal returned by READY.
+  ///
+  /// Each GHOSTTY_SUCCESS consumes and validates one PAGE record. Query the
+  /// GHOSTTY_SNAPSHOT_DECODER_DATA_PROGRESS_* values before calling next again.
+  /// GHOSTTY_NO_VALUE means FINISH was validated; repeated calls after FINISH
+  /// also return GHOSTTY_NO_VALUE.
+  ///
+  /// The terminal may be rendered, resized, and fed live PTY input between calls.
+  /// If a history page can no longer be applied safely, it is still consumed and
+  /// validated and progress reports zero rows. The decoder applies history
+  /// to the caller-owned terminal produced by its READY operation.
+  ///
+  /// A decoding error invalidates the decoder's source position. The terminal
+  /// remains caller-owned and usable with its already-restored history, but only
+  /// ghostty_snapshot_decoder_free() may subsequently be called on the decoder.
+  ///
+  /// @param decoder Decoder handle (must not be NULL)
+  /// @return GHOSTTY_SUCCESS for one page, GHOSTTY_NO_VALUE after FINISH, or an
+  /// error code on failure
+  ///
+  /// @ingroup snapshot
+  external int ghostty_snapshot_decoder_next(int decoder);
+
+  /// Decode and validate the renderable snapshot prefix through READY.
+  ///
+  /// On success, terminal receives a caller-owned terminal with its persistent
+  /// VT stream already restored from the snapshot continuation. The terminal is
+  /// immediately usable for rendering and live input. Older scrollback remains
+  /// to be restored with ghostty_snapshot_decoder_next().
+  ///
+  /// The restored parser state may be unfinished, but terminal continuation
+  /// tracking is disabled; GHOSTTY_TERMINAL_DATA_CONTINUATION_MAX_BYTES returns
+  /// zero. The decoder's continuation option is an input limit, not terminal
+  /// runtime policy.
+  ///
+  /// The caller must keep the returned terminal alive until FINISH validates or
+  /// the decoder is freed. The decoder borrows this terminal handle while it
+  /// restores history; ghostty_snapshot_decoder_next() uses it automatically.
+  ///
+  /// This operation may only be called once and only before decoding starts.
+  /// terminal is set to NULL on every error. A decoding, I/O, or allocation
+  /// error after input consumption begins poisons the decoder, after which it
+  /// must be freed. An invalid argument or lifecycle error detected before the
+  /// operation consumes input does not poison it.
+  ///
+  /// @param decoder Decoder handle (must not be NULL)
+  /// @param[out] terminal Pointer to receive the terminal (must not be NULL)
+  /// @return GHOSTTY_SUCCESS on success, or an error code on failure
+  ///
+  /// @ingroup snapshot
+  external int ghostty_snapshot_decoder_ready(int decoder, Pointer terminal);
+
+  /// Set a snapshot decoder option.
+  ///
+  /// The value pointer must have the type documented by option. Options may only
+  /// be changed before decoding starts.
+  ///
+  /// @param decoder Decoder handle (must not be NULL)
+  /// @param option Option to change
+  /// @param value Pointer to the option value (must not be NULL)
+  /// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if decoding has
+  /// started or an argument is invalid, or another error code on failure
+  ///
+  /// @ingroup snapshot
+  external int ghostty_snapshot_decoder_set(
+    int decoder,
+    int option,
+    Pointer value,
+  );
+
+  /// Encode a complete terminal snapshot to a writer.
+  ///
+  /// The terminal's persistent VT stream supplies the continuation bytes needed
+  /// to reconstruct unfinished parser state. The caller must prevent concurrent
+  /// writes or other terminal mutation for the duration of this call. The writer
+  /// callback must not call terminal APIs with the same terminal handle.
+  /// A terminal can be encoded with tracking disabled when its VT parser and
+  /// UTF-8 decoder are both at ground. If either is unfinished, tracking must
+  /// have been enabled before the input that produced that state was written;
+  /// otherwise this returns GHOSTTY_INVALID_VALUE.
+  ///
+  /// Encoding begins at the writer's current position. If an error occurs, the
+  /// writer may contain a partial snapshot without a valid FINISH marker.
+  /// Calls to the writer are synchronous; this function does not flush or make
+  /// the caller's destination durable.
+  ///
+  /// @param terminal Terminal to encode (must not be NULL)
+  /// @param writer Destination writer whose write callback must not be NULL
+  /// @return GHOSTTY_SUCCESS on success, GHOSTTY_IO_ERROR if the writer rejects
+  /// output, GHOSTTY_LIMIT_EXCEEDED if output accounting overflows, or
+  /// another error code on failure
+  ///
+  /// @ingroup snapshot
+  external int ghostty_snapshot_encode(int terminal, int writer);
+
+  /// Encode a complete terminal snapshot to an allocated buffer.
+  ///
+  /// The returned buffer is allocated with allocator, or the default allocator
+  /// when allocator is NULL. The caller must release it with ghostty_free(),
+  /// passing the same allocator used here.
+  ///
+  /// A terminal can be encoded with tracking disabled when its VT parser and
+  /// UTF-8 decoder are both at ground. If either is unfinished, tracking must
+  /// have been enabled before the input that produced that state was written;
+  /// otherwise this returns GHOSTTY_INVALID_VALUE.
+  ///
+  /// @param terminal Terminal to encode (must not be NULL)
+  /// @param allocator Allocator for the output, or NULL for the default allocator
+  /// @param[out] out_ptr Allocated snapshot bytes (must not be NULL)
+  /// @param[out] out_len Number of allocated snapshot bytes (must not be NULL)
+  /// @return GHOSTTY_SUCCESS on success, or an error code on failure
+  ///
+  /// @ingroup snapshot
+  external int ghostty_snapshot_encode_alloc(
+    int terminal,
+    Pointer allocator,
+    Pointer out_ptr,
+    Pointer out_len,
+  );
+
+  /// Encode a complete terminal snapshot to a caller-provided buffer.
+  ///
+  /// Pass NULL for buf with buf_len zero to query the required size. If the
+  /// buffer is too small, this returns GHOSTTY_OUT_OF_SPACE and stores the
+  /// required capacity in out_written. A non-NULL undersized buffer may contain
+  /// a partial snapshot prefix. On success, out_written receives the number of
+  /// bytes encoded.
+  ///
+  /// A terminal can be encoded with tracking disabled when its VT parser and
+  /// UTF-8 decoder are both at ground. If either is unfinished, tracking must
+  /// have been enabled before the input that produced that state was written;
+  /// otherwise this returns GHOSTTY_INVALID_VALUE.
+  ///
+  /// @param terminal Terminal to encode (must not be NULL)
+  /// @param buf Destination buffer, or NULL when buf_len is zero
+  /// @param buf_len Destination buffer capacity in bytes
+  /// @param[out] out_written Bytes written, or required capacity on
+  /// GHOSTTY_OUT_OF_SPACE (must not be NULL)
+  /// @return GHOSTTY_SUCCESS on success, or an error code on failure
+  ///
+  /// @ingroup snapshot
+  external int ghostty_snapshot_encode_buf(
+    int terminal,
+    Pointer buf,
+    int buf_len,
+    Pointer out_written,
+  );
+
   /// Get the default style.
   ///
   /// Initializes the style to the default values (no colors, no flags).
@@ -2348,6 +2612,91 @@ extension type GhosttyExports(JSObject _) implements JSObject {
     int terminal,
     Pointer out_activity,
   );
+
+  /// Return an allocated copy of the terminal's replay-safe VT continuation.
+  ///
+  /// The returned bytes are allocated with allocator, or the default allocator
+  /// when allocator is NULL. The caller must release them with ghostty_free(),
+  /// passing the same allocator and returned length. An empty continuation is a
+  /// successful zero-length allocation.
+  /// Continuation tracking must have been enabled by setting
+  /// GHOSTTY_TERMINAL_OPT_CONTINUATION_MAX_BYTES to a nonzero value before the
+  /// input that produced the continuation was written.
+  ///
+  /// The caller must serialize this operation with all other access to the same
+  /// terminal.
+  ///
+  /// @param terminal Terminal to read from (must not be NULL)
+  /// @param allocator Allocator for the output, or NULL for the default allocator
+  /// @param[out] out_ptr Allocated continuation bytes (must not be NULL)
+  /// @param[out] out_len Number of continuation bytes (must not be NULL)
+  /// @return GHOSTTY_SUCCESS on success, GHOSTTY_OUT_OF_MEMORY on allocation
+  /// failure, or GHOSTTY_INVALID_VALUE if an argument is invalid,
+  /// tracking is disabled, or the current continuation is unavailable
+  ///
+  /// @ingroup terminal
+  external int ghostty_terminal_continuation_alloc(
+    int terminal,
+    Pointer allocator,
+    Pointer out_ptr,
+    Pointer out_len,
+  );
+
+  /// Copy the terminal's replay-safe VT continuation into a caller buffer.
+  ///
+  /// Pass NULL for buf with buf_len zero to query the required size. A size query
+  /// returns GHOSTTY_OUT_OF_SPACE and stores the required size in out_written,
+  /// including zero when the stream is at ground. If a non-NULL buffer is too
+  /// small, the function has the same result and reports the full required size.
+  /// Continuation tracking must have been enabled by setting
+  /// GHOSTTY_TERMINAL_OPT_CONTINUATION_MAX_BYTES to a nonzero value before the
+  /// input that produced the continuation was written.
+  ///
+  /// The caller must serialize this operation with all other access to the same
+  /// terminal.
+  ///
+  /// @param terminal Terminal to read from (must not be NULL)
+  /// @param buf Destination buffer, or NULL when buf_len is zero
+  /// @param buf_len Destination buffer capacity in bytes
+  /// @param[out] out_written Bytes written, or required size on
+  /// GHOSTTY_OUT_OF_SPACE (must not be NULL)
+  /// @return GHOSTTY_SUCCESS on success, GHOSTTY_OUT_OF_SPACE for a size query or
+  /// insufficient buffer, or GHOSTTY_INVALID_VALUE if an argument is
+  /// invalid, tracking is disabled, or the current continuation is
+  /// unavailable
+  ///
+  /// @ingroup terminal
+  external int ghostty_terminal_continuation_buf(
+    int terminal,
+    Pointer buf,
+    int buf_len,
+    Pointer out_written,
+  );
+
+  /// Write the terminal's replay-safe VT continuation to a callback writer.
+  ///
+  /// The continuation is the exact byte suffix needed to reconstruct unfinished
+  /// VT parser or UTF-8 decoder state in an equivalent terminal. It is empty
+  /// when the stream is at ground. The callback is invoked synchronously and
+  /// may be called more than once. It must not call terminal APIs with the same
+  /// terminal handle.
+  ///
+  /// Continuation tracking must have been enabled by setting
+  /// GHOSTTY_TERMINAL_OPT_CONTINUATION_MAX_BYTES to a nonzero value before the
+  /// input that produced the continuation was written.
+  ///
+  /// The caller must serialize this operation with ghostty_terminal_vt_write()
+  /// and all other access to the same terminal.
+  ///
+  /// @param terminal Terminal to read from (must not be NULL)
+  /// @param writer Destination writer whose write callback must not be NULL
+  /// @return GHOSTTY_SUCCESS on success, GHOSTTY_IO_ERROR if the callback rejects
+  /// a write, GHOSTTY_LIMIT_EXCEEDED if output accounting overflows, or
+  /// GHOSTTY_INVALID_VALUE if an argument is invalid, tracking is
+  /// disabled, or the current continuation is unavailable
+  ///
+  /// @ingroup terminal
+  external int ghostty_terminal_continuation_write(int terminal, int writer);
 
   /// Free a terminal instance.
   ///
@@ -2468,37 +2817,6 @@ extension type GhosttyExports(JSObject _) implements JSObject {
     int point,
     Pointer out_ref,
   );
-
-  /// Get the current value of a terminal mode.
-  ///
-  /// Returns the value of the mode identified by the given mode.
-  ///
-  /// @param terminal The terminal handle (NULL returns GHOSTTY_INVALID_VALUE)
-  /// @param mode The mode identifying the mode to query
-  /// @param[out] out_value On success, set to true if the mode is set, false
-  /// if it is reset
-  /// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if the terminal
-  /// is NULL or the mode does not correspond to a known mode
-  ///
-  /// @ingroup terminal
-  external int ghostty_terminal_mode_get(
-    int terminal,
-    int mode,
-    Pointer out_value,
-  );
-
-  /// Set the value of a terminal mode.
-  ///
-  /// Sets the mode identified by the given mode to the specified value.
-  ///
-  /// @param terminal The terminal handle (NULL returns GHOSTTY_INVALID_VALUE)
-  /// @param mode The mode identifying the mode to set
-  /// @param value true to set the mode, false to reset it
-  /// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if the terminal
-  /// is NULL or the mode does not correspond to a known mode
-  ///
-  /// @ingroup terminal
-  external int ghostty_terminal_mode_set(int terminal, int mode, int value);
 
   /// Create a new terminal instance.
   ///

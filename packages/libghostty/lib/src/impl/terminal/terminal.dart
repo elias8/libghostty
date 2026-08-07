@@ -59,6 +59,9 @@ part 'tracked_grid_ref.dart';
 /// not interrupt terminal processing. After the initiating operation finishes,
 /// the first exception is rethrown with its original stack trace.
 ///
+/// Title query responses are disabled by default. Enable them with
+/// [setTitleReports] in addition to registering [onWritePty].
+///
 /// ## Color Theme
 ///
 /// The terminal maintains two color layers for foreground, background, cursor,
@@ -151,6 +154,40 @@ final class Terminal with Listenable {
   /// ```
   int get compressionActivity {
     return check(bindings.terminalCompressionActivity(_handle));
+  }
+
+  /// Replay-safe bytes for the terminal's unfinished VT or UTF-8 input.
+  ///
+  /// This returns the exact byte suffix needed to reconstruct parser state in
+  /// an equivalent terminal. It does not contain screen, cursor, mode, or
+  /// scrollback state. Returns an empty list when input is complete.
+  ///
+  /// Throws [InvalidValueException] when tracking is disabled or the current
+  /// unfinished input cannot be reconstructed. Throws
+  /// [OutOfMemoryException] if the bytes cannot be allocated. Access this
+  /// property serially with [write] and other terminal operations.
+  Uint8List get continuation {
+    return check(bindings.terminalContinuationGet(_handle));
+  }
+
+  /// Maximum number of unfinished VT or UTF-8 bytes retained for
+  /// [continuation].
+  ///
+  /// A value of zero disables continuation tracking. Tracking must be enabled
+  /// before the input that produces unfinished parser state is written.
+  int get continuationMaxBytes {
+    return check(bindings.terminalGetContinuationMaxBytes(_handle));
+  }
+
+  /// Sets the maximum number of unfinished VT or UTF-8 bytes retained for
+  /// [continuation].
+  ///
+  /// Set to zero to disable continuation tracking. Lowering the limit can
+  /// make the current continuation unavailable. Enabling tracking after
+  /// unfinished input has already been written does not recover it.
+  set continuationMaxBytes(int value) {
+    RangeError.checkNotNegative(value, 'value');
+    checkCode(bindings.terminalSetContinuationMaxBytes(_handle, value));
   }
 
   /// Effective cursor color (OSC override if active, otherwise default).
@@ -334,6 +371,14 @@ final class Terminal with Listenable {
     bindings.terminalSetOnClipboardWrite(_handle, value);
   }
 
+  /// Registers a callback for color scheme queries (CSI ? 996 n).
+  ///
+  /// Return the current [ColorScheme], or null to silently ignore the query.
+  /// Fires synchronously during [write].
+  set onColorScheme(ValueGetter<ColorScheme?>? value) {
+    bindings.terminalSetOnColorScheme(_handle, value);
+  }
+
   /// Registers a callback for OSC 9 and OSC 777 desktop notifications.
   ///
   /// Requests are untrusted terminal content. The callback decides whether and
@@ -341,21 +386,6 @@ final class Terminal with Listenable {
   /// ignore notifications.
   set onDesktopNotification(DesktopNotificationCallback? value) {
     bindings.terminalSetOnDesktopNotification(_handle, value);
-  }
-
-  /// Registers a callback for OSC 9;4 progress reports.
-  ///
-  /// Fires synchronously during [write]. Set to null to ignore reports.
-  set onProgressReport(TerminalProgressCallback? value) {
-    bindings.terminalSetOnProgressReport(_handle, value);
-  }
-
-  /// Registers a callback for color scheme queries (CSI ? 996 n).
-  ///
-  /// Return the current [ColorScheme], or null to silently ignore the query.
-  /// Fires synchronously during [write].
-  set onColorScheme(ValueGetter<ColorScheme?>? value) {
-    bindings.terminalSetOnColorScheme(_handle, value);
   }
 
   /// Registers a callback for device attributes queries (CSI c / > c / = c).
@@ -372,6 +402,13 @@ final class Terminal with Listenable {
   /// to send no response. Fires synchronously during [write].
   set onEnquiry(ValueGetter<Uint8List>? value) {
     bindings.terminalSetOnEnquiry(_handle, value);
+  }
+
+  /// Registers a callback for OSC 9;4 progress reports.
+  ///
+  /// Fires synchronously during [write]. Set to null to ignore reports.
+  set onProgressReport(TerminalProgressCallback? value) {
+    bindings.terminalSetOnProgressReport(_handle, value);
   }
 
   /// Registers a callback for working-directory changes via OSC 7/9/1337.
@@ -402,7 +439,8 @@ final class Terminal with Listenable {
   ///
   /// Invoked when the terminal needs to send data back to the PTY, for
   /// example in response to device status reports or mode queries. The data is
-  /// owned by Dart and remains valid after the callback returns. Fires
+  /// owned by Dart and remains valid after the callback returns. Title query
+  /// responses also use this callback when [setTitleReports] is enabled. Fires
   /// synchronously during [write].
   set onWritePty(ValueSetter<Uint8List>? value) {
     bindings.terminalSetOnWritePty(_handle, value);
@@ -606,6 +644,16 @@ final class Terminal with Listenable {
   /// Enables or disables the given terminal [mode].
   void modeSet(TerminalMode mode, {required bool value}) {
     checkCode(bindings.terminalModeSet(_handle, mode.value, value: value));
+  }
+
+  /// Sets the current and reset-default value of the given terminal [mode].
+  ///
+  /// Some transition or mirrored modes cannot be configured as reset defaults
+  /// and throw [InvalidValueException].
+  void modeSetDefault(TerminalMode mode, {required bool value}) {
+    checkCode(
+      bindings.terminalModeSetDefault(_handle, mode.value, value: value),
+    );
   }
 
   /// Performs a full reset (RIS): resets modes, scrollback, scrolling region,
@@ -815,6 +863,19 @@ final class Terminal with Listenable {
       );
     }
     checkCode(bindings.terminalSetKittyImageMediumTempFile(_handle, directory));
+  }
+
+  /// Enables or disables title reports in response to `CSI 21 t` queries.
+  ///
+  /// When enabled, the response containing the current title is sent through
+  /// [onWritePty]. This is disabled by default because a program can set a
+  /// title, query it, and inject the response into the PTY input stream.
+  /// Enable it only for trusted terminal workloads.
+  ///
+  /// This setting is independent of [onTitleChanged], which observes title
+  /// changes made by OSC 0 or OSC 2.
+  void setTitleReports({required bool enabled}) {
+    checkCode(bindings.terminalSetTitleReport(_handle, enabled: enabled));
   }
 
   /// Feeds raw VT-encoded bytes into the terminal for processing.

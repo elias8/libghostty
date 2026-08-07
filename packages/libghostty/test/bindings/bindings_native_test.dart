@@ -298,6 +298,54 @@ void main() {
           isTrue,
         );
       });
+
+      test('restores a configured mode default after reset', () {
+        checkCode(
+          bindings.terminalModeSetDefault(
+            terminal,
+            const TerminalMode.bracketedPaste().value,
+            value: true,
+          ),
+        );
+        bindings.terminalReset(terminal);
+
+        expect(
+          bindings
+              .terminalModeGet(
+                terminal,
+                const TerminalMode.bracketedPaste().value,
+              )
+              .$2,
+          isTrue,
+        );
+      });
+    });
+
+    group('terminalSetTitleReport', () {
+      test('enables title reports', () {
+        final result = bindings.terminalSetTitleReport(terminal, enabled: true);
+
+        expect(result, Result.success);
+      });
+    });
+
+    group('terminalContinuationGet', () {
+      test('returns unfinished terminal input', () {
+        checkCode(bindings.terminalSetContinuationMaxBytes(terminal, 128));
+        bindings.terminalVtWrite(terminal, Uint8List.fromList([0x1b, 0x5d]));
+
+        final continuation = check(bindings.terminalContinuationGet(terminal));
+
+        expect(continuation, isNotEmpty);
+      });
+
+      test('reports the configured continuation limit', () {
+        checkCode(bindings.terminalSetContinuationMaxBytes(terminal, 128));
+
+        final limit = check(bindings.terminalGetContinuationMaxBytes(terminal));
+
+        expect(limit, 128);
+      });
     });
 
     group('terminalCompressionActivity', () {

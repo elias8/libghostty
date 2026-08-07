@@ -6,7 +6,13 @@ import 'package:ffi/ffi.dart';
 
 import '../../ffi/libghostty.g.dart'
     as native
-    show ClipboardWrite, MouseEncoderSize, SgrAttribute, String, Style;
+    show
+        ClipboardWrite,
+        MouseEncoderSize,
+        SgrAttribute,
+        String,
+        Style,
+        TerminalModeConfig;
 import '../../ffi/libghostty.g.dart'
     hide
         ClipboardContent,
@@ -172,6 +178,7 @@ class NativeBindings implements GhosttyBindings {
   final _outU64 = calloc<Uint64>();
   final _outI32 = calloc<Int32>();
   final _outBool = calloc<Bool>();
+  final _outModeConfig = calloc<native.TerminalModeConfig>();
   final _outStyle = calloc<native.Style>();
   final _outScrollbar = calloc<TerminalScrollbar>();
   final _outColors = calloc<RenderStateColors>();
@@ -1132,17 +1139,42 @@ class NativeBindings implements GhosttyBindings {
 
   @override
   CResult<bool> terminalModeGet(int handle, int mode) {
-    final result = ghostty_terminal_mode_get(
+    _outModeConfig.ref.mode = mode;
+    final result = ghostty_terminal_get(
       Pointer.fromAddress(handle),
-      mode,
-      _outBool,
+      .mode,
+      _outModeConfig.cast(),
     );
-    return (result, _outBool.value);
+    return (result, _outModeConfig.ref.value);
   }
 
   @override
   Result terminalModeSet(int handle, int mode, {required bool value}) {
-    return ghostty_terminal_mode_set(Pointer.fromAddress(handle), mode, value);
+    _outModeConfig.ref
+      ..mode = mode
+      ..value = value;
+    return ghostty_terminal_set(
+      Pointer.fromAddress(handle),
+      .mode,
+      _outModeConfig.cast(),
+    );
+  }
+
+  @override
+  Result terminalModeSetDefault(int handle, int mode, {required bool value}) {
+    _outModeConfig.ref
+      ..mode = mode
+      ..value = value;
+    return ghostty_terminal_set(
+      Pointer.fromAddress(handle),
+      .modeDefault,
+      _outModeConfig.cast(),
+    );
+  }
+
+  @override
+  Result terminalSetTitleReport(int handle, {required bool enabled}) {
+    return _terminalSetBool(handle, .titleReport, enabled);
   }
 
   @override
@@ -1209,6 +1241,43 @@ class NativeBindings implements GhosttyBindings {
   @override
   CResult<bool> terminalGetVtProcessingError(int handle) {
     return _terminalGetBool(handle, .vtProcessingError);
+  }
+
+  @override
+  CResult<Uint8List> terminalContinuationGet(int handle) {
+    return using((arena) {
+      final outWritten = arena<Size>();
+      var result = ghostty_terminal_continuation_buf(
+        Pointer.fromAddress(handle),
+        nullptr,
+        0,
+        outWritten,
+      );
+      if (result != .outOfSpace) return (result, Uint8List(0));
+
+      final capacity = outWritten.value;
+      if (capacity == 0) return (Result.success, Uint8List(0));
+      final buffer = arena<Uint8>(capacity);
+      result = ghostty_terminal_continuation_buf(
+        Pointer.fromAddress(handle),
+        buffer,
+        capacity,
+        outWritten,
+      );
+      if (result != .success) return (result, Uint8List(0));
+
+      return (result, Uint8List.fromList(buffer.asTypedList(outWritten.value)));
+    });
+  }
+
+  @override
+  CResult<int> terminalGetContinuationMaxBytes(int handle) {
+    return _terminalGetSize(handle, .continuationMaxBytes);
+  }
+
+  @override
+  Result terminalSetContinuationMaxBytes(int handle, int? bytes) {
+    return _terminalSetSize(handle, .continuationMaxBytes, bytes);
   }
 
   @override

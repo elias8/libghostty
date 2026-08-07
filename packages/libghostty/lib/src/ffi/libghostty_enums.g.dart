@@ -913,7 +913,8 @@ enum KittyGraphicsImageData {
   compression(6),
 
   /// Borrowed pointer to the raw pixel data. Valid as long as the
-  /// underlying terminal is not mutated.
+  /// underlying terminal is not mutated. Returns GHOSTTY_NO_VALUE when
+  /// the image metadata is resident but its pixel payload is pending.
   ///
   /// The data is always fully decoded, uncompressed pixels in the
   /// format reported by GHOSTTY_KITTY_IMAGE_DATA_FORMAT: zlib payloads
@@ -925,7 +926,9 @@ enum KittyGraphicsImageData {
   dataPtr(7),
 
   /// Length of the raw pixel data in bytes. Always equal to
-  /// width * height * bytes-per-pixel for the reported format.
+  /// width * height * bytes-per-pixel for the reported format. For a
+  /// pending image, this is the expected length reserved against the
+  /// storage limit even though DATA_PTR is not available yet.
   ///
   /// Output type: size_t *
   dataLen(8),
@@ -940,7 +943,10 @@ enum KittyGraphicsImageData {
   /// Stamps are unique and monotonically increasing process-wide and
   /// are drawn from the same sequence as
   /// GHOSTTY_KITTY_GRAPHICS_DATA_GENERATION. Never zero for a stored
-  /// image, so zero can be used as an "empty" sentinel by callers.
+  /// image, so zero can be used as an "empty" sentinel by callers. Pending
+  /// payload completion preserves this value to retain image age; consumers
+  /// detect that completion through GHOSTTY_KITTY_GRAPHICS_DATA_GENERATION
+  /// and retry DATA_PTR.
   ///
   /// Output type: uint64_t *
   generation(9);
@@ -1823,7 +1829,13 @@ enum Result {
   outOfSpace(-3),
 
   /// The requested value has no value
-  noValue(-4);
+  noValue(-4),
+
+  /// Operation failed while reading from or writing to external I/O
+  ioError(-5),
+
+  /// Operation failed because encoded input exceeded a configured limit
+  limitExceeded(-6);
 
   final int value;
   const Result(this.value);
@@ -1834,6 +1846,8 @@ enum Result {
     -2 => invalidValue,
     -3 => outOfSpace,
     -4 => noValue,
+    -5 => ioError,
+    -6 => limitExceeded,
     _ => throw ArgumentError('Unknown value for Result: $value'),
   };
 }
@@ -2357,6 +2371,114 @@ enum SizeReportStyle {
   };
 }
 
+/// Queryable snapshot decoder data.
+///
+/// Each variant documents the output pointer type expected by
+/// ghostty_snapshot_decoder_get().
+enum SnapshotDecoderData {
+  /// Invalid data type. Never results in data extraction.
+  invalid(0),
+
+  /// Current maximum accepted continuation size.
+  ///
+  /// This value is available in every non-failed decoder state.
+  ///
+  /// Output type: size_t *
+  maxContinuationBytes(1),
+
+  /// Number of snapshot source bytes consumed so far.
+  ///
+  /// At FINISH this identifies the first byte after the snapshot. Trailing
+  /// bytes are not consumed. This value is unavailable after a decoding error,
+  /// because the decoder can no longer guarantee its source position.
+  ///
+  /// Output type: size_t *
+  sourceOffset(2),
+
+  /// Advisory complete logical history extent for the primary screen.
+  ///
+  /// The value counts rows before the active area, including any resident
+  /// overlap carried before READY. It becomes available after READY validates.
+  ///
+  /// Output type: uint64_t *
+  historyRowsPrimary(3),
+
+  /// Advisory complete logical history extent for the alternate screen.
+  ///
+  /// The value has the same semantics and lifetime as
+  /// GHOSTTY_SNAPSHOT_DECODER_DATA_HISTORY_ROWS_PRIMARY. Querying it returns
+  /// GHOSTTY_NO_VALUE when the snapshot does not declare an alternate screen.
+  ///
+  /// Output type: uint64_t *
+  historyRowsAlternate(4),
+
+  /// Screen associated with the most recently decoded history page.
+  ///
+  /// This value is available only after ghostty_snapshot_decoder_next()
+  /// returns GHOSTTY_SUCCESS. A later call to next replaces it or clears it
+  /// when FINISH is reached or an error occurs.
+  ///
+  /// Output type: TerminalScreen *
+  progressScreen(5),
+
+  /// Rows prepended by the most recently decoded history page.
+  ///
+  /// Zero means the page was consumed and validated but could not be
+  /// applied to the live terminal.
+  ///
+  /// Output type: size_t *
+  progressRows(6),
+
+  /// Page records remaining in the same screen's HISTORY sequence.
+  ///
+  /// This is not a count of all pages remaining in the snapshot.
+  ///
+  /// Output type: uint32_t *
+  progressRemaining(7);
+
+  final int value;
+  const SnapshotDecoderData(this.value);
+
+  static SnapshotDecoderData fromValue(int value) => switch (value) {
+    0 => invalid,
+    1 => maxContinuationBytes,
+    2 => sourceOffset,
+    3 => historyRowsPrimary,
+    4 => historyRowsAlternate,
+    5 => progressScreen,
+    6 => progressRows,
+    7 => progressRemaining,
+    _ => throw ArgumentError('Unknown value for SnapshotDecoderData: $value'),
+  };
+}
+
+/// Configurable snapshot decoder options.
+///
+/// Options may only be changed before decoding starts. Calling
+/// ghostty_snapshot_decoder_set() after ghostty_snapshot_decoder_ready() or
+/// ghostty_snapshot_decoder_decode() returns GHOSTTY_INVALID_VALUE.
+enum SnapshotDecoderOption {
+  /// Largest non-ground continuation the decoder will accept.
+  ///
+  /// A value of zero accepts only snapshots whose VT parser is in the ground
+  /// state. The decoder default matches the largest built-in APC protocol
+  /// buffer limit, currently 65 MiB.
+  ///
+  /// This is an input validation limit only. It does not configure continuation
+  /// tracking on a terminal returned by the decoder.
+  ///
+  /// Input type: size_t *
+  continuationBytes(0);
+
+  final int value;
+  const SnapshotDecoderOption(this.value);
+
+  static SnapshotDecoderOption fromValue(int value) => switch (value) {
+    0 => continuationBytes,
+    _ => throw ArgumentError('Unknown value for SnapshotDecoderOption: $value'),
+  };
+}
+
 /// Style color tags.
 ///
 /// These values identify the type of color in a style color.
@@ -2792,7 +2914,25 @@ enum TerminalData {
   /// configured line limit is unlimited.
   ///
   /// Output type: size_t *
-  scrollbackMaxLines(35);
+  scrollbackMaxLines(35),
+
+  /// The configured maximum retained VT continuation size in bytes.
+  ///
+  /// A value of zero means continuation tracking is disabled. This reports the
+  /// configured limit even when a current unfinished continuation is
+  /// temporarily unavailable.
+  ///
+  /// Output type: size_t *
+  continuationMaxBytes(36),
+
+  /// Get the current value of a terminal mode.
+  ///
+  /// The caller must initialize the `mode` field. On success, the `value` field
+  /// is updated with the current value. A NULL pointer or unknown mode returns
+  /// GHOSTTY_INVALID_VALUE.
+  ///
+  /// Input/output type: TerminalModeConfig *
+  mode(37);
 
   final int value;
   const TerminalData(this.value);
@@ -2834,6 +2974,8 @@ enum TerminalData {
     33 => vtProcessingError,
     34 => scrollbackMaxBytes,
     35 => scrollbackMaxLines,
+    36 => continuationMaxBytes,
+    37 => mode,
     _ => throw ArgumentError('Unknown value for TerminalData: $value'),
   };
 }
@@ -3106,7 +3248,56 @@ enum TerminalOption {
   /// Set to NULL to ignore progress reports.
   ///
   /// Input type: TerminalProgressReportFn
-  progressReport(30);
+  progressReport(30),
+
+  /// Set the maximum number of replay-safe VT continuation bytes retained.
+  ///
+  /// Continuation bytes reconstruct an escape sequence or UTF-8 codepoint
+  /// which was unfinished at the end of the most recent
+  /// ghostty_terminal_vt_write() call. They are used automatically by terminal
+  /// snapshots and may also be exported directly with the continuation APIs.
+  ///
+  /// Tracking is disabled by default. A nonzero value enables tracking and
+  /// sets its byte limit. Passing NULL or a pointer to zero disables tracking.
+  /// Lowering the limit below an already-retained
+  /// continuation, or enabling tracking while the parser is already
+  /// unfinished, makes the current continuation unavailable because earlier
+  /// bytes cannot be reconstructed. Tracking recovers automatically after a
+  /// later write reaches the ground state or contains a fresh replay start.
+  ///
+  /// Input type: size_t*
+  continuationMaxBytes(31),
+
+  /// Enable window title reports in response to CSI 21 t.
+  ///
+  /// This is disabled by default because a running program can set a title and
+  /// query it back into the pty input stream, potentially injecting commands
+  /// that execute after user interaction. Passing NULL or a pointer to false
+  /// disables title reporting.
+  ///
+  /// Input type: bool*
+  titleReport(32),
+
+  /// Set the reset default for a terminal mode.
+  ///
+  /// This unconditionally updates both the current value and the value restored
+  /// by a full terminal reset (RIS).
+  ///
+  /// Some recognized modes represent transitions or mirror additional terminal
+  /// state and cannot safely be configured as reset defaults. Those modes return
+  /// GHOSTTY_INVALID_VALUE. A NULL value pointer also returns
+  /// GHOSTTY_INVALID_VALUE.
+  ///
+  /// Input type: TerminalModeConfig*
+  modeDefault(33),
+
+  /// Set the current value of a terminal mode.
+  ///
+  /// This does not change the value restored by a full terminal reset (RIS).
+  /// A NULL value pointer or unknown mode returns GHOSTTY_INVALID_VALUE.
+  ///
+  /// Input type: TerminalModeConfig*
+  mode(34);
 
   final int value;
   const TerminalOption(this.value);
@@ -3143,6 +3334,10 @@ enum TerminalOption {
     28 => scrollbackMaxLines,
     29 => desktopNotification,
     30 => progressReport,
+    31 => continuationMaxBytes,
+    32 => titleReport,
+    33 => modeDefault,
+    34 => mode,
     _ => throw ArgumentError('Unknown value for TerminalOption: $value'),
   };
 }

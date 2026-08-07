@@ -12,7 +12,9 @@ T check<T>(CResult<T> result) {
 /// Throws [OutOfMemoryException] for [Result.outOfMemory],
 /// [InvalidValueException] for [Result.invalidValue],
 /// [OutOfSpaceException] for [Result.outOfSpace], and
-/// [NoValueException] for [Result.noValue].
+/// [NoValueException] for [Result.noValue], [IoException] for
+/// [Result.ioError], and [LimitExceededException] for
+/// [Result.limitExceeded].
 void checkCode(Result code) {
   switch (code) {
     case Result.outOfMemory:
@@ -23,6 +25,10 @@ void checkCode(Result code) {
       throw const OutOfSpaceException();
     case Result.noValue:
       throw const NoValueException();
+    case Result.ioError:
+      throw const IoException();
+    case Result.limitExceeded:
+      throw const LimitExceededException();
     case Result.success:
       break;
   }
@@ -70,4 +76,16 @@ class OutOfMemoryException extends LibGhosttyException {
 /// indicates a bug in the libghostty binding layer.
 class OutOfSpaceException extends LibGhosttyException {
   const OutOfSpaceException([super.message = 'Output buffer too small.']);
+}
+
+/// An external I/O operation required by the native API failed.
+class IoException extends LibGhosttyException {
+  const IoException([super.message = 'An external I/O operation failed.']);
+}
+
+/// A configured output limit prevented the native operation from completing.
+class LimitExceededException extends LibGhosttyException {
+  const LimitExceededException([
+    super.message = 'An operation exceeded a configured limit.',
+  ]);
 }

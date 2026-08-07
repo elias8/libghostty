@@ -3671,6 +3671,442 @@ Result ghostty_size_report_encode(
   );
 }
 
+/// Decode and validate one complete snapshot.
+///
+/// This is the one-shot form of READY followed by all history pages through
+/// FINISH. It may only be called before decoding starts. Bytes following FINISH
+/// are left unread. On success terminal receives a caller-owned terminal with
+/// its persistent VT stream restored. Continuation tracking on the returned
+/// terminal is disabled and GHOSTTY_TERMINAL_DATA_CONTINUATION_MAX_BYTES
+/// returns zero. terminal is set to NULL on every error.
+/// A decoding, I/O, or allocation error after input consumption begins poisons
+/// the decoder, after which it must be freed. An invalid argument or
+/// lifecycle error detected before the operation consumes input does not
+/// poison it.
+///
+/// @param decoder Decoder handle (must not be NULL)
+/// @param[out] terminal Pointer to receive the terminal (must not be NULL)
+/// @return GHOSTTY_SUCCESS on success, or an error code on failure
+///
+/// @ingroup snapshot
+@ffi.Native<ffi.Int Function(SnapshotDecoder, ffi.Pointer<Terminal>)>(
+  symbol: 'ghostty_snapshot_decoder_decode',
+  isLeaf: true,
+)
+external int _ghostty_snapshot_decoder_decode(
+  SnapshotDecoder decoder,
+  ffi.Pointer<Terminal> terminal,
+);
+
+Result ghostty_snapshot_decoder_decode(
+  SnapshotDecoder decoder,
+  ffi.Pointer<Terminal> terminal,
+) {
+  return Result.fromValue(_ghostty_snapshot_decoder_decode(decoder, terminal));
+}
+
+/// Free a snapshot decoder.
+///
+/// This does not release the caller's ownership of a terminal returned by
+/// ready or decode. Abandoning an incremental decode leaves that terminal
+/// usable with whatever history had already been restored.
+///
+/// @param decoder Decoder to free (may be NULL)
+///
+/// @ingroup snapshot
+@ffi.Native<ffi.Void Function(SnapshotDecoder)>(isLeaf: true)
+external void ghostty_snapshot_decoder_free(SnapshotDecoder decoder);
+
+/// Get typed data from a snapshot decoder.
+///
+/// The output pointer must have the type documented by data. A phase-dependent
+/// value that is not currently available returns GHOSTTY_NO_VALUE.
+///
+/// @param decoder Decoder handle (must not be NULL)
+/// @param data Data kind to query
+/// @param[out] out Pointer to receive the value (must not be NULL)
+/// @return GHOSTTY_SUCCESS on success, GHOSTTY_NO_VALUE if the requested data
+/// is unavailable, or another error code on failure
+///
+/// @ingroup snapshot
+@ffi.Native<
+  ffi.Int Function(SnapshotDecoder, ffi.UnsignedInt, ffi.Pointer<ffi.Void>)
+>(symbol: 'ghostty_snapshot_decoder_get', isLeaf: true)
+external int _ghostty_snapshot_decoder_get(
+  SnapshotDecoder decoder,
+  int data,
+  ffi.Pointer<ffi.Void> out,
+);
+
+Result ghostty_snapshot_decoder_get(
+  SnapshotDecoder decoder,
+  SnapshotDecoderData data,
+  ffi.Pointer<ffi.Void> out,
+) {
+  return Result.fromValue(
+    _ghostty_snapshot_decoder_get(decoder, data.value, out),
+  );
+}
+
+/// Get multiple snapshot decoder data fields in a single call.
+///
+/// Each keys element selects a data kind and the corresponding values element
+/// points to storage of the documented output type. Processing stops at the
+/// first error. On success out_written is set to count; on error it is set to
+/// the number of values written before the failing key. Invalid array arguments
+/// report zero values written.
+///
+/// @param decoder Decoder handle (must not be NULL)
+/// @param count Number of key/value pairs
+/// @param keys Array of data kinds to query
+/// @param values Array of output pointers corresponding to keys
+/// @param[out] out_written Number of successfully written values (may be NULL)
+/// @return GHOSTTY_SUCCESS if every query succeeds, or the first error
+///
+/// @ingroup snapshot
+@ffi.Native<
+  ffi.Int Function(
+    SnapshotDecoder,
+    ffi.Size,
+    ffi.Pointer<ffi.UnsignedInt>,
+    ffi.Pointer<ffi.Pointer<ffi.Void>>,
+    ffi.Pointer<ffi.Size>,
+  )
+>(symbol: 'ghostty_snapshot_decoder_get_multi', isLeaf: true)
+external int _ghostty_snapshot_decoder_get_multi(
+  SnapshotDecoder decoder,
+  int count,
+  ffi.Pointer<ffi.UnsignedInt> keys,
+  ffi.Pointer<ffi.Pointer<ffi.Void>> values,
+  ffi.Pointer<ffi.Size> out_written,
+);
+
+Result ghostty_snapshot_decoder_get_multi(
+  SnapshotDecoder decoder,
+  int count,
+  ffi.Pointer<ffi.UnsignedInt> keys,
+  ffi.Pointer<ffi.Pointer<ffi.Void>> values,
+  ffi.Pointer<ffi.Size> out_written,
+) {
+  return Result.fromValue(
+    _ghostty_snapshot_decoder_get_multi(
+      decoder,
+      count,
+      keys,
+      values,
+      out_written,
+    ),
+  );
+}
+
+/// Create a snapshot decoder that reads from a caller-provided reader.
+///
+/// The decoder stores a copy of reader. Its read callback must not be NULL, and
+/// both the callback and its caller-owned context must remain valid until
+/// FINISH is reached or the decoder is freed. Reads are synchronous and occur
+/// only during ready, next, or decode calls. A zero-byte successful read is
+/// permanent end-of-file, not temporary starvation; nonblocking sources must
+/// wait outside the decoder or block in their callback. The read callback must
+/// not call APIs, including ghostty_snapshot_decoder_free(), on the decoder
+/// that owns it. Returning false reports GHOSTTY_IO_ERROR; returning true with
+/// zero bytes before a required marker reports truncated snapshot data as
+/// GHOSTTY_INVALID_VALUE.
+///
+/// @param allocator Allocator for decoder and decoded terminal state, or NULL
+/// for the default allocator
+/// @param decoder Pointer to receive the decoder handle (must not be NULL)
+/// @param reader Snapshot source reader
+/// @return GHOSTTY_SUCCESS on success, or an error code on failure
+///
+/// @ingroup snapshot
+@ffi.Native<
+  ffi.Int Function(ffi.Pointer<Allocator>, ffi.Pointer<SnapshotDecoder>, Reader)
+>(symbol: 'ghostty_snapshot_decoder_new', isLeaf: true)
+external int _ghostty_snapshot_decoder_new(
+  ffi.Pointer<Allocator> allocator,
+  ffi.Pointer<SnapshotDecoder> decoder,
+  Reader reader,
+);
+
+Result ghostty_snapshot_decoder_new(
+  ffi.Pointer<Allocator> allocator,
+  ffi.Pointer<SnapshotDecoder> decoder,
+  Reader reader,
+) {
+  return Result.fromValue(
+    _ghostty_snapshot_decoder_new(allocator, decoder, reader),
+  );
+}
+
+/// Create a snapshot decoder over a borrowed byte buffer.
+///
+/// The bytes are not copied. ptr must remain valid and immutable until FINISH
+/// is reached or the decoder is freed. Bytes after FINISH are not consumed;
+/// query GHOSTTY_SNAPSHOT_DECODER_DATA_SOURCE_OFFSET to locate them.
+///
+/// @param allocator Allocator for decoder and decoded terminal state, or NULL
+/// for the default allocator
+/// @param decoder Pointer to receive the decoder handle (must not be NULL)
+/// @param ptr Snapshot source bytes
+/// @param len Number of source bytes
+/// @return GHOSTTY_SUCCESS on success, or an error code on failure
+///
+/// @ingroup snapshot
+@ffi.Native<
+  ffi.Int Function(
+    ffi.Pointer<Allocator>,
+    ffi.Pointer<SnapshotDecoder>,
+    ffi.Pointer<ffi.Uint8>,
+    ffi.Size,
+  )
+>(symbol: 'ghostty_snapshot_decoder_new_buf', isLeaf: true)
+external int _ghostty_snapshot_decoder_new_buf(
+  ffi.Pointer<Allocator> allocator,
+  ffi.Pointer<SnapshotDecoder> decoder,
+  ffi.Pointer<ffi.Uint8> ptr,
+  int len,
+);
+
+Result ghostty_snapshot_decoder_new_buf(
+  ffi.Pointer<Allocator> allocator,
+  ffi.Pointer<SnapshotDecoder> decoder,
+  ffi.Pointer<ffi.Uint8> ptr,
+  int len,
+) {
+  return Result.fromValue(
+    _ghostty_snapshot_decoder_new_buf(allocator, decoder, ptr, len),
+  );
+}
+
+/// Decode one history page into the terminal returned by READY.
+///
+/// Each GHOSTTY_SUCCESS consumes and validates one PAGE record. Query the
+/// GHOSTTY_SNAPSHOT_DECODER_DATA_PROGRESS_* values before calling next again.
+/// GHOSTTY_NO_VALUE means FINISH was validated; repeated calls after FINISH
+/// also return GHOSTTY_NO_VALUE.
+///
+/// The terminal may be rendered, resized, and fed live PTY input between calls.
+/// If a history page can no longer be applied safely, it is still consumed and
+/// validated and progress reports zero rows. The decoder applies history
+/// to the caller-owned terminal produced by its READY operation.
+///
+/// A decoding error invalidates the decoder's source position. The terminal
+/// remains caller-owned and usable with its already-restored history, but only
+/// ghostty_snapshot_decoder_free() may subsequently be called on the decoder.
+///
+/// @param decoder Decoder handle (must not be NULL)
+/// @return GHOSTTY_SUCCESS for one page, GHOSTTY_NO_VALUE after FINISH, or an
+/// error code on failure
+///
+/// @ingroup snapshot
+@ffi.Native<ffi.Int Function(SnapshotDecoder)>(
+  symbol: 'ghostty_snapshot_decoder_next',
+  isLeaf: true,
+)
+external int _ghostty_snapshot_decoder_next(SnapshotDecoder decoder);
+
+Result ghostty_snapshot_decoder_next(SnapshotDecoder decoder) {
+  return Result.fromValue(_ghostty_snapshot_decoder_next(decoder));
+}
+
+/// Decode and validate the renderable snapshot prefix through READY.
+///
+/// On success, terminal receives a caller-owned terminal with its persistent
+/// VT stream already restored from the snapshot continuation. The terminal is
+/// immediately usable for rendering and live input. Older scrollback remains
+/// to be restored with ghostty_snapshot_decoder_next().
+///
+/// The restored parser state may be unfinished, but terminal continuation
+/// tracking is disabled; GHOSTTY_TERMINAL_DATA_CONTINUATION_MAX_BYTES returns
+/// zero. The decoder's continuation option is an input limit, not terminal
+/// runtime policy.
+///
+/// The caller must keep the returned terminal alive until FINISH validates or
+/// the decoder is freed. The decoder borrows this terminal handle while it
+/// restores history; ghostty_snapshot_decoder_next() uses it automatically.
+///
+/// This operation may only be called once and only before decoding starts.
+/// terminal is set to NULL on every error. A decoding, I/O, or allocation
+/// error after input consumption begins poisons the decoder, after which it
+/// must be freed. An invalid argument or lifecycle error detected before the
+/// operation consumes input does not poison it.
+///
+/// @param decoder Decoder handle (must not be NULL)
+/// @param[out] terminal Pointer to receive the terminal (must not be NULL)
+/// @return GHOSTTY_SUCCESS on success, or an error code on failure
+///
+/// @ingroup snapshot
+@ffi.Native<ffi.Int Function(SnapshotDecoder, ffi.Pointer<Terminal>)>(
+  symbol: 'ghostty_snapshot_decoder_ready',
+  isLeaf: true,
+)
+external int _ghostty_snapshot_decoder_ready(
+  SnapshotDecoder decoder,
+  ffi.Pointer<Terminal> terminal,
+);
+
+Result ghostty_snapshot_decoder_ready(
+  SnapshotDecoder decoder,
+  ffi.Pointer<Terminal> terminal,
+) {
+  return Result.fromValue(_ghostty_snapshot_decoder_ready(decoder, terminal));
+}
+
+/// Set a snapshot decoder option.
+///
+/// The value pointer must have the type documented by option. Options may only
+/// be changed before decoding starts.
+///
+/// @param decoder Decoder handle (must not be NULL)
+/// @param option Option to change
+/// @param value Pointer to the option value (must not be NULL)
+/// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if decoding has
+/// started or an argument is invalid, or another error code on failure
+///
+/// @ingroup snapshot
+@ffi.Native<
+  ffi.Int Function(SnapshotDecoder, ffi.UnsignedInt, ffi.Pointer<ffi.Void>)
+>(symbol: 'ghostty_snapshot_decoder_set', isLeaf: true)
+external int _ghostty_snapshot_decoder_set(
+  SnapshotDecoder decoder,
+  int option,
+  ffi.Pointer<ffi.Void> value,
+);
+
+Result ghostty_snapshot_decoder_set(
+  SnapshotDecoder decoder,
+  SnapshotDecoderOption option,
+  ffi.Pointer<ffi.Void> value,
+) {
+  return Result.fromValue(
+    _ghostty_snapshot_decoder_set(decoder, option.value, value),
+  );
+}
+
+/// Encode a complete terminal snapshot to a writer.
+///
+/// The terminal's persistent VT stream supplies the continuation bytes needed
+/// to reconstruct unfinished parser state. The caller must prevent concurrent
+/// writes or other terminal mutation for the duration of this call. The writer
+/// callback must not call terminal APIs with the same terminal handle.
+/// A terminal can be encoded with tracking disabled when its VT parser and
+/// UTF-8 decoder are both at ground. If either is unfinished, tracking must
+/// have been enabled before the input that produced that state was written;
+/// otherwise this returns GHOSTTY_INVALID_VALUE.
+///
+/// Encoding begins at the writer's current position. If an error occurs, the
+/// writer may contain a partial snapshot without a valid FINISH marker.
+/// Calls to the writer are synchronous; this function does not flush or make
+/// the caller's destination durable.
+///
+/// @param terminal Terminal to encode (must not be NULL)
+/// @param writer Destination writer whose write callback must not be NULL
+/// @return GHOSTTY_SUCCESS on success, GHOSTTY_IO_ERROR if the writer rejects
+/// output, GHOSTTY_LIMIT_EXCEEDED if output accounting overflows, or
+/// another error code on failure
+///
+/// @ingroup snapshot
+@ffi.Native<ffi.Int Function(Terminal, Writer)>(
+  symbol: 'ghostty_snapshot_encode',
+  isLeaf: true,
+)
+external int _ghostty_snapshot_encode(Terminal terminal, Writer writer);
+
+Result ghostty_snapshot_encode(Terminal terminal, Writer writer) {
+  return Result.fromValue(_ghostty_snapshot_encode(terminal, writer));
+}
+
+/// Encode a complete terminal snapshot to an allocated buffer.
+///
+/// The returned buffer is allocated with allocator, or the default allocator
+/// when allocator is NULL. The caller must release it with ghostty_free(),
+/// passing the same allocator used here.
+///
+/// A terminal can be encoded with tracking disabled when its VT parser and
+/// UTF-8 decoder are both at ground. If either is unfinished, tracking must
+/// have been enabled before the input that produced that state was written;
+/// otherwise this returns GHOSTTY_INVALID_VALUE.
+///
+/// @param terminal Terminal to encode (must not be NULL)
+/// @param allocator Allocator for the output, or NULL for the default allocator
+/// @param[out] out_ptr Allocated snapshot bytes (must not be NULL)
+/// @param[out] out_len Number of allocated snapshot bytes (must not be NULL)
+/// @return GHOSTTY_SUCCESS on success, or an error code on failure
+///
+/// @ingroup snapshot
+@ffi.Native<
+  ffi.Int Function(
+    Terminal,
+    ffi.Pointer<Allocator>,
+    ffi.Pointer<ffi.Pointer<ffi.Uint8>>,
+    ffi.Pointer<ffi.Size>,
+  )
+>(symbol: 'ghostty_snapshot_encode_alloc', isLeaf: true)
+external int _ghostty_snapshot_encode_alloc(
+  Terminal terminal,
+  ffi.Pointer<Allocator> allocator,
+  ffi.Pointer<ffi.Pointer<ffi.Uint8>> out_ptr,
+  ffi.Pointer<ffi.Size> out_len,
+);
+
+Result ghostty_snapshot_encode_alloc(
+  Terminal terminal,
+  ffi.Pointer<Allocator> allocator,
+  ffi.Pointer<ffi.Pointer<ffi.Uint8>> out_ptr,
+  ffi.Pointer<ffi.Size> out_len,
+) {
+  return Result.fromValue(
+    _ghostty_snapshot_encode_alloc(terminal, allocator, out_ptr, out_len),
+  );
+}
+
+/// Encode a complete terminal snapshot to a caller-provided buffer.
+///
+/// Pass NULL for buf with buf_len zero to query the required size. If the
+/// buffer is too small, this returns GHOSTTY_OUT_OF_SPACE and stores the
+/// required capacity in out_written. A non-NULL undersized buffer may contain
+/// a partial snapshot prefix. On success, out_written receives the number of
+/// bytes encoded.
+///
+/// A terminal can be encoded with tracking disabled when its VT parser and
+/// UTF-8 decoder are both at ground. If either is unfinished, tracking must
+/// have been enabled before the input that produced that state was written;
+/// otherwise this returns GHOSTTY_INVALID_VALUE.
+///
+/// @param terminal Terminal to encode (must not be NULL)
+/// @param buf Destination buffer, or NULL when buf_len is zero
+/// @param buf_len Destination buffer capacity in bytes
+/// @param[out] out_written Bytes written, or required capacity on
+/// GHOSTTY_OUT_OF_SPACE (must not be NULL)
+/// @return GHOSTTY_SUCCESS on success, or an error code on failure
+///
+/// @ingroup snapshot
+@ffi.Native<
+  ffi.Int Function(
+    Terminal,
+    ffi.Pointer<ffi.Uint8>,
+    ffi.Size,
+    ffi.Pointer<ffi.Size>,
+  )
+>(symbol: 'ghostty_snapshot_encode_buf', isLeaf: true)
+external int _ghostty_snapshot_encode_buf(
+  Terminal terminal,
+  ffi.Pointer<ffi.Uint8> buf,
+  int buf_len,
+  ffi.Pointer<ffi.Size> out_written,
+);
+
+Result ghostty_snapshot_encode_buf(
+  Terminal terminal,
+  ffi.Pointer<ffi.Uint8> buf,
+  int buf_len,
+  ffi.Pointer<ffi.Size> out_written,
+) {
+  return Result.fromValue(
+    _ghostty_snapshot_encode_buf(terminal, buf, buf_len, out_written),
+  );
+}
+
 /// Get the default style.
 ///
 /// Initializes the style to the default values (no colors, no flags).
@@ -3833,6 +4269,142 @@ Result ghostty_terminal_compression_activity(
 ) {
   return Result.fromValue(
     _ghostty_terminal_compression_activity(terminal, out_activity),
+  );
+}
+
+/// Return an allocated copy of the terminal's replay-safe VT continuation.
+///
+/// The returned bytes are allocated with allocator, or the default allocator
+/// when allocator is NULL. The caller must release them with ghostty_free(),
+/// passing the same allocator and returned length. An empty continuation is a
+/// successful zero-length allocation.
+/// Continuation tracking must have been enabled by setting
+/// GHOSTTY_TERMINAL_OPT_CONTINUATION_MAX_BYTES to a nonzero value before the
+/// input that produced the continuation was written.
+///
+/// The caller must serialize this operation with all other access to the same
+/// terminal.
+///
+/// @param terminal Terminal to read from (must not be NULL)
+/// @param allocator Allocator for the output, or NULL for the default allocator
+/// @param[out] out_ptr Allocated continuation bytes (must not be NULL)
+/// @param[out] out_len Number of continuation bytes (must not be NULL)
+/// @return GHOSTTY_SUCCESS on success, GHOSTTY_OUT_OF_MEMORY on allocation
+/// failure, or GHOSTTY_INVALID_VALUE if an argument is invalid,
+/// tracking is disabled, or the current continuation is unavailable
+///
+/// @ingroup terminal
+@ffi.Native<
+  ffi.Int Function(
+    Terminal,
+    ffi.Pointer<Allocator>,
+    ffi.Pointer<ffi.Pointer<ffi.Uint8>>,
+    ffi.Pointer<ffi.Size>,
+  )
+>(symbol: 'ghostty_terminal_continuation_alloc', isLeaf: true)
+external int _ghostty_terminal_continuation_alloc(
+  Terminal terminal,
+  ffi.Pointer<Allocator> allocator,
+  ffi.Pointer<ffi.Pointer<ffi.Uint8>> out_ptr,
+  ffi.Pointer<ffi.Size> out_len,
+);
+
+Result ghostty_terminal_continuation_alloc(
+  Terminal terminal,
+  ffi.Pointer<Allocator> allocator,
+  ffi.Pointer<ffi.Pointer<ffi.Uint8>> out_ptr,
+  ffi.Pointer<ffi.Size> out_len,
+) {
+  return Result.fromValue(
+    _ghostty_terminal_continuation_alloc(terminal, allocator, out_ptr, out_len),
+  );
+}
+
+/// Copy the terminal's replay-safe VT continuation into a caller buffer.
+///
+/// Pass NULL for buf with buf_len zero to query the required size. A size query
+/// returns GHOSTTY_OUT_OF_SPACE and stores the required size in out_written,
+/// including zero when the stream is at ground. If a non-NULL buffer is too
+/// small, the function has the same result and reports the full required size.
+/// Continuation tracking must have been enabled by setting
+/// GHOSTTY_TERMINAL_OPT_CONTINUATION_MAX_BYTES to a nonzero value before the
+/// input that produced the continuation was written.
+///
+/// The caller must serialize this operation with all other access to the same
+/// terminal.
+///
+/// @param terminal Terminal to read from (must not be NULL)
+/// @param buf Destination buffer, or NULL when buf_len is zero
+/// @param buf_len Destination buffer capacity in bytes
+/// @param[out] out_written Bytes written, or required size on
+/// GHOSTTY_OUT_OF_SPACE (must not be NULL)
+/// @return GHOSTTY_SUCCESS on success, GHOSTTY_OUT_OF_SPACE for a size query or
+/// insufficient buffer, or GHOSTTY_INVALID_VALUE if an argument is
+/// invalid, tracking is disabled, or the current continuation is
+/// unavailable
+///
+/// @ingroup terminal
+@ffi.Native<
+  ffi.Int Function(
+    Terminal,
+    ffi.Pointer<ffi.Uint8>,
+    ffi.Size,
+    ffi.Pointer<ffi.Size>,
+  )
+>(symbol: 'ghostty_terminal_continuation_buf', isLeaf: true)
+external int _ghostty_terminal_continuation_buf(
+  Terminal terminal,
+  ffi.Pointer<ffi.Uint8> buf,
+  int buf_len,
+  ffi.Pointer<ffi.Size> out_written,
+);
+
+Result ghostty_terminal_continuation_buf(
+  Terminal terminal,
+  ffi.Pointer<ffi.Uint8> buf,
+  int buf_len,
+  ffi.Pointer<ffi.Size> out_written,
+) {
+  return Result.fromValue(
+    _ghostty_terminal_continuation_buf(terminal, buf, buf_len, out_written),
+  );
+}
+
+/// Write the terminal's replay-safe VT continuation to a callback writer.
+///
+/// The continuation is the exact byte suffix needed to reconstruct unfinished
+/// VT parser or UTF-8 decoder state in an equivalent terminal. It is empty
+/// when the stream is at ground. The callback is invoked synchronously and
+/// may be called more than once. It must not call terminal APIs with the same
+/// terminal handle.
+///
+/// Continuation tracking must have been enabled by setting
+/// GHOSTTY_TERMINAL_OPT_CONTINUATION_MAX_BYTES to a nonzero value before the
+/// input that produced the continuation was written.
+///
+/// The caller must serialize this operation with ghostty_terminal_vt_write()
+/// and all other access to the same terminal.
+///
+/// @param terminal Terminal to read from (must not be NULL)
+/// @param writer Destination writer whose write callback must not be NULL
+/// @return GHOSTTY_SUCCESS on success, GHOSTTY_IO_ERROR if the callback rejects
+/// a write, GHOSTTY_LIMIT_EXCEEDED if output accounting overflows, or
+/// GHOSTTY_INVALID_VALUE if an argument is invalid, tracking is
+/// disabled, or the current continuation is unavailable
+///
+/// @ingroup terminal
+@ffi.Native<ffi.Int Function(Terminal, Writer)>(
+  symbol: 'ghostty_terminal_continuation_write',
+  isLeaf: true,
+)
+external int _ghostty_terminal_continuation_write(
+  Terminal terminal,
+  Writer writer,
+);
+
+Result ghostty_terminal_continuation_write(Terminal terminal, Writer writer) {
+  return Result.fromValue(
+    _ghostty_terminal_continuation_write(terminal, writer),
   );
 }
 
@@ -4018,63 +4590,6 @@ Result ghostty_terminal_grid_ref_track(
   return Result.fromValue(
     _ghostty_terminal_grid_ref_track(terminal, point, out_ref),
   );
-}
-
-/// Get the current value of a terminal mode.
-///
-/// Returns the value of the mode identified by the given mode.
-///
-/// @param terminal The terminal handle (NULL returns GHOSTTY_INVALID_VALUE)
-/// @param mode The mode identifying the mode to query
-/// @param[out] out_value On success, set to true if the mode is set, false
-/// if it is reset
-/// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if the terminal
-/// is NULL or the mode does not correspond to a known mode
-///
-/// @ingroup terminal
-@ffi.Native<ffi.Int Function(Terminal, Mode, ffi.Pointer<ffi.Bool>)>(
-  symbol: 'ghostty_terminal_mode_get',
-  isLeaf: true,
-)
-external int _ghostty_terminal_mode_get(
-  Terminal terminal,
-  int mode,
-  ffi.Pointer<ffi.Bool> out_value,
-);
-
-Result ghostty_terminal_mode_get(
-  Terminal terminal,
-  DartMode mode,
-  ffi.Pointer<ffi.Bool> out_value,
-) {
-  return Result.fromValue(
-    _ghostty_terminal_mode_get(terminal, mode, out_value),
-  );
-}
-
-/// Set the value of a terminal mode.
-///
-/// Sets the mode identified by the given mode to the specified value.
-///
-/// @param terminal The terminal handle (NULL returns GHOSTTY_INVALID_VALUE)
-/// @param mode The mode identifying the mode to set
-/// @param value true to set the mode, false to reset it
-/// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if the terminal
-/// is NULL or the mode does not correspond to a known mode
-///
-/// @ingroup terminal
-@ffi.Native<ffi.Int Function(Terminal, Mode, ffi.Bool)>(
-  symbol: 'ghostty_terminal_mode_set',
-  isLeaf: true,
-)
-external int _ghostty_terminal_mode_set(
-  Terminal terminal,
-  int mode,
-  bool value,
-);
-
-Result ghostty_terminal_mode_set(Terminal terminal, DartMode mode, bool value) {
-  return Result.fromValue(_ghostty_terminal_mode_set(terminal, mode, value));
 }
 
 /// Create a new terminal instance.
@@ -6154,6 +6669,54 @@ final class PointValue extends ffi.Union {
   external ffi.Array<ffi.Uint64> _padding;
 }
 
+/// A byte source callback and its opaque context.
+///
+/// The struct is passed by value. @p read must be non-NULL.
+final class Reader extends ffi.Struct {
+  external ReaderFn read;
+
+  external ffi.Pointer<ffi.Void> userdata;
+
+  static ffi.Pointer<Reader> $allocate(
+    ffi.Allocator $allocator, {
+    required ReaderFn read,
+    required ffi.Pointer<ffi.Void> userdata,
+  }) => $allocator<Reader>()
+    ..ref.read = read
+    ..ref.userdata = userdata;
+}
+
+/// Read bytes from a source.
+///
+/// The callback must set @p out_read to a value no greater than @p capacity
+/// when returning true. A positive value reports progress; it may be less than
+/// capacity and does not indicate end-of-file. A zero value is definitive
+/// end-of-file. It must not be used to report temporary input starvation or a
+/// would-block condition.
+///
+/// Returning false reports a fatal read error and the value of @p out_read is
+/// ignored. The library does not inspect or modify errno.
+///
+/// All pointer arguments are borrowed and valid only for the duration of the
+/// callback. The callback is invoked synchronously on the calling thread.
+///
+/// @param userdata Opaque userdata from Reader
+/// @param buffer Destination for read bytes; always non-NULL
+/// @param capacity Writable capacity of @p buffer; always greater than zero
+/// @param[out] out_read Number of bytes read when returning true; non-NULL
+/// @return true for a successful read or end-of-file, false for a fatal error
+typedef ReaderFn =
+    ffi.Pointer<
+      ffi.NativeFunction<
+        ffi.Bool Function(
+          ffi.Pointer<ffi.Void> userdata,
+          ffi.Pointer<ffi.Uint8> buffer,
+          ffi.Size capacity,
+          ffi.Pointer<ffi.Size> out_read,
+        )
+      >
+    >;
+
 /// Opaque handle to a render state instance.
 ///
 /// @ingroup render
@@ -6530,6 +7093,13 @@ final class SizeReportSize extends ffi.Struct {
     ..ref.cell_width = cell_width
     ..ref.cell_height = cell_height;
 }
+
+/// Opaque handle to an incremental terminal snapshot decoder.
+///
+/// @ingroup snapshot
+typedef SnapshotDecoder = ffi.Pointer<SnapshotDecoderImpl>;
+
+final class SnapshotDecoderImpl extends ffi.Opaque {}
 
 /// A borrowed byte string (pointer + length).
 ///
@@ -6910,6 +7480,32 @@ typedef TerminalEnquiryFn =
 
 final class TerminalImpl extends ffi.Opaque {}
 
+/// A terminal mode and boolean value used for mode configuration and queries.
+///
+/// For GHOSTTY_TERMINAL_DATA_MODE, initialize `mode` before calling
+/// ghostty_terminal_get(). On success, `value` contains the current mode value.
+///
+/// This struct has a frozen layout and will not gain fields in future versions.
+///
+/// @ingroup terminal
+final class TerminalModeConfig extends ffi.Struct {
+  /// Mode to configure or query.
+  @Mode()
+  external int mode;
+
+  /// Value to set, or the current value returned by a query.
+  @ffi.Bool()
+  external bool value;
+
+  static ffi.Pointer<TerminalModeConfig> $allocate(
+    ffi.Allocator $allocator, {
+    required int mode,
+    required bool value,
+  }) => $allocator<TerminalModeConfig>()
+    ..ref.mode = mode
+    ..ref.value = value;
+}
+
 /// A progress report emitted by the running program.
 ///
 /// This is a sized struct. The callback must only access fields present in the
@@ -7282,3 +7878,51 @@ typedef TerminalXtversionFn =
 typedef TrackedGridRef = ffi.Pointer<TrackedGridRefImpl>;
 
 final class TrackedGridRefImpl extends ffi.Opaque {}
+
+/// A byte destination callback and its opaque context.
+///
+/// The struct is passed by value. @p write must be non-NULL.
+final class Writer extends ffi.Struct {
+  external WriterFn write;
+
+  external ffi.Pointer<ffi.Void> userdata;
+
+  static ffi.Pointer<Writer> $allocate(
+    ffi.Allocator $allocator, {
+    required WriterFn write,
+    required ffi.Pointer<ffi.Void> userdata,
+  }) => $allocator<Writer>()
+    ..ref.write = write
+    ..ref.userdata = userdata;
+}
+
+/// Write bytes to a destination.
+///
+/// Returning true means all @p len bytes were accepted. Returning false
+/// reports a fatal write error. A callback wrapping an interface that permits
+/// partial writes must retry internally until the full slice is accepted or
+/// an error occurs.
+///
+/// On failure, the destination may already contain a prefix of the bytes. The
+/// calling operation fails and must not be resumed from that partial output.
+/// The library does not inspect or modify errno.
+///
+/// @p data is borrowed and valid only for the duration of the callback. The
+/// callback is invoked synchronously on the calling thread. Successful return
+/// means the bytes were handed to the destination; it does not imply that the
+/// destination was flushed or made durable.
+///
+/// @param userdata Opaque userdata from Writer
+/// @param data Source bytes; always non-NULL
+/// @param len Number of source bytes; always greater than zero
+/// @return true if the complete slice was accepted, false on fatal error
+typedef WriterFn =
+    ffi.Pointer<
+      ffi.NativeFunction<
+        ffi.Bool Function(
+          ffi.Pointer<ffi.Void> userdata,
+          ffi.Pointer<ffi.Uint8> data,
+          ffi.Size len,
+        )
+      >
+    >;
