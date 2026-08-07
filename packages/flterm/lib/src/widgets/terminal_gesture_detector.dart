@@ -328,8 +328,11 @@ class _TerminalGestureDetectorState extends State<TerminalGestureDetector> {
   /// Converte um delta vertical (px, convenção de `scrollDelta`) em passos de
   /// linha e encaminha ao app como wheel (botão 4 = cima, 5 = baixo).
   /// [discrete] = mouse (≥1 linha/notch, sem acumular); contínuo = trackpad.
-  void _forwardScroll(double deltaY, Offset localPosition,
-      {required bool discrete}) {
+  void _forwardScroll(
+    double deltaY,
+    Offset localPosition, {
+    required bool discrete,
+  }) {
     final cellHeight = widget.metrics.cellHeight;
     if (cellHeight <= 0) return;
     final lines = deltaY / cellHeight;
