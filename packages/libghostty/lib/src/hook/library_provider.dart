@@ -109,7 +109,9 @@ final class CompileFromSource extends LibraryProvider {
       Directory.fromUri(installDir).path,
       '--release=fast',
       if (zigCacheDir != null) ...['--global-cache-dir', zigCacheDir],
-      if (os != .current || arch != .current) '-Dtarget=$zig',
+      // Pass -Dtarget so source-compiled libraries use the target CPU baseline
+      // instead of the build machine's CPU.
+      '-Dtarget=$zig',
       if (ios == .iPhoneSimulator && arch == .arm64) '-Dcpu=apple_a17',
     ];
 
