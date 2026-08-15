@@ -201,7 +201,20 @@ final class TextInputSession with DeltaTextInputClient {
         _committedCompositionEdit == .suppressNextDeletionDelta;
     var fromCompositionInBatch = _hadVisiblePreeditText || hasActiveComposition;
     for (final delta in deltas) {
-      _value = delta.apply(_value);
+      final TextEditingValue next;
+      try {
+        next = delta.apply(_value);
+      } on Object {
+        // Some platforms (notably iOS) keep their own marked-text buffer and
+        // ignore the sentinel we push via setEditingState after each commit.
+        // A later delta then references offsets past our sentinel value, so
+        // applying it throws. Left uncaught, that kills the text-input channel
+        // and freezes all further typing (e.g. after composing an accent).
+        // Resync the platform back to the sentinel and drop this batch instead.
+        _recoverFromDesync();
+        return;
+      }
+      _value = next;
       _processDelta(delta, fromCompositionInBatch: fromCompositionInBatch);
       fromCompositionInBatch = fromCompositionInBatch || _hadVisiblePreeditText;
     }
@@ -400,6 +413,20 @@ final class TextInputSession with DeltaTextInputClient {
     if (connection != null && connection.attached) {
       connection.setEditingState(_value);
     }
+  }
+
+  /// Resynchronizes after a delta could not be applied to the sentinel value.
+  ///
+  /// Clears any composition/newline bookkeeping and pushes the sentinel back to
+  /// the platform so subsequent input maps to a known state again, keeping the
+  /// text-input channel alive instead of letting the failure freeze typing.
+  void _recoverFromDesync() {
+    _clearNewlineActionSuppression();
+    _clearCommittedCompositionEdit();
+    final hadVisiblePreeditText = _hadVisiblePreeditText;
+    _hadVisiblePreeditText = false;
+    if (hadVisiblePreeditText) _onPreeditChanged?.call('');
+    _resetBuffer();
   }
 
   void _resetInputState() {
