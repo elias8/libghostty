@@ -4,7 +4,8 @@ library;
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
-import 'dart:ui' show Image, ImageDecoderCallback, Size, decodeImageFromPixels;
+import 'dart:ui'
+    show Image, ImageDecoderCallback, Rect, Size, decodeImageFromPixels;
 
 import 'package:flterm/src/foundation/cell_metrics.dart';
 import 'package:flterm/src/foundation/terminal_theme.dart';
@@ -34,6 +35,24 @@ void main() {
           '\x1b_Gf=24,s=$width,v=1,a=T,i=$id$placement,c=$columns,r=1;'
                   '$payload\x1b\\'
               .codeUnits,
+        ),
+      );
+    }
+
+    void writeUnicodePlacements(Terminal terminal) {
+      final pixels = base64Encode([0xff, 0x00, 0x00]);
+      terminal.write(
+        Uint8List.fromList(
+          utf8.encode(
+            '\x1b_Ga=T,t=d,f=24,i=23,s=1,v=1,C=1,U=1;'
+            '$pixels\x1b\\'
+            '\x1b[2;4H'
+            '\x1b[38;2;0;0;23m'
+            '\u{10EEEE}\u0305\u0305'
+            'x'
+            '\u{10EEEE}\u0305\u0305'
+            '\x1b[39m',
+          ),
         ),
       );
     }
@@ -103,6 +122,43 @@ void main() {
     });
 
     group('sync', () {
+      test(
+        'renders discontinuous Unicode placements away from their definition',
+        () {
+          final unicodeTerminal = Terminal(cols: 8, rows: 3)
+            ..kittyImageStorageLimit = 1 << 20;
+          final unicodeState = PaintState(TerminalTheme.dark(), metrics)
+            ..cols = 8
+            ..rows = 3;
+          final unicodeImages = KittyImageCache(onImageReady: () {});
+          final unicodePlacements = KittyPlacementCache(
+            state: unicodeState,
+            images: unicodeImages,
+          );
+          addTearDown(unicodeImages.dispose);
+          addTearDown(unicodeTerminal.dispose);
+          unicodeTerminal.resize(
+            cols: 8,
+            rows: 3,
+            cellWidthPx: 8,
+            cellHeightPx: 16,
+          );
+          writeUnicodePlacements(unicodeTerminal);
+
+          unicodePlacements.sync(unicodeTerminal, geometryDirty: true);
+
+          expect(unicodePlacements.snapshots, hasLength(2));
+          expect(unicodePlacements.snapshots.map((snapshot) => snapshot.dst), [
+            const Rect.fromLTWH(24, 20, 8, 8),
+            const Rect.fromLTWH(40, 20, 8, 8),
+          ]);
+          expect(unicodePlacements.snapshots.map((snapshot) => snapshot.src), [
+            const Rect.fromLTWH(0, 0, 1, 1),
+            const Rect.fromLTWH(0, 0, 1, 1),
+          ]);
+        },
+      );
+
       test('returns false when generation and geometry are unchanged', () {
         final rebuilt = placements.sync(terminal, geometryDirty: false);
 

@@ -54,8 +54,13 @@ final class KittyPlacementCache {
     final nextSnapshots = <KittyPlacementSnapshot>[];
     final nextLiveImageIds = <int>{};
     var replacementPending = false;
+    var hasVirtualPlacements = false;
     for (final placement in graphics.placements()) {
       nextLiveImageIds.add(placement.imageId);
+      if (placement.isVirtual) {
+        hasVirtualPlacements = true;
+        continue;
+      }
 
       final info = placement.renderInfo;
       if (!info.viewportVisible) continue;
@@ -88,6 +93,50 @@ final class KittyPlacementCache {
             info.sourceHeight.toDouble(),
           ),
           z: placement.z,
+          paintOrder: nextSnapshots.length,
+        ),
+      );
+    }
+
+    final unicodePlacements = hasVirtualPlacements
+        ? graphics.unicodePlacements()
+        : const <KittyUnicodePlacement>[];
+    for (final placement in unicodePlacements) {
+      nextLiveImageIds.add(placement.imageId);
+
+      final info = placement.renderInfo;
+      if (info == null || info.pixelWidth == 0 || info.pixelHeight == 0) {
+        continue;
+      }
+
+      final image = graphics.image(placement.imageId);
+      if (image == null) continue;
+
+      final imageGeneration = image.generation;
+      final entry = _images.lookup(image, generation: imageGeneration);
+      replacementPending |=
+          entry is KittyImagePending ||
+          (entry is KittyImageReady && entry.generation != imageGeneration);
+      nextSnapshots.add(
+        KittyPlacementSnapshot(
+          imageId: placement.imageId,
+          imageGeneration: imageGeneration,
+          dst: Rect.fromLTWH(
+            info.viewportCol * key.cellWidth +
+                info.cellOffsetX / key.devicePixelRatio,
+            info.viewportRow * key.cellHeight +
+                info.cellOffsetY / key.devicePixelRatio,
+            info.pixelWidth / key.devicePixelRatio,
+            info.pixelHeight / key.devicePixelRatio,
+          ),
+          src: Rect.fromLTWH(
+            info.sourceX.toDouble(),
+            info.sourceY.toDouble(),
+            info.sourceWidth.toDouble(),
+            info.sourceHeight.toDouble(),
+          ),
+          z: info.z,
+          paintOrder: nextSnapshots.length,
         ),
       );
     }
@@ -143,7 +192,9 @@ final class KittyPlacementCache {
 
   static int _compareZ(KittyPlacementSnapshot a, KittyPlacementSnapshot b) {
     final z = a.z.compareTo(b.z);
-    return z != 0 ? z : a.imageId.compareTo(b.imageId);
+    if (z != 0) return z;
+    final imageId = a.imageId.compareTo(b.imageId);
+    return imageId != 0 ? imageId : a._paintOrder.compareTo(b._paintOrder);
   }
 }
 
@@ -169,12 +220,15 @@ final class KittyPlacementSnapshot {
   /// Signed z-index from the Kitty graphics protocol.
   final int z;
 
+  final int _paintOrder;
+
   const KittyPlacementSnapshot({
     required this.imageId,
     this.imageGeneration = 0,
     required this.dst,
     required this.src,
     required this.z,
+    this._paintOrder = 0,
   });
 }
 

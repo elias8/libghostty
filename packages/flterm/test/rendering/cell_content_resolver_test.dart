@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:ui';
 
 import 'package:flterm/src/foundation/cell_metrics.dart';
@@ -39,6 +40,39 @@ void main() {
         style: const Style(),
         span: 1,
       );
+
+      expect(entry, isNull);
+    });
+
+    test('returns null for Kitty Unicode placeholders', () {
+      final entry = resolver.resolve(
+        content: '\u{10EEEE}\u0305\u0305',
+        codepoint: 0x10EEEE,
+        graphemeLength: 3,
+        style: const Style(),
+        span: 1,
+      );
+
+      expect(entry, isNull);
+    });
+
+    test('returns null for a terminal cell containing a Kitty placeholder', () {
+      final terminal = Terminal(cols: 1, rows: 1);
+      addTearDown(terminal.dispose);
+      terminal.write(utf8.encode('\u{10EEEE}\u0305\u0305'));
+      final renderState = RenderState();
+      addTearDown(renderState.dispose);
+      final rows = RowIterator();
+      addTearDown(rows.dispose);
+      final cells = CellIterator();
+      addTearDown(cells.dispose);
+      renderState.update(terminal);
+      rows.reset(renderState);
+      rows.next();
+      cells.reset(rows);
+      cells.next();
+
+      final entry = resolver.resolveCell(cells, style: cells.style, span: 1);
 
       expect(entry, isNull);
     });
