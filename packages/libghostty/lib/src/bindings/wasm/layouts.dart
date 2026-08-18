@@ -323,6 +323,20 @@ final class Layouts {
   late final int kittyRenderInfoSourceWidth;
   late final int kittyRenderInfoSourceHeight;
 
+  // GhosttyKittyGraphicsUnicodePlacementRenderInfo
+  late final int kittyUnicodeRenderInfoSize;
+  late final int kittyUnicodeRenderInfoViewportCol;
+  late final int kittyUnicodeRenderInfoViewportRow;
+  late final int kittyUnicodeRenderInfoZ;
+  late final int kittyUnicodeRenderInfoCellOffsetX;
+  late final int kittyUnicodeRenderInfoCellOffsetY;
+  late final int kittyUnicodeRenderInfoPixelWidth;
+  late final int kittyUnicodeRenderInfoPixelHeight;
+  late final int kittyUnicodeRenderInfoSourceX;
+  late final int kittyUnicodeRenderInfoSourceY;
+  late final int kittyUnicodeRenderInfoSourceWidth;
+  late final int kittyUnicodeRenderInfoSourceHeight;
+
   // GhosttyPointCoordinate
   late final int pointCoordinateSize;
   late final int pointCoordinateX;
@@ -660,6 +674,20 @@ final class Layouts {
     kittyRenderInfoSourceY = struct['source_y'];
     kittyRenderInfoSourceWidth = struct['source_width'];
     kittyRenderInfoSourceHeight = struct['source_height'];
+
+    struct = _Struct(types, 'GhosttyKittyGraphicsUnicodePlacementRenderInfo');
+    kittyUnicodeRenderInfoSize = struct.size;
+    kittyUnicodeRenderInfoViewportCol = struct['viewport_col'];
+    kittyUnicodeRenderInfoViewportRow = struct['viewport_row'];
+    kittyUnicodeRenderInfoZ = struct['z'];
+    kittyUnicodeRenderInfoCellOffsetX = struct['cell_offset_x'];
+    kittyUnicodeRenderInfoCellOffsetY = struct['cell_offset_y'];
+    kittyUnicodeRenderInfoPixelWidth = struct['pixel_width'];
+    kittyUnicodeRenderInfoPixelHeight = struct['pixel_height'];
+    kittyUnicodeRenderInfoSourceX = struct['source_x'];
+    kittyUnicodeRenderInfoSourceY = struct['source_y'];
+    kittyUnicodeRenderInfoSourceWidth = struct['source_width'];
+    kittyUnicodeRenderInfoSourceHeight = struct['source_height'];
 
     struct = _Struct(types, 'GhosttyMouseEncoderSize');
     mouseEncoderSizeSize = struct.size;

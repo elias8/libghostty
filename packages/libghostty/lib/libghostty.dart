@@ -123,6 +123,8 @@ export 'src/types/types.dart'
         IoException,
         KittyPlacement,
         KittyPlacementRenderInfo,
+        KittyUnicodePlacement,
+        KittyUnicodePlacementRenderInfo,
         LibGhosttyException,
         LimitExceededException,
         MouseEncoderSize,

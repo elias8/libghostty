@@ -357,44 +357,112 @@ void main() {
         },
       );
 
-      test(
-        'preserves stretched destination for an oversized source request',
-        () {
-          terminal.resize(
-            cols: 80,
-            rows: 24,
-            cellWidthPx: 10,
-            cellHeightPx: 20,
-          );
-          final payload = base64Encode(Uint8List(64));
-          terminal.write(
-            Uint8List.fromList(
-              '\x1b_Ga=t,t=d,f=32,i=14,s=4,v=4;$payload\x1b\\'.codeUnits,
-            ),
-          );
-          terminal.write(
-            Uint8List.fromList(
-              '\x1b_Ga=p,i=14,p=1,x=3,y=3,w=10,h=10;\x1b\\'.codeUnits,
-            ),
-          );
+      test('clamps destination to an intersected source rectangle', () {
+        terminal.resize(cols: 80, rows: 24, cellWidthPx: 10, cellHeightPx: 20);
+        final payload = base64Encode(Uint8List(64));
+        terminal.write(
+          Uint8List.fromList(
+            '\x1b_Ga=t,t=d,f=32,i=14,s=4,v=4;$payload\x1b\\'.codeUnits,
+          ),
+        );
+        terminal.write(
+          Uint8List.fromList(
+            '\x1b_Ga=p,i=14,p=1,x=3,y=3,w=10,h=10;\x1b\\'.codeUnits,
+          ),
+        );
 
-          final renderInfo = KittyGraphics.of(
-            terminal,
-          )!.placements().single.renderInfo;
+        final renderInfo = KittyGraphics.of(
+          terminal,
+        )!.placements().single.renderInfo;
 
-          expect(
-            (
-              renderInfo.pixelWidth,
-              renderInfo.pixelHeight,
-              renderInfo.sourceX,
-              renderInfo.sourceY,
-              renderInfo.sourceWidth,
-              renderInfo.sourceHeight,
-            ),
-            (10, 10, 3, 3, 1, 1),
-          );
-        },
-      );
+        expect(
+          (
+            renderInfo.pixelWidth,
+            renderInfo.pixelHeight,
+            renderInfo.sourceX,
+            renderInfo.sourceY,
+            renderInfo.sourceWidth,
+            renderInfo.sourceHeight,
+          ),
+          (1, 1, 3, 3, 1, 1),
+        );
+      });
+    });
+
+    group('unicodePlacements', () {
+      late Terminal terminal;
+
+      setUp(() {
+        terminal = Terminal(cols: 8, rows: 2);
+        terminal.kittyImageStorageLimit = 1 << 20;
+        terminal.resize(cols: 8, rows: 2, cellWidthPx: 8, cellHeightPx: 16);
+      });
+
+      tearDown(() {
+        terminal.dispose();
+      });
+
+      test('returns empty list when no Unicode placements exist', () {
+        expect(KittyGraphics.of(terminal)?.unicodePlacements(), isEmpty);
+      });
+
+      test('decodes Unicode placement metadata', () {
+        terminal.write(_unicodePlacement());
+
+        final placement = KittyGraphics.of(terminal)!.unicodePlacements().first;
+
+        expect(
+          (
+            placement.topLeft,
+            placement.imageId,
+            placement.placementId,
+            placement.column,
+            placement.row,
+            placement.columns,
+            placement.rows,
+          ),
+          (const Position(row: 0, col: 0), 3, 0, 0, 0, 1, 1),
+        );
+      });
+
+      test('resolves drawable Unicode placement geometry', () {
+        terminal.write(_unicodePlacement());
+
+        final info = KittyGraphics.of(
+          terminal,
+        )!.unicodePlacements().first.renderInfo!;
+
+        expect(
+          (
+            info.viewportCol,
+            info.viewportRow,
+            info.pixelWidth,
+            info.pixelHeight,
+          ),
+          (0, 0, 8, 8),
+        );
+      });
+
+      test('retains copied values after terminal mutation', () {
+        terminal.write(_unicodePlacement());
+
+        final placement = KittyGraphics.of(terminal)!.unicodePlacements().first;
+
+        terminal.resize(cols: 8, rows: 2, cellWidthPx: 16, cellHeightPx: 32);
+
+        expect(
+          (placement.topLeft, placement.renderInfo!.pixelWidth),
+          (const Position(row: 0, col: 0), 8),
+        );
+      });
+
+      test('returns null render geometry for an unresolved occurrence', () {
+        terminal.write(_unicodePlaceholderOnly());
+
+        final placement = KittyGraphics.of(terminal)!.unicodePlacements().first;
+
+        expect(placement.renderInfo, isNull);
+      });
     });
   });
 }
@@ -402,5 +470,23 @@ void main() {
 Uint8List _transmitRedPixel({int id = 42}) {
   return Uint8List.fromList(
     '\x1b_Gf=24,s=1,v=1,a=t,i=$id;/wAA\x1b\\'.codeUnits,
+  );
+}
+
+Uint8List _unicodePlacement() {
+  return Uint8List.fromList(
+    utf8.encode(
+      '\x1b_Ga=T,t=d,f=24,i=3,s=1,v=1,C=1,U=1;'
+      '/wAA\x1b\\'
+      '\x1b[38;2;0;0;3m'
+      '\u{10EEEE}\u0305\u0305'
+      '\x1b[39m',
+    ),
+  );
+}
+
+Uint8List _unicodePlaceholderOnly() {
+  return Uint8List.fromList(
+    utf8.encode('\x1b[38;2;0;0;3m\u{10EEEE}\u0305\u0305\x1b[39m'),
   );
 }

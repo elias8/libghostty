@@ -1,5 +1,6 @@
 import '../generated/libghostty_enums.g.dart';
 import '../types/color.dart';
+import '../types/kitty_graphics.dart';
 import 'result_helpers.dart';
 
 const defaultRawColor = (tag: StyleColorTag.none, palette: 0, r: 0, g: 0, b: 0);
@@ -82,6 +83,18 @@ typedef RawColor = ({StyleColorTag tag, int palette, int r, int g, int b});
 
 /// An untracked native grid reference.
 typedef RawGridRef = ({int node, int x, int y});
+
+/// Copied Kitty Unicode placement fields returned by the bindings.
+typedef RawKittyUnicodePlacement = ({
+  RawGridRef topLeft,
+  int imageId,
+  int placementId,
+  int column,
+  int row,
+  int columns,
+  int rows,
+  KittyUnicodePlacementRenderInfo? renderInfo,
+});
 
 /// Render-state dimensions and dirty state returned by a batched query.
 typedef RawRenderStateSummary = ({int cols, int rows, RenderStateDirty dirty});

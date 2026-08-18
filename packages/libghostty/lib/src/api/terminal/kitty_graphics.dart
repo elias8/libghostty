@@ -107,6 +107,66 @@ final class KittyGraphics {
     }
   }
 
+  /// Snapshots decoded Kitty Unicode placeholder occurrences in the active
+  /// viewport.
+  ///
+  /// Occurrences are returned as row-major, single-row runs, including runs
+  /// whose image or virtual definition is unavailable. The returned values are
+  /// copied and remain stable after terminal mutations.
+  /// [KittyUnicodePlacement.renderInfo] is null for an unresolved or otherwise
+  /// non-drawable run. Image ids can be resolved through [image] while the
+  /// corresponding image remains stored.
+  ///
+  /// ```dart
+  /// for (final placement in kitty.unicodePlacements()) {
+  ///   final geometry = placement.renderInfo;
+  ///   if (geometry == null) continue;
+  ///   // Draw `placement.imageId` using `geometry`.
+  /// }
+  /// ```
+  List<KittyUnicodePlacement> unicodePlacements() {
+    final iterator = bindings.kittyGraphics
+        .kittyGraphicsUnicodePlacementIteratorNew();
+    try {
+      bindings.kittyGraphics.terminalGetKittyGraphicsUnicodePlacementIterator(
+        _terminal._terminalHandle,
+        iterator,
+      );
+      final out = <KittyUnicodePlacement>[];
+      while (bindings.kittyGraphics.kittyGraphicsUnicodePlacementNext(
+        iterator,
+      )) {
+        final raw = bindings.kittyGraphics.kittyGraphicsUnicodePlacementGet(
+          iterator,
+          _terminal._terminalHandle,
+        );
+        final topLeft = bindings.render.terminalPointFromGridRef(
+          _terminal._terminalHandle,
+          raw.topLeft,
+          .viewport,
+        );
+        if (topLeft == null) throw const InvalidValueException();
+        out.add(
+          KittyUnicodePlacement(
+            topLeft: topLeft,
+            imageId: raw.imageId,
+            placementId: raw.placementId,
+            column: raw.column,
+            row: raw.row,
+            columns: raw.columns,
+            rows: raw.rows,
+            renderInfo: raw.renderInfo,
+          ),
+        );
+      }
+      return out;
+    } finally {
+      bindings.kittyGraphics.kittyGraphicsUnicodePlacementIteratorFree(
+        iterator,
+      );
+    }
+  }
+
   /// Returns the Kitty graphics image storage for [terminal]'s active
   /// screen, or null when Kitty graphics are disabled in the native
   /// library build.

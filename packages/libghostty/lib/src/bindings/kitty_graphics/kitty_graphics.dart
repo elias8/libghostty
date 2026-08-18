@@ -39,4 +39,16 @@ abstract interface class KittyGraphicsBindings {
     KittyPlacementLayer layer,
   );
   bool kittyGraphicsPlacementNext(LibGhosttyHandle iterator);
+
+  void terminalGetKittyGraphicsUnicodePlacementIterator(
+    LibGhosttyHandle terminal,
+    LibGhosttyHandle iterator,
+  );
+  RawKittyUnicodePlacement kittyGraphicsUnicodePlacementGet(
+    LibGhosttyHandle iterator,
+    LibGhosttyHandle terminal,
+  );
+  void kittyGraphicsUnicodePlacementIteratorFree(LibGhosttyHandle iterator);
+  LibGhosttyHandle kittyGraphicsUnicodePlacementIteratorNew();
+  bool kittyGraphicsUnicodePlacementNext(LibGhosttyHandle iterator);
 }
