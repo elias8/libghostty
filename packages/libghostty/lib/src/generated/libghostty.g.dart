@@ -1877,6 +1877,185 @@ Result ghostty_kitty_graphics_placement_viewport_pos(
   );
 }
 
+/// Read one field from the current decoded occurrence.
+///
+/// For TOP_LEFT, initialize the output with
+/// GHOSTTY_INIT_SIZED(GridRef). Any prefix of at least sizeof(size_t)
+/// is accepted, and only fields within the declared size are written.
+///
+/// @return GHOSTTY_SUCCESS or GHOSTTY_INVALID_VALUE for a NULL or
+/// unpositioned iterator, invalid data kind, invalid output, or
+/// undersized TOP_LEFT output
+///
+/// @ingroup kitty_graphics
+@ffi.Native<
+  ffi.Int Function(
+    KittyGraphicsUnicodePlacementIterator,
+    ffi.UnsignedInt,
+    ffi.Pointer<ffi.Void>,
+  )
+>(symbol: 'ghostty_kitty_graphics_unicode_placement_get', isLeaf: true)
+external int _ghostty_kitty_graphics_unicode_placement_get(
+  KittyGraphicsUnicodePlacementIterator iterator,
+  int data,
+  ffi.Pointer<ffi.Void> out,
+);
+
+Result ghostty_kitty_graphics_unicode_placement_get(
+  KittyGraphicsUnicodePlacementIterator iterator,
+  KittyGraphicsUnicodePlacementData data,
+  ffi.Pointer<ffi.Void> out,
+) {
+  return Result.fromValue(
+    _ghostty_kitty_graphics_unicode_placement_get(iterator, data.value, out),
+  );
+}
+
+/// Read multiple fields from the current decoded occurrence.
+///
+/// Processing stops at the first error. out_written receives the number of
+/// successfully written values and may be NULL.
+///
+/// @ingroup kitty_graphics
+@ffi.Native<
+  ffi.Int Function(
+    KittyGraphicsUnicodePlacementIterator,
+    ffi.Size,
+    ffi.Pointer<ffi.UnsignedInt>,
+    ffi.Pointer<ffi.Pointer<ffi.Void>>,
+    ffi.Pointer<ffi.Size>,
+  )
+>(symbol: 'ghostty_kitty_graphics_unicode_placement_get_multi', isLeaf: true)
+external int _ghostty_kitty_graphics_unicode_placement_get_multi(
+  KittyGraphicsUnicodePlacementIterator iterator,
+  int count,
+  ffi.Pointer<ffi.UnsignedInt> keys,
+  ffi.Pointer<ffi.Pointer<ffi.Void>> values,
+  ffi.Pointer<ffi.Size> out_written,
+);
+
+Result ghostty_kitty_graphics_unicode_placement_get_multi(
+  KittyGraphicsUnicodePlacementIterator iterator,
+  int count,
+  ffi.Pointer<ffi.UnsignedInt> keys,
+  ffi.Pointer<ffi.Pointer<ffi.Void>> values,
+  ffi.Pointer<ffi.Size> out_written,
+) {
+  return Result.fromValue(
+    _ghostty_kitty_graphics_unicode_placement_get_multi(
+      iterator,
+      count,
+      keys,
+      values,
+      out_written,
+    ),
+  );
+}
+
+/// Free a Unicode placement iterator. A NULL iterator is accepted.
+///
+/// @ingroup kitty_graphics
+@ffi.Native<ffi.Void Function(KittyGraphicsUnicodePlacementIterator)>(
+  isLeaf: true,
+)
+external void ghostty_kitty_graphics_unicode_placement_iterator_free(
+  KittyGraphicsUnicodePlacementIterator iterator,
+);
+
+/// Create a caller-owned Unicode placement iterator.
+///
+/// Populate or rewind it with ghostty_terminal_get() and
+/// GHOSTTY_TERMINAL_DATA_KITTY_GRAPHICS_UNICODE_PLACEMENT_ITERATOR before
+/// iteration.
+///
+/// @param allocator Allocator to use, or NULL for the default allocator
+/// @param[out] out_iterator Created iterator
+/// @return GHOSTTY_SUCCESS, GHOSTTY_OUT_OF_MEMORY, or GHOSTTY_NO_VALUE when
+/// Kitty graphics are disabled
+///
+/// @ingroup kitty_graphics
+@ffi.Native<
+  ffi.Int Function(
+    ffi.Pointer<Allocator>,
+    ffi.Pointer<KittyGraphicsUnicodePlacementIterator>,
+  )
+>(symbol: 'ghostty_kitty_graphics_unicode_placement_iterator_new', isLeaf: true)
+external int _ghostty_kitty_graphics_unicode_placement_iterator_new(
+  ffi.Pointer<Allocator> allocator,
+  ffi.Pointer<KittyGraphicsUnicodePlacementIterator> out_iterator,
+);
+
+Result ghostty_kitty_graphics_unicode_placement_iterator_new(
+  ffi.Pointer<Allocator> allocator,
+  ffi.Pointer<KittyGraphicsUnicodePlacementIterator> out_iterator,
+) {
+  return Result.fromValue(
+    _ghostty_kitty_graphics_unicode_placement_iterator_new(
+      allocator,
+      out_iterator,
+    ),
+  );
+}
+
+/// Advance to the next decoded occurrence in the active viewport.
+///
+/// The viewport bounds used during population are inclusive. Traversal is
+/// row-major: top to bottom, then left to right. Occurrences are single-row
+/// runs and may be returned even when their image or virtual placement
+/// definition is unavailable. Returns false for a NULL, unpopulated, or
+/// exhausted iterator.
+///
+/// @ingroup kitty_graphics
+@ffi.Native<ffi.Bool Function(KittyGraphicsUnicodePlacementIterator)>(
+  isLeaf: true,
+)
+external bool ghostty_kitty_graphics_unicode_placement_next(
+  KittyGraphicsUnicodePlacementIterator iterator,
+);
+
+/// Resolve rendering geometry for the current decoded occurrence.
+///
+/// This looks up the image and virtual definition in the active Kitty storage
+/// of the terminal used to populate the iterator. The terminal must not have
+/// been mutated since population. Initialize out_info with
+/// GHOSTTY_INIT_SIZED(KittyGraphicsUnicodePlacementRenderInfo). Any
+/// size of at least sizeof(size_t) is accepted, and only fields that fit are
+/// written.
+///
+/// @return GHOSTTY_SUCCESS for drawable geometry, GHOSTTY_NO_VALUE when the
+/// occurrence cannot be rendered because its image or definition is
+/// unavailable, its placement grid is out of bounds, or its crop or
+/// destination is empty, or GHOSTTY_INVALID_VALUE for invalid handles,
+/// ownership, output size, or physical terminal geometry
+///
+/// @ingroup kitty_graphics
+@ffi.Native<
+  ffi.Int Function(
+    KittyGraphicsUnicodePlacementIterator,
+    Terminal,
+    ffi.Pointer<KittyGraphicsUnicodePlacementRenderInfo>,
+  )
+>(symbol: 'ghostty_kitty_graphics_unicode_placement_render_info', isLeaf: true)
+external int _ghostty_kitty_graphics_unicode_placement_render_info(
+  KittyGraphicsUnicodePlacementIterator iterator,
+  Terminal terminal,
+  ffi.Pointer<KittyGraphicsUnicodePlacementRenderInfo> out_info,
+);
+
+Result ghostty_kitty_graphics_unicode_placement_render_info(
+  KittyGraphicsUnicodePlacementIterator iterator,
+  Terminal terminal,
+  ffi.Pointer<KittyGraphicsUnicodePlacementRenderInfo> out_info,
+) {
+  return Result.fromValue(
+    _ghostty_kitty_graphics_unicode_placement_render_info(
+      iterator,
+      terminal,
+      out_info,
+    ),
+  );
+}
+
 /// Encode a DECRPM (DEC Private Mode Report) response sequence.
 ///
 /// Writes a mode report escape sequence into the provided buffer.
@@ -6579,6 +6758,105 @@ final class KittyGraphicsPlacementRenderInfo extends ffi.Struct {
     ..ref.viewport_col = viewport_col
     ..ref.viewport_row = viewport_row
     ..ref.viewport_visible = viewport_visible
+    ..ref.source_x = source_x
+    ..ref.source_y = source_y
+    ..ref.source_width = source_width
+    ..ref.source_height = source_height;
+}
+
+/// Opaque handle to a Kitty graphics Unicode placement iterator.
+///
+/// The iterator is caller-owned and remains valid until freed. Populated
+/// traversal state and values are borrowed from the terminal and are
+/// invalidated by terminal mutation.
+///
+/// @ingroup kitty_graphics
+typedef KittyGraphicsUnicodePlacementIterator =
+    ffi.Pointer<KittyGraphicsUnicodePlacementIteratorImpl>;
+
+final class KittyGraphicsUnicodePlacementIteratorImpl extends ffi.Opaque {}
+
+/// Resolved rendering geometry for a Kitty Unicode placement occurrence.
+///
+/// Coordinates are viewport-relative terminal cells. Offsets and destination
+/// dimensions are physical pixels. Source values are image pixels. Initialize
+/// with GHOSTTY_INIT_SIZED(KittyGraphicsUnicodePlacementRenderInfo).
+/// Fields appended in future versions are written only when they fit within
+/// the caller-provided size.
+///
+/// @ingroup kitty_graphics
+final class KittyGraphicsUnicodePlacementRenderInfo extends ffi.Struct {
+  /// Size of this struct in bytes.
+  @ffi.Size()
+  external int size;
+
+  /// Viewport-relative destination column.
+  @ffi.Int32()
+  external int viewport_col;
+
+  /// Viewport-relative destination row.
+  @ffi.Int32()
+  external int viewport_row;
+
+  /// Effective z-index used for Unicode placements.
+  @ffi.Int32()
+  external int z;
+
+  /// Destination x offset from the cell origin in physical pixels.
+  @ffi.Uint32()
+  external int cell_offset_x;
+
+  /// Destination y offset from the cell origin in physical pixels.
+  @ffi.Uint32()
+  external int cell_offset_y;
+
+  /// Destination width in physical pixels.
+  @ffi.Uint32()
+  external int pixel_width;
+
+  /// Destination height in physical pixels.
+  @ffi.Uint32()
+  external int pixel_height;
+
+  /// Source rectangle x origin in image pixels.
+  @ffi.Uint32()
+  external int source_x;
+
+  /// Source rectangle y origin in image pixels.
+  @ffi.Uint32()
+  external int source_y;
+
+  /// Source rectangle width in image pixels.
+  @ffi.Uint32()
+  external int source_width;
+
+  /// Source rectangle height in image pixels.
+  @ffi.Uint32()
+  external int source_height;
+
+  static ffi.Pointer<KittyGraphicsUnicodePlacementRenderInfo> $allocate(
+    ffi.Allocator $allocator, {
+    required int size,
+    required int viewport_col,
+    required int viewport_row,
+    required int z,
+    required int cell_offset_x,
+    required int cell_offset_y,
+    required int pixel_width,
+    required int pixel_height,
+    required int source_x,
+    required int source_y,
+    required int source_width,
+    required int source_height,
+  }) => $allocator<KittyGraphicsUnicodePlacementRenderInfo>()
+    ..ref.size = size
+    ..ref.viewport_col = viewport_col
+    ..ref.viewport_row = viewport_row
+    ..ref.z = z
+    ..ref.cell_offset_x = cell_offset_x
+    ..ref.cell_offset_y = cell_offset_y
+    ..ref.pixel_width = pixel_width
+    ..ref.pixel_height = pixel_height
     ..ref.source_x = source_x
     ..ref.source_y = source_y
     ..ref.source_width = source_width

@@ -1139,6 +1139,94 @@ extension type GhosttyExports(JSObject _) implements JSObject {
     Pointer out_row,
   );
 
+  /// Read one field from the current decoded occurrence.
+  ///
+  /// For TOP_LEFT, initialize the output with
+  /// GHOSTTY_INIT_SIZED(GhosttyGridRef). Any prefix of at least sizeof(size_t)
+  /// is accepted, and only fields within the declared size are written.
+  ///
+  /// @return GHOSTTY_SUCCESS or GHOSTTY_INVALID_VALUE for a NULL or
+  /// unpositioned iterator, invalid data kind, invalid output, or
+  /// undersized TOP_LEFT output
+  ///
+  /// @ingroup kitty_graphics
+  external int ghostty_kitty_graphics_unicode_placement_get(
+    int iterator,
+    int data,
+    Pointer out,
+  );
+
+  /// Read multiple fields from the current decoded occurrence.
+  ///
+  /// Processing stops at the first error. out_written receives the number of
+  /// successfully written values and may be NULL.
+  ///
+  /// @ingroup kitty_graphics
+  external int ghostty_kitty_graphics_unicode_placement_get_multi(
+    int iterator,
+    int count,
+    Pointer keys,
+    Pointer values,
+    Pointer out_written,
+  );
+
+  /// Free a Unicode placement iterator. A NULL iterator is accepted.
+  ///
+  /// @ingroup kitty_graphics
+  external void ghostty_kitty_graphics_unicode_placement_iterator_free(
+    int iterator,
+  );
+
+  /// Create a caller-owned Unicode placement iterator.
+  ///
+  /// Populate or rewind it with ghostty_terminal_get() and
+  /// GHOSTTY_TERMINAL_DATA_KITTY_GRAPHICS_UNICODE_PLACEMENT_ITERATOR before
+  /// iteration.
+  ///
+  /// @param allocator Allocator to use, or NULL for the default allocator
+  /// @param[out] out_iterator Created iterator
+  /// @return GHOSTTY_SUCCESS, GHOSTTY_OUT_OF_MEMORY, or GHOSTTY_NO_VALUE when
+  /// Kitty graphics are disabled
+  ///
+  /// @ingroup kitty_graphics
+  external int ghostty_kitty_graphics_unicode_placement_iterator_new(
+    Pointer allocator,
+    Pointer out_iterator,
+  );
+
+  /// Advance to the next decoded occurrence in the active viewport.
+  ///
+  /// The viewport bounds used during population are inclusive. Traversal is
+  /// row-major: top to bottom, then left to right. Occurrences are single-row
+  /// runs and may be returned even when their image or virtual placement
+  /// definition is unavailable. Returns false for a NULL, unpopulated, or
+  /// exhausted iterator.
+  ///
+  /// @ingroup kitty_graphics
+  external int ghostty_kitty_graphics_unicode_placement_next(int iterator);
+
+  /// Resolve rendering geometry for the current decoded occurrence.
+  ///
+  /// This looks up the image and virtual definition in the active Kitty storage
+  /// of the terminal used to populate the iterator. The terminal must not have
+  /// been mutated since population. Initialize out_info with
+  /// GHOSTTY_INIT_SIZED(GhosttyKittyGraphicsUnicodePlacementRenderInfo). Any
+  /// size of at least sizeof(size_t) is accepted, and only fields that fit are
+  /// written.
+  ///
+  /// @return GHOSTTY_SUCCESS for drawable geometry, GHOSTTY_NO_VALUE when the
+  /// occurrence cannot be rendered because its image or definition is
+  /// unavailable, its placement grid is out of bounds, or its crop or
+  /// destination is empty, or GHOSTTY_INVALID_VALUE for invalid handles,
+  /// ownership, output size, or physical terminal geometry
+  ///
+  /// @ingroup kitty_graphics
+  external int ghostty_kitty_graphics_unicode_placement_render_info(
+    int iterator,
+    int terminal,
+    Pointer out_info,
+  );
+
   /// Encode a DECRPM (DEC Private Mode Report) response sequence.
   ///
   /// Writes a mode report escape sequence into the provided buffer.

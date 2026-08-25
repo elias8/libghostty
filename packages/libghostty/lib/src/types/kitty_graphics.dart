@@ -1,5 +1,109 @@
 import 'package:meta/meta.dart';
 
+import 'geometry.dart';
+
+/// Snapshot of a single Kitty graphics placement.
+///
+/// The placement fields and [renderInfo] are copied while the native iterator
+/// is positioned, so this value remains valid after iteration finishes. Image
+/// pixel data is separate and must be resolved through the Kitty graphics
+/// storage while its borrowed handle remains valid.
+@immutable
+final class KittyPlacement {
+  /// Image id this placement references.
+  final int imageId;
+
+  /// Placement id assigned by the protocol, or zero when none was supplied.
+  final int placementId;
+
+  /// Whether this is a virtual Unicode placeholder placement.
+  ///
+  /// Virtual placements do not participate in normal placement rendering.
+  final bool isVirtual;
+
+  /// Pixel offset from the left edge of the anchor cell.
+  final int xOffset;
+
+  /// Pixel offset from the top edge of the anchor cell.
+  final int yOffset;
+
+  /// Requested source rectangle x origin in pixels.
+  final int sourceX;
+
+  /// Requested source rectangle y origin in pixels.
+  final int sourceY;
+
+  /// Requested source rectangle width in pixels, or zero for the full image.
+  final int sourceWidth;
+
+  /// Requested source rectangle height in pixels, or zero for the full image.
+  final int sourceHeight;
+
+  /// Requested number of grid columns, or zero to derive it from image size.
+  final int columns;
+
+  /// Requested number of grid rows, or zero to derive it from image size.
+  final int rows;
+
+  /// Z-index controlling compositing order.
+  ///
+  /// Negative values draw below text and non-negative values draw above text.
+  final int z;
+
+  /// Resolved rendering geometry at the time of capture.
+  final KittyPlacementRenderInfo renderInfo;
+
+  const KittyPlacement({
+    required this.imageId,
+    required this.placementId,
+    required this.isVirtual,
+    required this.xOffset,
+    required this.yOffset,
+    required this.sourceX,
+    required this.sourceY,
+    required this.sourceWidth,
+    required this.sourceHeight,
+    required this.columns,
+    required this.rows,
+    required this.z,
+    required this.renderInfo,
+  });
+
+  @override
+  int get hashCode => Object.hash(
+    imageId,
+    placementId,
+    isVirtual,
+    xOffset,
+    yOffset,
+    sourceX,
+    sourceY,
+    sourceWidth,
+    sourceHeight,
+    columns,
+    rows,
+    z,
+    renderInfo,
+  );
+
+  @override
+  bool operator ==(Object other) =>
+      other is KittyPlacement &&
+      other.imageId == imageId &&
+      other.placementId == placementId &&
+      other.isVirtual == isVirtual &&
+      other.xOffset == xOffset &&
+      other.yOffset == yOffset &&
+      other.sourceX == sourceX &&
+      other.sourceY == sourceY &&
+      other.sourceWidth == sourceWidth &&
+      other.sourceHeight == sourceHeight &&
+      other.columns == columns &&
+      other.rows == rows &&
+      other.z == z &&
+      other.renderInfo == renderInfo;
+}
+
 /// Resolved rendering geometry for a Kitty graphics placement.
 ///
 /// This combines rendered pixel size, grid extent, viewport-relative
@@ -104,104 +208,146 @@ final class KittyPlacementRenderInfo {
       other.sourceHeight == sourceHeight;
 }
 
-/// Snapshot of a single Kitty graphics placement.
-///
-/// The placement fields and [renderInfo] are copied while the native iterator
-/// is positioned, so this value remains valid after iteration finishes. Image
-/// pixel data is separate and must be resolved through the Kitty graphics
-/// storage while its borrowed handle remains valid.
+/// Snapshot of one decoded Kitty Unicode placement occurrence.
 @immutable
-final class KittyPlacement {
-  /// Image id this placement references.
+final class KittyUnicodePlacement {
+  /// Viewport-relative position of the occurrence's first cell.
+  final Position topLeft;
+
+  /// Image id referenced by the occurrence.
   final int imageId;
 
-  /// Placement id assigned by the protocol, or zero when none was supplied.
+  /// Placement id assigned by the protocol, or zero when absent.
   final int placementId;
 
-  /// Whether this is a virtual Unicode placeholder placement.
-  ///
-  /// Virtual placements do not participate in normal placement rendering.
-  final bool isVirtual;
+  /// Zero-based source-grid column.
+  final int column;
 
-  /// Pixel offset from the left edge of the anchor cell.
-  final int xOffset;
+  /// Zero-based source-grid row.
+  final int row;
 
-  /// Pixel offset from the top edge of the anchor cell.
-  final int yOffset;
-
-  /// Requested source rectangle x origin in pixels.
-  final int sourceX;
-
-  /// Requested source rectangle y origin in pixels.
-  final int sourceY;
-
-  /// Requested source rectangle width in pixels, or zero for the full image.
-  final int sourceWidth;
-
-  /// Requested source rectangle height in pixels, or zero for the full image.
-  final int sourceHeight;
-
-  /// Requested number of grid columns, or zero to derive it from image size.
+  /// Number of columns in this occurrence.
   final int columns;
 
-  /// Requested number of grid rows, or zero to derive it from image size.
+  /// Number of rows in this occurrence.
   final int rows;
 
-  /// Z-index controlling compositing order.
-  ///
-  /// Negative values draw below text and non-negative values draw above text.
-  final int z;
+  /// Resolved rendering geometry, or null when the occurrence is not drawable.
+  final KittyUnicodePlacementRenderInfo? renderInfo;
 
-  /// Resolved rendering geometry at the time of capture.
-  final KittyPlacementRenderInfo renderInfo;
-
-  const KittyPlacement({
+  const KittyUnicodePlacement({
+    required this.topLeft,
     required this.imageId,
     required this.placementId,
-    required this.isVirtual,
-    required this.xOffset,
-    required this.yOffset,
-    required this.sourceX,
-    required this.sourceY,
-    required this.sourceWidth,
-    required this.sourceHeight,
+    required this.column,
+    required this.row,
     required this.columns,
     required this.rows,
-    required this.z,
-    required this.renderInfo,
+    this.renderInfo,
   });
 
   @override
   int get hashCode => Object.hash(
+    topLeft,
     imageId,
     placementId,
-    isVirtual,
-    xOffset,
-    yOffset,
-    sourceX,
-    sourceY,
-    sourceWidth,
-    sourceHeight,
+    column,
+    row,
     columns,
     rows,
-    z,
     renderInfo,
   );
 
   @override
   bool operator ==(Object other) =>
-      other is KittyPlacement &&
+      other is KittyUnicodePlacement &&
+      other.topLeft == topLeft &&
       other.imageId == imageId &&
       other.placementId == placementId &&
-      other.isVirtual == isVirtual &&
-      other.xOffset == xOffset &&
-      other.yOffset == yOffset &&
+      other.column == column &&
+      other.row == row &&
+      other.columns == columns &&
+      other.rows == rows &&
+      other.renderInfo == renderInfo;
+}
+
+/// Resolved rendering geometry for a Kitty Unicode placement occurrence.
+@immutable
+final class KittyUnicodePlacementRenderInfo {
+  /// Viewport-relative destination column.
+  final int viewportCol;
+
+  /// Viewport-relative destination row.
+  final int viewportRow;
+
+  /// Effective z-index used for the placement.
+  final int z;
+
+  /// Destination x offset from the cell origin in physical pixels.
+  final int cellOffsetX;
+
+  /// Destination y offset from the cell origin in physical pixels.
+  final int cellOffsetY;
+
+  /// Destination width in physical pixels.
+  final int pixelWidth;
+
+  /// Destination height in physical pixels.
+  final int pixelHeight;
+
+  /// Source rectangle x origin in image pixels.
+  final int sourceX;
+
+  /// Source rectangle y origin in image pixels.
+  final int sourceY;
+
+  /// Source rectangle width in image pixels.
+  final int sourceWidth;
+
+  /// Source rectangle height in image pixels.
+  final int sourceHeight;
+
+  const KittyUnicodePlacementRenderInfo({
+    required this.viewportCol,
+    required this.viewportRow,
+    required this.z,
+    required this.cellOffsetX,
+    required this.cellOffsetY,
+    required this.pixelWidth,
+    required this.pixelHeight,
+    required this.sourceX,
+    required this.sourceY,
+    required this.sourceWidth,
+    required this.sourceHeight,
+  });
+
+  @override
+  int get hashCode => Object.hash(
+    viewportCol,
+    viewportRow,
+    z,
+    cellOffsetX,
+    cellOffsetY,
+    pixelWidth,
+    pixelHeight,
+    sourceX,
+    sourceY,
+    sourceWidth,
+    sourceHeight,
+  );
+
+  @override
+  bool operator ==(Object other) =>
+      other is KittyUnicodePlacementRenderInfo &&
+      other.viewportCol == viewportCol &&
+      other.viewportRow == viewportRow &&
+      other.z == z &&
+      other.cellOffsetX == cellOffsetX &&
+      other.cellOffsetY == cellOffsetY &&
+      other.pixelWidth == pixelWidth &&
+      other.pixelHeight == pixelHeight &&
       other.sourceX == sourceX &&
       other.sourceY == sourceY &&
       other.sourceWidth == sourceWidth &&
-      other.sourceHeight == sourceHeight &&
-      other.columns == columns &&
-      other.rows == rows &&
-      other.z == z &&
-      other.renderInfo == renderInfo;
+      other.sourceHeight == sourceHeight;
 }

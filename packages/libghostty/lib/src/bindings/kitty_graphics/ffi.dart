@@ -14,6 +14,7 @@ final class FfiKittyGraphicsBindings implements KittyGraphicsBindings {
   final _keys = calloc<UnsignedInt>(12);
   final _values = calloc<Pointer<Void>>(12);
   final _multi = calloc<Uint64>(12);
+  final _multiGridRef = calloc<GridRef>();
   final _written = calloc<Size>();
 
   FfiKittyGraphicsBindings();
@@ -241,6 +242,103 @@ final class FfiKittyGraphicsBindings implements KittyGraphicsBindings {
     );
   }
 
+  @override
+  void terminalGetKittyGraphicsUnicodePlacementIterator(
+    LibGhosttyHandle terminal,
+    LibGhosttyHandle iterator,
+  ) {
+    if (terminal.value == 0 || iterator.value == 0) {
+      checkResultCode(Result.invalidValue.value);
+    }
+    return using((arena) {
+      final out = arena<KittyGraphicsUnicodePlacementIterator>()
+        ..value = Pointer.fromAddress(iterator.value);
+      final result = ghostty_terminal_get(
+        Pointer.fromAddress(terminal.value),
+        .kittyGraphicsUnicodePlacementIterator,
+        out.cast(),
+      );
+      checkResultCode(result.value, operation: 'ghostty_terminal_get');
+    });
+  }
+
+  @override
+  RawKittyUnicodePlacement kittyGraphicsUnicodePlacementGet(
+    LibGhosttyHandle iterator,
+    LibGhosttyHandle terminal,
+  ) {
+    if (iterator.value == 0 || terminal.value == 0) {
+      checkResultCode(Result.invalidValue.value);
+    }
+    _setUnicodePlacementMulti([
+      .topLeft,
+      .imageId,
+      .placementId,
+      .column,
+      .row,
+      .columns,
+      .rows,
+    ]);
+    final result = ghostty_kitty_graphics_unicode_placement_get_multi(
+      Pointer.fromAddress(iterator.value),
+      7,
+      _keys,
+      _values,
+      _written,
+    );
+    checkResultCode(
+      result.value,
+      operation: 'ghostty_kitty_graphics_unicode_placement_get_multi',
+    );
+    final renderInfo = kittyGraphicsUnicodePlacementRenderInfo(
+      iterator,
+      terminal,
+    );
+    int u32(int index) => (_multi + index).cast<Uint32>().value;
+    return (
+      topLeft: _readGridRef(_multiGridRef.ref),
+      imageId: u32(1),
+      placementId: u32(2),
+      column: u32(3),
+      row: u32(4),
+      columns: u32(5),
+      rows: u32(6),
+      renderInfo: renderInfo,
+    );
+  }
+
+  @override
+  void kittyGraphicsUnicodePlacementIteratorFree(LibGhosttyHandle iterator) {
+    if (iterator.value == 0) return;
+    ghostty_kitty_graphics_unicode_placement_iterator_free(
+      Pointer.fromAddress(iterator.value),
+    );
+  }
+
+  @override
+  LibGhosttyHandle kittyGraphicsUnicodePlacementIteratorNew() {
+    return using((arena) {
+      final out = arena<Pointer<KittyGraphicsUnicodePlacementIteratorImpl>>();
+      final code = ghostty_kitty_graphics_unicode_placement_iterator_new(
+        nullptr,
+        out,
+      );
+      checkRequiredCode(
+        code.value,
+        operation: 'ghostty_kitty_graphics_unicode_placement_iterator_new',
+      );
+      return .fromAddress(out.value.address);
+    });
+  }
+
+  @override
+  bool kittyGraphicsUnicodePlacementNext(LibGhosttyHandle iterator) {
+    if (iterator.value == 0) return false;
+    return ghostty_kitty_graphics_unicode_placement_next(
+      Pointer.fromAddress(iterator.value),
+    );
+  }
+
   KittyPlacementRenderInfo? kittyGraphicsPlacementRenderInfo(
     LibGhosttyHandle iterator,
     LibGhosttyHandle image,
@@ -284,6 +382,55 @@ final class FfiKittyGraphicsBindings implements KittyGraphicsBindings {
         viewportCol: out.ref.viewport_col,
         viewportRow: out.ref.viewport_row,
         viewportVisible: out.ref.viewport_visible,
+        sourceX: out.ref.source_x,
+        sourceY: out.ref.source_y,
+        sourceWidth: out.ref.source_width,
+        sourceHeight: out.ref.source_height,
+      );
+    });
+  }
+
+  KittyUnicodePlacementRenderInfo? kittyGraphicsUnicodePlacementRenderInfo(
+    LibGhosttyHandle iterator,
+    LibGhosttyHandle terminal,
+  ) {
+    if (iterator.value == 0 || terminal.value == 0) {
+      checkResultCode(Result.invalidValue.value);
+    }
+    return using((arena) {
+      final out = KittyGraphicsUnicodePlacementRenderInfo.$allocate(
+        arena,
+        size: sizeOf<KittyGraphicsUnicodePlacementRenderInfo>(),
+        viewport_col: 0,
+        viewport_row: 0,
+        z: -1,
+        cell_offset_x: 0,
+        cell_offset_y: 0,
+        pixel_width: 0,
+        pixel_height: 0,
+        source_x: 0,
+        source_y: 0,
+        source_width: 0,
+        source_height: 0,
+      );
+      final result = ghostty_kitty_graphics_unicode_placement_render_info(
+        Pointer.fromAddress(iterator.value),
+        Pointer.fromAddress(terminal.value),
+        out,
+      );
+      if (result == .noValue) return null;
+      checkResultCode(
+        result.value,
+        operation: 'ghostty_kitty_graphics_unicode_placement_render_info',
+      );
+      return KittyUnicodePlacementRenderInfo(
+        viewportCol: out.ref.viewport_col,
+        viewportRow: out.ref.viewport_row,
+        z: out.ref.z,
+        cellOffsetX: out.ref.cell_offset_x,
+        cellOffsetY: out.ref.cell_offset_y,
+        pixelWidth: out.ref.pixel_width,
+        pixelHeight: out.ref.pixel_height,
         sourceX: out.ref.source_x,
         sourceY: out.ref.source_y,
         sourceWidth: out.ref.source_width,
@@ -359,4 +506,17 @@ final class FfiKittyGraphicsBindings implements KittyGraphicsBindings {
       _values[i] = (_multi + i).cast();
     }
   }
+
+  void _setUnicodePlacementMulti(List<KittyGraphicsUnicodePlacementData> keys) {
+    _multiGridRef.ref.size = sizeOf<GridRef>();
+    for (var i = 0; i < keys.length; i++) {
+      _keys[i] = keys[i].value;
+      _values[i] = keys[i] == .topLeft
+          ? _multiGridRef.cast()
+          : (_multi + i).cast();
+    }
+  }
+
+  static RawGridRef _readGridRef(GridRef ref) =>
+      (node: ref.node.address, x: ref.x, y: ref.y);
 }

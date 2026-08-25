@@ -1082,6 +1082,57 @@ enum KittyGraphicsPlacementIteratorOption {
       };
 }
 
+/// Queryable data kinds for
+/// ghostty_kitty_graphics_unicode_placement_get().
+///
+/// @ingroup kitty_graphics
+enum KittyGraphicsUnicodePlacementData {
+  /// Invalid / sentinel value.
+  invalid(0),
+
+  /// Caller-owned snapshot containing a borrowed top-left grid position. The
+  /// position is invalidated by terminal mutation.
+  ///
+  /// Output type: GridRef *
+  topLeft(1),
+
+  /// Image ID. Output type: uint32_t *
+  imageId(2),
+
+  /// Placement ID, or zero when absent. Output type: uint32_t *
+  placementId(3),
+
+  /// Zero-based source-grid column. Output type: uint32_t *
+  column(4),
+
+  /// Zero-based source-grid row. Output type: uint32_t *
+  row(5),
+
+  /// Number of columns in this single-row run. Output type: uint32_t *
+  columns(6),
+
+  /// Number of rows in this run, currently always one. Output type: uint32_t *
+  rows(7);
+
+  final int value;
+  const KittyGraphicsUnicodePlacementData(this.value);
+
+  static KittyGraphicsUnicodePlacementData fromValue(int value) =>
+      switch (value) {
+        0 => invalid,
+        1 => topLeft,
+        2 => imageId,
+        3 => placementId,
+        4 => column,
+        5 => row,
+        6 => columns,
+        7 => rows,
+        _ => throw ArgumentError(
+          'Unknown value for KittyGraphicsUnicodePlacementData: $value',
+        ),
+      };
+}
+
 /// Compression of a Kitty graphics image.
 ///
 /// Note that stored images are always decompressed:
@@ -2986,7 +3037,18 @@ enum TerminalData {
   /// is active.
   ///
   /// Output type: bool *
-  cursorAtPrompt(39);
+  cursorAtPrompt(39),
+
+  /// Populate and rewind a caller-owned Unicode placement iterator over the
+  /// active viewport. The iterator returns decoded Kitty Unicode placeholder
+  /// occurrences, including unresolved occurrences.
+  ///
+  /// The populated traversal state and returned grid references remain valid
+  /// only until the next terminal mutation. Repopulate the iterator before
+  /// using it again after mutation.
+  ///
+  /// Output type: KittyGraphicsUnicodePlacementIterator *
+  kittyGraphicsUnicodePlacementIterator(40);
 
   final int value;
   const TerminalData(this.value);
@@ -3032,6 +3094,7 @@ enum TerminalData {
     37 => mode,
     38 => vtGround,
     39 => cursorAtPrompt,
+    40 => kittyGraphicsUnicodePlacementIterator,
     _ => throw ArgumentError('Unknown value for TerminalData: $value'),
   };
 }

@@ -9,6 +9,8 @@ import 'codepoint_classification.dart';
 /// row rendering and block cursor glyph rendering. It does not decide where
 /// or how the entry is painted; row and cursor builders own the output lane.
 final class CellContentResolver {
+  static const _kittyUnicodePlaceholder = 0x10EEEE;
+
   final Atlas _atlas;
   var _lastCodepoint = -1;
   var _lastSpan = 0;
@@ -29,6 +31,7 @@ final class CellContentResolver {
     if (graphemeLength == 0) return null;
 
     final codepoint = cell.codepoint;
+    if (codepoint == _kittyUnicodePlaceholder) return null;
     if (borrowedCell && graphemeLength == 1) {
       return resolveCodepoint(
         codepoint,
@@ -68,6 +71,7 @@ final class CellContentResolver {
     required int span,
   }) {
     if (content.isEmpty) return null;
+    if (codepoint == _kittyUnicodePlaceholder) return null;
 
     if (_usesCodepointEntry(
       codepoint: codepoint,
