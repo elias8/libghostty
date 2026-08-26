@@ -15,6 +15,7 @@ void main() {
         expect(config.cursorStyle, CursorShape.block);
         expect(config.cursorBlink, isNull);
         expect(config.glyphProtocol, isFalse);
+        expect(config.optionAsAlt, OptionAsAlt.false$);
         expect(config.apcBufferLimit, TerminalConfig.defaultApcBufferLimit);
         expect(config.scrollToBottom, ScrollToBottom.onKeystroke);
         expect(config.selectionClearOnTyping, isTrue);
@@ -70,6 +71,7 @@ void main() {
           scrollbackMaxLines: 999,
           apcBufferLimit: 1024,
           glyphProtocol: true,
+          optionAsAlt: OptionAsAlt.right,
           cursorBlink: false,
         );
 
@@ -77,6 +79,7 @@ void main() {
         expect(updated.scrollbackMaxLines, 999);
         expect(updated.apcBufferLimit, 1024);
         expect(updated.glyphProtocol, isTrue);
+        expect(updated.optionAsAlt, OptionAsAlt.right);
         expect(updated.cursorBlink, isFalse);
         expect(updated.cols, config.cols);
       });

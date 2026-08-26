@@ -146,6 +146,18 @@ void main() {
       expect(atlas.emojiImage, isNotNull);
     });
 
+    test('semantics iteration preserves subsequent terminal updates', () {
+      writeUtf8(terminal, 'visible');
+      builder.sync(terminal, terminalDirty: true);
+
+      expect(builder.semanticsText(), contains('visible'));
+
+      writeUtf8(terminal, ' updated');
+      builder.sync(terminal, terminalDirty: true);
+
+      expect(builder.semanticsText(), contains('updated'));
+    });
+
     test('sync lets a private-use symbol occupy a following blank cell', () {
       writeUtf8(terminal, '\u{E5FF} A');
 

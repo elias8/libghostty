@@ -43,11 +43,14 @@ final class TerminalControllerImpl extends TerminalController {
   var _pwdChanged = false;
   Object? _viewToken;
   Mods _virtualMods = const .none();
+  final TerminalKeyEventNormalizer? keyEventNormalizer;
 
-  TerminalControllerImpl({TerminalConfig config = const TerminalConfig()})
-    : _config = config,
-      _terminal = Terminal(cols: config.cols, rows: config.rows),
-      super.base() {
+  TerminalControllerImpl({
+    TerminalConfig config = const TerminalConfig(),
+    this.keyEventNormalizer,
+  }) : _config = config,
+       _terminal = Terminal(cols: config.cols, rows: config.rows),
+       super.base() {
     _inputEncoder = InputEncoder(_terminal);
     _selection = SelectionSession(_terminal, notifyListeners);
     installDefaultKittyPngDecoder();

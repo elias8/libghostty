@@ -14,6 +14,7 @@ import 'package:flutter/foundation.dart'
         debugDefaultTargetPlatformOverride,
         defaultTargetPlatform;
 import 'package:flutter/gestures.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:libghostty/libghostty.dart'
@@ -163,6 +164,8 @@ void main() {
       MouseAutoHide mouseAutoHide = .onInput,
       TerminalGestureSettings gestureSettings = const TerminalGestureSettings(),
       LinkSettings linkSettings = const LinkSettings(),
+      String? semanticsLabel = 'Terminal',
+      String? semanticsHint = 'Activate to focus terminal input',
       EdgeInsets padding = EdgeInsets.zero,
       double width = 800,
       double height = 480,
@@ -183,6 +186,8 @@ void main() {
               mouseAutoHide: mouseAutoHide,
               gestureSettings: gestureSettings,
               linkSettings: linkSettings,
+              semanticsLabel: semanticsLabel,
+              semanticsHint: semanticsHint,
               padding: padding,
               fontData: fontData,
             ),
@@ -272,6 +277,53 @@ void main() {
     testWidgets('renders with controller', (tester) async {
       await tester.pumpWidget(wrapInApp(controller: controller));
       expect(find.byType(TerminalView), findsOneWidget);
+    });
+
+    testWidgets('semantics expose visible non-concealed terminal text', (
+      tester,
+    ) async {
+      final semantics = tester.ensureSemantics();
+      try {
+        await tester.pumpWidget(
+          wrapInApp(
+            controller: controller,
+            semanticsLabel: 'Remote shell',
+            semanticsHint: 'Focus remote shell input',
+          ),
+        );
+        await tester.pumpAndSettle();
+        writeUtf8(controller, 'visible\r\nshow \x1b[8msecret\x1b[0m text');
+        await tester.pump(const Duration(milliseconds: 100));
+        await tester.pump();
+
+        final node = tester.getSemantics(find.bySemanticsLabel('Remote shell'));
+        final data = node.getSemanticsData();
+        expect(data.label, 'Remote shell');
+        expect(data.value, contains('visible'));
+        expect(data.value, contains('show'));
+        expect(data.value, contains('text'));
+        expect(data.value, isNot(contains('secret')));
+        expect(data.hint, 'Focus remote shell input');
+        expect(data.hasAction(SemanticsAction.tap), isTrue);
+        expect(data.hasAction(SemanticsAction.focus), isTrue);
+        expect(data.flagsCollection.isLiveRegion, isFalse);
+      } finally {
+        semantics.dispose();
+      }
+    });
+
+    testWidgets('semantics can be delegated to an embedding application', (
+      tester,
+    ) async {
+      final semantics = tester.ensureSemantics();
+      try {
+        await tester.pumpWidget(
+          wrapInApp(controller: controller, semanticsLabel: null),
+        );
+        expect(find.bySemanticsLabel('Terminal'), findsNothing);
+      } finally {
+        semantics.dispose();
+      }
     });
 
     testWidgets('creates an isolated atlas pool without explicit scope', (
@@ -507,6 +559,37 @@ void main() {
       await tester.pump();
 
       expect(renderer(tester).blinkVisible, isFalse);
+    });
+
+    testWidgets('semantics follow the visible scrollback viewport', (
+      tester,
+    ) async {
+      final semantics = tester.ensureSemantics();
+      try {
+        final scrollController = await pumpBlinkingScrollableTerminal(tester);
+        await tester.pump(const Duration(milliseconds: 100));
+        await tester.pump();
+
+        String semanticsValue() => tester
+            .getSemantics(find.bySemanticsLabel('Terminal'))
+            .getSemanticsData()
+            .value;
+
+        expect(semanticsValue(), contains('line 39'));
+
+        scrollController.jumpTo(0);
+        await tester.pump(const Duration(milliseconds: 100));
+        await tester.pump();
+        expect(semanticsValue(), contains('line 0'));
+        expect(semanticsValue(), isNot(contains('line 39')));
+
+        scrollController.jumpTo(scrollController.position.maxScrollExtent);
+        await tester.pump(const Duration(milliseconds: 100));
+        await tester.pump();
+        expect(semanticsValue(), contains('line 39'));
+      } finally {
+        semantics.dispose();
+      }
     });
 
     testWidgets('focus loss stops cursor blinking in the visible phase', (
@@ -1288,6 +1371,36 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(TerminalView), findsOneWidget);
+    });
+
+    testWidgets('changing controller clears cached terminal semantics', (
+      tester,
+    ) async {
+      final semantics = tester.ensureSemantics();
+      final controller2 = TerminalController();
+      addTearDown(controller2.dispose);
+      try {
+        writeUtf8(controller, 'old terminal');
+        await tester.pumpWidget(wrapInApp(controller: controller));
+        await tester.pump(const Duration(milliseconds: 100));
+        await tester.pump();
+
+        String semanticsValue() => tester
+            .getSemantics(find.bySemanticsLabel('Terminal'))
+            .getSemanticsData()
+            .value;
+        expect(semanticsValue(), contains('old terminal'));
+
+        writeUtf8(controller2, 'new terminal');
+        await tester.pumpWidget(wrapInApp(controller: controller2));
+        await tester.pump(const Duration(milliseconds: 100));
+        await tester.pump();
+
+        expect(semanticsValue(), isNot(contains('old terminal')));
+        expect(semanticsValue(), contains('new terminal'));
+      } finally {
+        semantics.dispose();
+      }
     });
 
     testWidgets('changing controller reports focus loss to the old terminal', (

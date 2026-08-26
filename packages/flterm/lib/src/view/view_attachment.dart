@@ -70,7 +70,10 @@ final class ViewAttachment extends ChangeNotifier {
 
   ViewAttachment._(this._controller)
     : _viewToken = _controller.attachView(),
-      input = KeyboardInputAdapter(_controller) {
+      input = KeyboardInputAdapter(
+        _controller,
+        keyEventNormalizer: _controller.keyEventNormalizer,
+      ) {
     frameSource = FrameSource(
       terminal,
       viewportChanges: _controller.viewportChanges,

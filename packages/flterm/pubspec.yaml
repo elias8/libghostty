@@ -33,6 +33,16 @@ dependencies:
   libghostty: ^0.0.12
   meta: ^1.18.0
 
+flutter:
+  plugin:
+    platforms:
+      linux:
+        pluginClass: FltermPlugin
+      macos:
+        pluginClass: FltermPlugin
+      windows:
+        pluginClass: FltermPluginCApi
+
 dev_dependencies:
   crypto: ^3.0.7
   fake_async: ^1.3.3

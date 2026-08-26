@@ -1,7 +1,7 @@
 import 'package:flterm/src/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:libghostty/libghostty.dart' show Key;
+import 'package:libghostty/libghostty.dart' show Key, Mods;
 
 void main() {
   group('PlatformMap', () {
@@ -78,12 +78,42 @@ void main() {
         expect(unshiftedCodepointForKey(Key.bracketLeft), 0x5b);
         expect(unshiftedCodepointForKey(Key.backslash), 0x5c);
         expect(unshiftedCodepointForKey(Key.slash), 0x2f);
+        expect(unshiftedCodepointForKey(Key.space), 0x20);
       });
 
       test('returns zero for non-character keys', () {
         expect(unshiftedCodepointForKey(Key.enter), 0);
         expect(unshiftedCodepointForKey(Key.arrowUp), 0);
         expect(unshiftedCodepointForKey(Key.f1), 0);
+      });
+    });
+
+    group('programmatic key translation', () {
+      test('applies US shift and caps lock translation', () {
+        expect(codepointForKey(Key.a, const Mods.shift()), 0x41);
+        expect(codepointForKey(Key.a, const Mods.capsLock()), 0x41);
+        expect(
+          codepointForKey(Key.a, const Mods.shift() | const Mods.capsLock()),
+          0x61,
+        );
+        expect(codepointForKey(Key.digit1, const Mods.shift()), 0x21);
+        expect(codepointForKey(Key.space, const Mods.none()), 0x20);
+      });
+
+      test('reports modifiers consumed by translation', () {
+        expect(consumedModsForKey(Key.a, const Mods.shift()).hasShift, isTrue);
+        expect(
+          consumedModsForKey(Key.a, const Mods.capsLock()).hasCapsLock,
+          isTrue,
+        );
+        expect(
+          consumedModsForKey(Key.digit1, const Mods.shift()).hasShift,
+          isTrue,
+        );
+        expect(
+          consumedModsForKey(Key.space, const Mods.shift()).isEmpty,
+          isTrue,
+        );
       });
     });
   });

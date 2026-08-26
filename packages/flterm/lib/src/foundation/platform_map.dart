@@ -1,5 +1,5 @@
 import 'package:flutter/services.dart' show PhysicalKeyboardKey;
-import 'package:libghostty/libghostty.dart' show Key;
+import 'package:libghostty/libghostty.dart' show Key, Mods;
 
 final Map<int, Key> _codepointToKey = {
   0x20: Key.space,
@@ -197,6 +197,31 @@ final Map<Key, int> _keyToCodepoint = {
   Key.quote: 0x27,
   Key.semicolon: 0x3b,
   Key.slash: 0x2f,
+  Key.space: 0x20,
+};
+
+const _shiftedCodepoints = <int, int>{
+  0x60: 0x7e,
+  0x31: 0x21,
+  0x32: 0x40,
+  0x33: 0x23,
+  0x34: 0x24,
+  0x35: 0x25,
+  0x36: 0x5e,
+  0x37: 0x26,
+  0x38: 0x2a,
+  0x39: 0x28,
+  0x30: 0x29,
+  0x2d: 0x5f,
+  0x3d: 0x2b,
+  0x5b: 0x7b,
+  0x5d: 0x7d,
+  0x5c: 0x7c,
+  0x3b: 0x3a,
+  0x27: 0x22,
+  0x2c: 0x3c,
+  0x2e: 0x3e,
+  0x2f: 0x3f,
 };
 
 /// Maps a Unicode [codepoint] to the corresponding libghostty [Key].
@@ -220,3 +245,25 @@ Key keyFromPhysical(PhysicalKeyboardKey physical) {
 /// Used by the key encoder to determine the unshifted codepoint that
 /// libghostty expects for keyboard input encoding.
 int unshiftedCodepointForKey(Key key) => _keyToCodepoint[key] ?? 0;
+
+/// Returns the US-layout codepoint produced by a programmatic key press.
+int codepointForKey(Key key, Mods mods) {
+  final codepoint = unshiftedCodepointForKey(key);
+  if (codepoint >= 0x61 && codepoint <= 0x7A) {
+    return mods.hasShift != mods.hasCapsLock ? codepoint - 0x20 : codepoint;
+  }
+  return mods.hasShift ? _shiftedCodepoints[codepoint] ?? codepoint : codepoint;
+}
+
+/// Returns modifiers consumed by the US-layout programmatic translation.
+Mods consumedModsForKey(Key key, Mods mods) {
+  final unshifted = unshiftedCodepointForKey(key);
+  var consumed = const Mods.none();
+  if (unshifted >= 0x61 && unshifted <= 0x7A) {
+    if (mods.hasShift) consumed = consumed | const Mods.shift();
+    if (mods.hasCapsLock) consumed = consumed | const Mods.capsLock();
+  } else if (mods.hasShift && codepointForKey(key, mods) != unshifted) {
+    consumed = consumed | const Mods.shift();
+  }
+  return consumed;
+}

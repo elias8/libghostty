@@ -6,6 +6,7 @@ import 'package:libghostty/libghostty.dart' hide KeyEvent;
 import '../controller/terminal_controller.dart';
 import '../foundation.dart';
 import 'input_message.dart';
+import 'keyboard_event_normalizer.dart';
 import 'text_input_session.dart';
 
 /// Coordinates hardware-key and platform text-input handling for a
@@ -28,12 +29,16 @@ final class KeyboardInputAdapter extends ChangeNotifier {
 
   final TerminalControllerImpl _controller;
   final _textInput = TextInputSession();
+  final KeyboardEventNormalizer _normalizer;
+  final TerminalKeyEventNormalizer? _keyEventNormalizer;
+  final _textInputPhysicalKeys = <PhysicalKeyboardKey>{};
   FocusNode? _focusNode;
   Brightness _keyboardAppearance = .dark;
   var _preeditText = '';
   var _wasFocused = false;
 
-  KeyboardInputAdapter(this._controller) {
+  KeyboardInputAdapter(this._controller, {this._keyEventNormalizer})
+    : _normalizer = KeyboardEventNormalizer() {
     _textInput
       ..onTextCommitted = _controller.handleTextCommitted
       ..onDelete = _controller.handleTextDeleted
@@ -56,6 +61,19 @@ final class KeyboardInputAdapter extends ChangeNotifier {
     if (keyboard.isControlPressed) mods |= const Mods.ctrl();
     if (keyboard.isAltPressed) mods |= const Mods.alt();
     if (keyboard.isMetaPressed) mods |= const Mods.superKey();
+    final pressed = keyboard.physicalKeysPressed;
+    if (pressed.contains(PhysicalKeyboardKey.shiftRight)) {
+      mods |= const Mods.shiftSide();
+    }
+    if (pressed.contains(PhysicalKeyboardKey.controlRight)) {
+      mods |= const Mods.ctrlSide();
+    }
+    if (pressed.contains(PhysicalKeyboardKey.altRight)) {
+      mods |= const Mods.altSide();
+    }
+    if (pressed.contains(PhysicalKeyboardKey.metaRight)) {
+      mods |= const Mods.superSide();
+    }
     final lockModes = keyboard.lockModesEnabled;
     if (lockModes.contains(KeyboardLockMode.capsLock)) {
       mods |= const Mods.capsLock();
@@ -120,28 +138,47 @@ final class KeyboardInputAdapter extends ChangeNotifier {
     if (action == null) return .ignored;
 
     final key = keyFromPhysical(event.physicalKey);
-    final unshiftedCodepoint = unshiftedCodepointForKey(key);
-    final character = _encoderCharacter(event.character);
-    final virtualMods = _controller.virtualMods;
     final mods = _currentMods;
-    final physicalConsumedMods = _consumedModsFor(
-      character,
-      unshiftedCodepoint: unshiftedCodepoint,
-      mods: mods,
-    );
-    final consumedMods =
-        physicalConsumedMods ^ (physicalConsumedMods & virtualMods);
-    final terminalMods = consumedMods.hasCtrl ? mods ^ const Mods.ctrl() : mods;
+    final character = _encoderCharacter(event.character);
     final composing =
         _textInput.hasActiveComposition || _preeditText.isNotEmpty;
-    final input = KeyInput(
+    var normalized = _normalizer.normalize(
+      event,
       key: key,
       action: action,
-      mods: terminalMods,
+      mods: mods,
       character: character,
       composing: composing,
+      optionAsAlt: _controller.config.optionAsAlt,
+    );
+    normalized = _keyEventNormalizer?.call(event, normalized) ?? normalized;
+
+    if (action == .release &&
+        _textInputPhysicalKeys.remove(event.physicalKey)) {
+      return .skipRemainingHandlers;
+    }
+    if (normalized.deferToTextInput) {
+      if (action == .press || action == .repeat) {
+        _textInputPhysicalKeys.add(event.physicalKey);
+      }
+      return .skipRemainingHandlers;
+    }
+    if (action == .press) _textInputPhysicalKeys.remove(event.physicalKey);
+
+    final virtualMods = _controller.virtualMods;
+    final consumedMods =
+        normalized.consumedMods ^ (normalized.consumedMods & virtualMods);
+    final terminalMods = consumedMods.hasCtrl
+        ? normalized.mods ^ const Mods.ctrl()
+        : normalized.mods;
+    final input = KeyInput(
+      key: normalized.key,
+      action: normalized.action,
+      mods: terminalMods,
+      character: normalized.text,
+      composing: normalized.composing,
       consumedMods: consumedMods,
-      unshiftedCodepoint: unshiftedCodepoint,
+      unshiftedCodepoint: normalized.unshiftedCodepoint,
     );
 
     if (_shouldForwardCompositionKey(input)) return .skipRemainingHandlers;
@@ -226,34 +263,6 @@ final class KeyboardInputAdapter extends ChangeNotifier {
     return !(mods.hasCtrl && !consumedMods.hasCtrl) &&
         !(mods.hasAlt && !consumedMods.hasAlt) &&
         !mods.hasSuper;
-  }
-
-  static Mods _consumedModsFor(
-    String? character, {
-    required int unshiftedCodepoint,
-    required Mods mods,
-  }) {
-    if (character == null || unshiftedCodepoint == 0) return const .none();
-
-    final codepoints = character.runes.iterator;
-    if (!codepoints.moveNext()) return const .none();
-    final codepoint = codepoints.current;
-    if (codepoints.moveNext() || codepoint == unshiftedCodepoint) {
-      return const .none();
-    }
-
-    var consumedMods = const Mods.none();
-    if (mods.hasShift) consumedMods |= const Mods.shift();
-
-    final keyboard = HardwareKeyboard.instance;
-    final rightAltPressed = keyboard.isLogicalKeyPressed(
-      LogicalKeyboardKey.altRight,
-    );
-    if (mods.hasAlt && rightAltPressed) {
-      consumedMods |= const .alt();
-      if (keyboard.isControlPressed) consumedMods |= const .ctrl();
-    }
-    return consumedMods;
   }
 
   static String? _encoderCharacter(String? character) {
