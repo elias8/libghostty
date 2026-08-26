@@ -1,7 +1,7 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
-import 'package:meta/meta.dart';
 
 /// Flutter text input connection for terminal editing.
 ///
@@ -32,6 +32,7 @@ final class TextInputSession with DeltaTextInputClient {
   var _newlineActionsToSuppress = 0;
   Timer? _newlineActionDedupeTimer;
   var _newlineDeltasToSuppress = 0;
+  var _reopenScheduled = false;
   VoidCallback? _onNewline;
   ValueChanged<int>? _onDelete;
   ValueChanged<String>? _onPreeditChanged;
@@ -211,7 +212,7 @@ final class TextInputSession with DeltaTextInputClient {
         // applying it throws. Left uncaught, that kills the text-input channel
         // and freezes all further typing (e.g. after composing an accent).
         // Resync the platform back to the sentinel and drop this batch instead.
-        _recoverFromDesync();
+        _recoverFromDesync(delta);
         return;
       }
       _value = next;
@@ -415,18 +416,64 @@ final class TextInputSession with DeltaTextInputClient {
     }
   }
 
-  /// Resynchronizes after a delta could not be applied to the sentinel value.
+  /// Resynchronizes after [failedDelta] could not be applied to the sentinel.
   ///
-  /// Clears any composition/newline bookkeeping and pushes the sentinel back to
-  /// the platform so subsequent input maps to a known state again, keeping the
+  /// Clears any composition/newline bookkeeping and forces the platform back to
+  /// the sentinel so subsequent input maps to a known state again, keeping the
   /// text-input channel alive instead of letting the failure freeze typing.
-  void _recoverFromDesync() {
+  ///
+  /// A plain [setEditingState] is not enough on iOS: it keeps its own
+  /// marked-text buffer and ignores the sentinel we push, so every following
+  /// delta stays anchored to that buffer and re-desyncs, dropping input
+  /// indefinitely (e.g. after composing a dead-key accent with a physical
+  /// keyboard). The connection has to be reopened so iOS discards the marked
+  /// text and re-anchors on a fresh sentinel, but reopening synchronously here
+  /// lands mid-delivery and does not re-engage key input until the view is
+  /// refocused, so it is deferred past this callback (see [_scheduleReopen]).
+  ///
+  /// The failing delta usually carries the composed character iOS was trying to
+  /// commit (a dead-key accent), so it is salvaged and committed before the
+  /// batch is dropped; otherwise the accent would be lost with the batch.
+  void _recoverFromDesync(TextEditingDelta failedDelta) {
     _clearNewlineActionSuppression();
     _clearCommittedCompositionEdit();
     final hadVisiblePreeditText = _hadVisiblePreeditText;
     _hadVisiblePreeditText = false;
     if (hadVisiblePreeditText) _onPreeditChanged?.call('');
-    _resetBuffer();
+
+    final salvaged = switch (failedDelta) {
+      TextEditingDeltaInsertion(:final textInserted) => textInserted,
+      TextEditingDeltaReplacement(:final replacementText) => replacementText,
+      _ => '',
+    };
+    if (salvaged.isNotEmpty) _commitText(salvaged);
+
+    _value = _sentinel;
+    if (_connection != null && _connection!.attached) {
+      _scheduleReopen();
+    } else {
+      _resetBuffer();
+    }
+  }
+
+  /// Reopens the text-input connection after the current platform callback.
+  ///
+  /// Closing/reopening while a delta batch is still being delivered leaves iOS
+  /// with an open channel that stops handing over keys until the view is
+  /// refocused. Deferring to a microtask lets the platform finish the current
+  /// delivery first; the fresh connection then receives subsequent keys and is
+  /// re-shown so key delivery resumes without a manual refocus.
+  void _scheduleReopen() {
+    if (_reopenScheduled) return;
+    _reopenScheduled = true;
+    scheduleMicrotask(() {
+      _reopenScheduled = false;
+      final connection = _connection;
+      if (connection == null || !connection.attached) return;
+      _closeConnection();
+      _openConnection();
+      _connection?.show();
+    });
   }
 
   void _resetInputState() {
