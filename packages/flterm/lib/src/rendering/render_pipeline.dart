@@ -67,6 +67,8 @@ final class RenderPipeline {
 
   void refreshCursorGlyph() => _frameBuilder.refreshCursorGlyph();
 
+  String semanticsText() => _frameBuilder.semanticsText();
+
   /// Syncs terminal cells and render-only preedit state into paint buffers.
   ///
   /// [preeditText] does not enter libghostty state. The frame builder overlays

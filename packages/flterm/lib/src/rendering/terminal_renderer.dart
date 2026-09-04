@@ -97,6 +97,12 @@ final class TerminalRenderer extends LeafRenderObjectWidget {
   /// Requests a terminal viewport row derived from Flutter scroll layout.
   final ValueChanged<int> onViewportRowChanged;
 
+  /// Monotonically increasing request for an accessible viewport snapshot.
+  final int semanticsGeneration;
+
+  /// Receives accessible text after terminal state has synchronized for paint.
+  final ValueChanged<String>? onSemanticsText;
+
   const TerminalRenderer({
     super.key,
     required this.frameSource,
@@ -112,6 +118,8 @@ final class TerminalRenderer extends LeafRenderObjectWidget {
     this.linkSnapshot = .empty,
     required this.onGeometryChanged,
     required this.onViewportRowChanged,
+    this.semanticsGeneration = 0,
+    this.onSemanticsText,
   });
 
   @override
@@ -130,6 +138,8 @@ final class TerminalRenderer extends LeafRenderObjectWidget {
       preeditText: preeditText,
       linkSnapshot: linkSnapshot,
       focused: focused,
+      semanticsGeneration: semanticsGeneration,
+      onSemanticsText: onSemanticsText,
     );
   }
 
@@ -169,7 +179,9 @@ final class TerminalRenderer extends LeafRenderObjectWidget {
       ..focused = focused
       ..blinkVisible = blinkVisible
       ..preeditText = preeditText
-      ..linkSnapshot = linkSnapshot;
+      ..linkSnapshot = linkSnapshot
+      ..semanticsGeneration = semanticsGeneration
+      ..onSemanticsText = onSemanticsText;
   }
 }
 
@@ -216,6 +228,9 @@ final class TerminalRenderBox extends RenderBox {
   var _preeditText = '';
   bool? _primaryStickToBottom;
   AtlasPool _atlasPool;
+  int _semanticsGeneration;
+  late int _capturedSemanticsGeneration;
+  ValueChanged<String>? _onSemanticsText;
   var _stickToBottom = true;
   var _surfacePadding = EdgeInsets.zero;
 
@@ -233,8 +248,15 @@ final class TerminalRenderBox extends RenderBox {
     this._preeditText = '',
     required this._onGeometryChanged,
     required this._onViewportRowChanged,
+    int semanticsGeneration = 0,
+    ValueChanged<String>? onSemanticsText,
   }) : _surfacePadding = surfacePadding,
        _lastSurfacePadding = surfacePadding,
+       _semanticsGeneration = semanticsGeneration,
+       _capturedSemanticsGeneration = onSemanticsText == null
+           ? semanticsGeneration
+           : semanticsGeneration - 1,
+       _onSemanticsText = onSemanticsText,
        _paintState = PaintState(theme, metrics)
          ..blinkVisible = blinkVisible
          ..cursorFocused = focused {
@@ -362,6 +384,21 @@ final class TerminalRenderBox extends RenderBox {
   set onViewportRowChanged(ValueChanged<int> value) =>
       _onViewportRowChanged = value;
 
+  set onSemanticsText(ValueChanged<String>? value) {
+    if (_onSemanticsText == value) return;
+    _onSemanticsText = value;
+    if (value != null) {
+      _capturedSemanticsGeneration = _semanticsGeneration - 1;
+      markNeedsPaint();
+    }
+  }
+
+  set semanticsGeneration(int value) {
+    if (_semanticsGeneration == value) return;
+    _semanticsGeneration = value;
+    if (_onSemanticsText != null) markNeedsPaint();
+  }
+
   bool get focused => _paintState.cursorFocused;
 
   set focused(bool value) {
@@ -470,6 +507,11 @@ final class TerminalRenderBox extends RenderBox {
   @override
   void paint(PaintingContext context, Offset offset) {
     _syncFrameState();
+    if (_onSemanticsText != null &&
+        _capturedSemanticsGeneration != _semanticsGeneration) {
+      _capturedSemanticsGeneration = _semanticsGeneration;
+      _onSemanticsText!(_pipeline.semanticsText());
+    }
 
     final canvas = context.canvas;
 

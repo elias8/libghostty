@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:flutter/scheduler.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
@@ -103,6 +105,15 @@ class TerminalView extends StatefulWidget {
   /// corresponding default.
   final Map<ShortcutActivator, Intent>? shortcuts;
 
+  /// Accessibility label for the terminal semantics node.
+  ///
+  /// Set to null to omit flterm's semantics node when an embedding application
+  /// provides an equivalent accessible terminal surface.
+  final String? semanticsLabel;
+
+  /// Accessibility hint for focusing terminal input.
+  final String? semanticsHint;
+
   /// Raw TTF/OTF font file bytes for exact metric extraction.
   ///
   /// When provided, takes priority over automatic font resolution. The
@@ -130,6 +141,8 @@ class TerminalView extends StatefulWidget {
     this.mouseAutoHide = .onInput,
     this.linkSettings = const LinkSettings(),
     this.gestureSettings = const TerminalGestureSettings(),
+    this.semanticsLabel = 'Terminal',
+    this.semanticsHint = 'Activate to focus terminal input',
   });
 
   @override
@@ -138,10 +151,13 @@ class TerminalView extends StatefulWidget {
 
 final class _TerminalViewState extends State<TerminalView>
     with WidgetsBindingObserver {
+  static const _semanticsUpdateInterval = Duration(milliseconds: 100);
+
   final _rendererKey = GlobalKey();
   final _links = LinkInteraction();
   final _cursorBlink = CursorBlink();
   final _mouseCursorHidden = ValueNotifier(false);
+  final _semanticsText = ValueNotifier('');
   late final _mouseInteraction = Listenable.merge([_links, _mouseCursorHidden]);
 
   late ViewAttachment _attachment;
@@ -151,6 +167,10 @@ final class _TerminalViewState extends State<TerminalView>
   late CellMetrics _metrics;
   var _ownsFocusNode = false;
   var _ownsScrollController = false;
+  Timer? _semanticsTimer;
+  var _semanticsGeneration = 0;
+  String? _pendingSemanticsText;
+  var _semanticsNotificationScheduled = false;
   Uint8List? _resolvedFontData;
   late TerminalScrollController _scrollController;
   late TerminalTheme _theme;
@@ -206,6 +226,17 @@ final class _TerminalViewState extends State<TerminalView>
   void didUpdateWidget(TerminalView oldWidget) {
     super.didUpdateWidget(oldWidget);
 
+    if (widget.semanticsLabel != oldWidget.semanticsLabel) {
+      if (widget.semanticsLabel == null) {
+        _semanticsTimer?.cancel();
+        _semanticsTimer = null;
+        _pendingSemanticsText = null;
+        _semanticsText.value = '';
+      } else {
+        _scheduleSemanticsUpdate();
+      }
+    }
+
     final controllerChanged = widget.controller != oldWidget.controller;
     final focusNodeChanged = widget.focusNode != oldWidget.focusNode;
     final scrollControllerChanged =
@@ -213,6 +244,7 @@ final class _TerminalViewState extends State<TerminalView>
 
     if (controllerChanged) {
       _attachment.removeListener(_onControllerChanged);
+      _attachment.terminal.removeListener(_notifySemanticsChanged);
       _attachment.dispose();
     } else if (focusNodeChanged) {
       _attachment.detach();
@@ -237,9 +269,15 @@ final class _TerminalViewState extends State<TerminalView>
     }
 
     if (controllerChanged) {
+      _semanticsTimer?.cancel();
+      _semanticsTimer = null;
+      _pendingSemanticsText = null;
+      _semanticsText.value = '';
       _attachment = ViewAttachment(_controller);
       _attachment.addListener(_onControllerChanged);
+      _attachment.terminal.addListener(_notifySemanticsChanged);
       _links.invalidateContent();
+      _scheduleSemanticsUpdate();
     }
 
     if (controllerChanged || focusNodeChanged || scrollControllerChanged) {
@@ -285,10 +323,16 @@ final class _TerminalViewState extends State<TerminalView>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _semanticsTimer?.cancel();
+    SemanticsBinding.instance.removeSemanticsEnabledListener(
+      _handleSemanticsEnabledChanged,
+    );
     _cursorBlink.dispose();
     _mouseCursorHidden.dispose();
+    _semanticsText.dispose();
     _links.dispose();
     _attachment.removeListener(_onControllerChanged);
+    _attachment.terminal.removeListener(_notifySemanticsChanged);
     _attachment.dispose();
     if (_ownsFocusNode) _focusNode.dispose();
     _scrollController.removeListener(_onScrollChanged);
@@ -301,7 +345,12 @@ final class _TerminalViewState extends State<TerminalView>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
 
+    SemanticsBinding.instance.addSemanticsEnabledListener(
+      _handleSemanticsEnabledChanged,
+    );
+
     _attachment = ViewAttachment(_controller);
+    _attachment.terminal.addListener(_notifySemanticsChanged);
     _focusNode = widget.focusNode ?? FocusNode();
     _ownsFocusNode = widget.focusNode == null;
 
@@ -317,10 +366,11 @@ final class _TerminalViewState extends State<TerminalView>
     _scrollController.addListener(_onScrollChanged);
     _attachment.addListener(_onControllerChanged);
     _syncLinkInteraction();
+    _scheduleSemanticsUpdate();
   }
 
   Widget _build(AtlasPool atlasPool) {
-    return GestureDetector(
+    final terminal = GestureDetector(
       behavior: .translucent,
       onTap: _attachment.requestFocus,
       child: ColoredBox(
@@ -342,6 +392,26 @@ final class _TerminalViewState extends State<TerminalView>
             ),
           ),
         ),
+      ),
+    );
+    final semanticsLabel = widget.semanticsLabel;
+    if (semanticsLabel == null || !SemanticsBinding.instance.semanticsEnabled) {
+      return terminal;
+    }
+    return ListenableBuilder(
+      listenable: _semanticsText,
+      child: terminal,
+      builder: (context, child) => Semantics(
+        container: true,
+        excludeSemantics: true,
+        label: semanticsLabel,
+        value: _semanticsText.value,
+        hint: widget.semanticsHint,
+        focusable: true,
+        focused: _focusNode.hasFocus,
+        onTap: _attachment.requestFocus,
+        onFocus: _attachment.requestFocus,
+        child: child,
       ),
     );
   }
@@ -393,6 +463,12 @@ final class _TerminalViewState extends State<TerminalView>
               linkSnapshot: _links.snapshot(),
               onGeometryChanged: _handleResize,
               onViewportRowChanged: _attachment.handleViewportRowChanged,
+              semanticsGeneration: _semanticsGeneration,
+              onSemanticsText:
+                  SemanticsBinding.instance.semanticsEnabled &&
+                      widget.semanticsLabel != null
+                  ? _handleSemanticsText
+                  : null,
             ),
           ),
         ),
@@ -488,7 +564,55 @@ final class _TerminalViewState extends State<TerminalView>
   void _onScrollChanged() {
     _syncBlink();
     _links.invalidateContent();
+    if (_controller.activeScreen == .primary) _scheduleSemanticsUpdate();
     _updateTextInputGeometry();
+  }
+
+  void _handleSemanticsEnabledChanged() {
+    if (!mounted) return;
+    if (SemanticsBinding.instance.semanticsEnabled) {
+      _scheduleSemanticsUpdate();
+    } else {
+      _semanticsTimer?.cancel();
+      _semanticsTimer = null;
+      _pendingSemanticsText = null;
+      _semanticsText.value = '';
+    }
+    setState(() {});
+  }
+
+  void _notifySemanticsChanged() => _scheduleSemanticsUpdate();
+
+  void _scheduleSemanticsUpdate() {
+    if (_semanticsTimer != null ||
+        widget.semanticsLabel == null ||
+        !SemanticsBinding.instance.semanticsEnabled) {
+      return;
+    }
+    _semanticsTimer = Timer(_semanticsUpdateInterval, () {
+      _semanticsTimer = null;
+      if (!mounted ||
+          widget.semanticsLabel == null ||
+          !SemanticsBinding.instance.semanticsEnabled) {
+        return;
+      }
+      setState(() => _semanticsGeneration++);
+    });
+  }
+
+  void _handleSemanticsText(String text) {
+    _pendingSemanticsText = text;
+    if (_semanticsNotificationScheduled) return;
+    _semanticsNotificationScheduled = true;
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      _semanticsNotificationScheduled = false;
+      final pending = _pendingSemanticsText;
+      _pendingSemanticsText = null;
+      if (!mounted || pending == null || pending == _semanticsText.value) {
+        return;
+      }
+      _semanticsText.value = pending;
+    });
   }
 
   /// Asynchronously resolves font data and recomputes metrics when found.

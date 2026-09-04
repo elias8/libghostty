@@ -32,6 +32,12 @@
   measured grid; assigning it later immediately reports that grid.
   Cell-pixel-only changes skip the callback, and in-band output is emitted
   first.
+- **Accessible viewport**: `TerminalView` exposes a screen-reader semantics
+  node (`semanticsLabel`/`semanticsHint`) whose value follows the visible,
+  non-concealed terminal viewport. Snapshots are captured from the render
+  pipeline after each paint and coalesced through a bounded 100 ms interval so
+  output updates never announce as a live region. Set `semanticsLabel: null`
+  to delegate the accessible surface to an embedding application.
 
 ### Fixed
 
