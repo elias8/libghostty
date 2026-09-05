@@ -360,6 +360,81 @@ void main() {
       },
     );
 
+    test('sync emits search match colors', () {
+      final search = Search(terminal);
+      addTearDown(search.dispose);
+      state.updateTheme(
+        TerminalTheme.dark().copyWith(
+          search: const SearchTheme(
+            match: SelectionTheme(
+              background: DynamicColor.fixed(Color(0xFF112233)),
+              foreground: DynamicColor.fixed(Color(0xFF445566)),
+            ),
+          ),
+        ),
+      );
+      writeUtf8(terminal, 'hello');
+      search.setNeedle('ell');
+      search.run();
+
+      builder.sync(
+        terminal,
+        terminalDirty: true,
+        searchDirty: true,
+        searchMatches: search.viewportMatches,
+      );
+
+      expect(sprites.background.count, greaterThan(0));
+      expect(sprites.regular.sealedColors, contains(0xFF445566.toSigned(32)));
+    });
+
+    test('sync applies highlight precedence', () {
+      final search = Search(terminal);
+      addTearDown(search.dispose);
+      state.updateTheme(
+        TerminalTheme.dark().copyWith(
+          selection: const SelectionTheme(
+            foreground: DynamicColor.fixed(Color(0xFF0000FF)),
+          ),
+          search: const SearchTheme(
+            match: SelectionTheme(
+              foreground: DynamicColor.fixed(Color(0xFFFF0000)),
+            ),
+            selectedMatch: SelectionTheme(
+              foreground: DynamicColor.fixed(Color(0xFF00FF00)),
+            ),
+          ),
+        ),
+      );
+      writeUtf8(terminal, 'hello');
+      terminal.selection = Selection.fromRefs(
+        start: GridRef.at(terminal, const Position(row: 0, col: 1)),
+        end: GridRef.at(terminal, const Position(row: 0, col: 3)),
+      );
+      search.setNeedle('ell');
+      search.run();
+
+      builder.sync(
+        terminal,
+        terminalDirty: true,
+        searchDirty: true,
+        searchMatches: search.viewportMatches,
+      );
+      final ordinaryColors = sprites.regular.sealedColors.toList();
+      search.selectNext();
+      builder.sync(
+        terminal,
+        terminalDirty: true,
+        searchDirty: true,
+        searchMatches: search.viewportMatches,
+        selectedSearchMatch: search.selectedMatch,
+      );
+
+      expect(ordinaryColors, contains(0xFF0000FF.toSigned(32)));
+      expect(ordinaryColors, isNot(contains(0xFFFF0000.toSigned(32))));
+      expect(sprites.regular.sealedColors, contains(0xFF00FF00.toSigned(32)));
+    });
+
     test('sync resolves block cursor glyph from cached frame state', () {
       writeUtf8(terminal, 'A\x1b[1;1H');
       builder.sync(terminal, terminalDirty: true);

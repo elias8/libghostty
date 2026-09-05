@@ -39,6 +39,12 @@ final class TerminalRenderer extends LeafRenderObjectWidget {
   /// Supplies the terminal and publishes frame and viewport changes.
   final FrameSource frameSource;
 
+  /// Search matches intersecting the viewport.
+  final List<Selection> searchMatches;
+
+  /// Search match selected by navigation, if any.
+  final Selection? selectedSearchMatch;
+
   /// Visual style applied to the terminal.
   ///
   /// When changed, the glyph atlas is updated if font properties changed and
@@ -100,6 +106,8 @@ final class TerminalRenderer extends LeafRenderObjectWidget {
   const TerminalRenderer({
     super.key,
     required this.frameSource,
+    this.searchMatches = const [],
+    this.selectedSearchMatch,
     required this.theme,
     required this.metrics,
     this.surfacePadding = EdgeInsets.zero,
@@ -122,6 +130,8 @@ final class TerminalRenderer extends LeafRenderObjectWidget {
       metrics: metrics,
       surfacePadding: surfacePadding,
       frameSource: frameSource,
+      searchMatches: searchMatches,
+      selectedSearchMatch: selectedSearchMatch,
       atlasPool: atlasPool,
       devicePixelRatio: devicePixelRatio,
       onGeometryChanged: onGeometryChanged,
@@ -158,6 +168,8 @@ final class TerminalRenderer extends LeafRenderObjectWidget {
   ) {
     renderObject
       ..frameSource = frameSource
+      ..searchMatches = searchMatches
+      ..selectedSearchMatch = selectedSearchMatch
       ..theme = theme
       ..atlasPool = atlasPool
       ..offset = offset
@@ -200,6 +212,8 @@ final class TerminalRenderBox extends RenderBox {
   var _cellWidthPx = 0;
   double _devicePixelRatio;
   FrameSource _frameSource;
+  List<Selection> _searchMatches;
+  Selection? _selectedSearchMatch;
   late AtlasLease _atlasLease;
   var _lastCellHeight = 0.0;
   var _lastCellWidth = 0.0;
@@ -208,6 +222,7 @@ final class TerminalRenderBox extends RenderBox {
   var _lastSurfacePadding = EdgeInsets.zero;
   LinkSnapshot _linkSnapshot;
   var _needsFrameSync = false;
+  var _searchDirty = true;
   ViewportOffset _offset;
   ValueChanged<SurfaceMeasurement> _onGeometryChanged;
   ValueChanged<int> _onViewportRowChanged;
@@ -221,6 +236,8 @@ final class TerminalRenderBox extends RenderBox {
 
   TerminalRenderBox({
     required this._frameSource,
+    this._searchMatches = const [],
+    this._selectedSearchMatch,
     required TerminalTheme theme,
     required CellMetrics metrics,
     EdgeInsets surfacePadding = EdgeInsets.zero,
@@ -394,6 +411,20 @@ final class TerminalRenderBox extends RenderBox {
     }
     _needsFrameSync = true;
     markNeedsLayout();
+  }
+
+  set searchMatches(List<Selection> value) {
+    if (identical(_searchMatches, value)) return;
+    _searchMatches = value;
+    _searchDirty = true;
+    markNeedsPaint();
+  }
+
+  set selectedSearchMatch(Selection? value) {
+    if (_selectedSearchMatch == value) return;
+    _selectedSearchMatch = value;
+    _searchDirty = true;
+    markNeedsPaint();
   }
 
   TerminalTheme get theme => _paintState.theme;
@@ -704,9 +735,14 @@ final class TerminalRenderBox extends RenderBox {
 
     final terminalDirty = _needsFrameSync;
     _needsFrameSync = false;
+    final searchDirty = _searchDirty;
+    _searchDirty = false;
     _pipeline.sync(
       _terminal,
       terminalDirty: terminalDirty,
+      searchDirty: searchDirty,
+      searchMatches: _searchMatches,
+      selectedSearchMatch: _selectedSearchMatch,
       preeditText: _preeditText,
       linkSnapshot: _linkSnapshot,
     );

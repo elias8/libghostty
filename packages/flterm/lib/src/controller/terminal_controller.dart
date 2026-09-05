@@ -8,6 +8,7 @@ import '../input/input_encoder.dart';
 import '../input/input_message.dart';
 import '../interaction/selection_session.dart';
 import 'kitty_png_decoder.dart';
+import 'terminal_search_controller.dart';
 
 part 'terminal_controller_impl.dart';
 
@@ -204,6 +205,15 @@ abstract class TerminalController extends ChangeNotifier {
   /// [TerminalScrollController] supplied to [TerminalView] when a Flutter UI
   /// must observe or control viewport movement.
   Scrollbar get scrollbar;
+
+  /// Search state and navigation for this terminal session.
+  ///
+  /// The controller owns this object and disposes it with the terminal. It is
+  /// also a [Listenable] for search progress, results, selection, policy, and
+  /// viewport changes. Use [TerminalSearchController.search] to start a search;
+  /// flterm performs the incremental libghostty work and renders visible
+  /// matches automatically.
+  TerminalSearchController get search;
 
   /// The title set by the running program through OSC 0 or OSC 2.
   ///

@@ -419,7 +419,7 @@ final class WasmRenderBindings implements RenderBindings {
     LibGhosttyHandle t,
     RawGridRef r,
     PointTag p,
-  ) => _required(
+  ) => _optional(
     _raw.terminalPointFromGridRef(t.value, r, p),
     'ghostty_terminal_point_from_grid_ref',
   );

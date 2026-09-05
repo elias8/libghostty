@@ -76,6 +76,9 @@ final class RenderPipeline {
   void sync(
     Terminal terminal, {
     required bool terminalDirty,
+    bool searchDirty = false,
+    List<Selection> searchMatches = const [],
+    Selection? selectedSearchMatch,
     String preeditText = '',
     LinkSnapshot linkSnapshot = .empty,
   }) {
@@ -84,6 +87,9 @@ final class RenderPipeline {
     _frameBuilder.sync(
       terminal,
       terminalDirty: syncTerminal,
+      searchDirty: searchDirty,
+      searchMatches: searchMatches,
+      selectedSearchMatch: selectedSearchMatch,
       preeditText: preeditText,
       linkSnapshot: linkSnapshot,
     );

@@ -29,6 +29,7 @@ final class TerminalControllerImpl extends TerminalController {
   final _viewportChanges = ChangeNotifier();
   late final InputEncoder _inputEncoder;
   late final SelectionSession _selection;
+  late final TerminalSearchControllerImpl _search;
 
   ColorScheme _colorScheme = .dark;
   SurfaceGeometry? _committedGeometry;
@@ -50,6 +51,7 @@ final class TerminalControllerImpl extends TerminalController {
       _terminal = Terminal(cols: config.cols, rows: config.rows),
       super.base() {
     _inputEncoder = InputEncoder(_terminal);
+    _search = TerminalSearchControllerImpl(_terminal, _viewportChanges);
     _selection = SelectionSession(_terminal, notifyListeners);
     installDefaultKittyPngDecoder();
     _wireTerminalCallbacks();
@@ -183,6 +185,12 @@ final class TerminalControllerImpl extends TerminalController {
     return _terminal.scrollbar;
   }
 
+  @override
+  TerminalSearchController get search {
+    _checkNotDisposed();
+    return _search;
+  }
+
   Terminal get terminal {
     _checkNotDisposed();
     return _terminal;
@@ -277,6 +285,7 @@ final class TerminalControllerImpl extends TerminalController {
     _disposed = true;
     _viewToken = null;
     _terminal.removeListener(_onTerminalChanged);
+    _search.dispose();
     _viewportChanges.dispose();
     _inputEncoder.dispose();
     _selection.dispose();
