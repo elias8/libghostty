@@ -86,5 +86,43 @@ void main() {
       expect(rects.single.topLeft, startRect!.topLeft);
       expect(rects.single.width, startRect.width * 5);
     });
+
+    testWidgets('rebuilds after viewport changes without a search', (
+      tester,
+    ) async {
+      final controller = TerminalController(
+        config: const TerminalConfig(cols: 20, rows: 3),
+      );
+      addTearDown(controller.dispose);
+      var builds = 0;
+      await tester.pumpWidget(
+        Directionality(
+          textDirection: TextDirection.ltr,
+          child: SizedBox(
+            width: 300,
+            height: 100,
+            child: TerminalView(
+              controller: controller,
+              overlayBuilder: (context, geometry) {
+                builds++;
+                return const SizedBox.expand();
+              },
+            ),
+          ),
+        ),
+      );
+      controller.write(
+        Uint8List.fromList(utf8.encode(List.filled(100, 'line\r\n').join())),
+      );
+      await tester.pumpAndSettle();
+      controller.scrollToBottom();
+      await tester.pump();
+      final buildsBeforeScroll = builds;
+
+      controller.scrollToTop();
+      await tester.pump();
+
+      expect(builds, buildsBeforeScroll + 1);
+    });
   });
 }

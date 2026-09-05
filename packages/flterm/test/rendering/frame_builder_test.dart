@@ -388,6 +388,38 @@ void main() {
       expect(sprites.regular.sealedColors, contains(0xFF445566.toSigned(32)));
     });
 
+    test('sync highlights the visible part of a multiline search match', () {
+      final frame = createFrame(cols: 5, rows: 2);
+      final search = Search(frame.terminal);
+      addTearDown(search.dispose);
+      frame.state.updateTheme(
+        TerminalTheme.dark().copyWith(
+          search: const SearchTheme(
+            match: SelectionTheme(
+              foreground: DynamicColor.fixed(Color(0xFF445566)),
+            ),
+          ),
+        ),
+      );
+      writeUtf8(frame.terminal, 'abcdef\r\n11111\r\n22222\r\n33333');
+      search.setNeedle('abcdef');
+      search.run();
+      frame.terminal.scrollToRow(1);
+      search.run();
+
+      frame.builder.sync(
+        frame.terminal,
+        terminalDirty: true,
+        searchDirty: true,
+        searchMatches: search.viewportMatches,
+      );
+
+      expect(
+        frame.sprites.regular.sealedColors,
+        contains(0xFF445566.toSigned(32)),
+      );
+    });
+
     test('sync applies highlight precedence', () {
       final search = Search(terminal);
       addTearDown(search.dispose);

@@ -88,6 +88,25 @@ void main() {
         expect(controller.search.matches, isEmpty);
       });
 
+      testWidgets('keeps visible matches stable while deleting the query', (
+        tester,
+      ) async {
+        controller.write(Uint8List.fromList(utf8.encode('hello hello')));
+        controller.search.search('hello');
+        await tester.pumpAndSettle();
+        final matchCounts = <int>[];
+        controller.search.addListener(
+          () => matchCounts.add(controller.search.viewportMatches.length),
+        );
+
+        controller.search.search('hell');
+        controller.search.search('hel');
+        controller.search.search('');
+        await tester.pumpAndSettle();
+
+        expect(matchCounts, [2, 2, 0]);
+      });
+
       testWidgets('preserves selection for case-insensitive resubmission', (
         tester,
       ) async {
