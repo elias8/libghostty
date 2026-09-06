@@ -18,6 +18,11 @@
 
 ### Added
 
+- **Terminal search**: `TerminalController.search` manages incremental searches,
+  match navigation, scroll policy, and automatic viewport highlighting.
+  `TerminalTheme.search` styles ordinary and selected matches, while
+  `TerminalView.overlayBuilder` and `TerminalViewGeometry` support custom,
+  cell-aware search interfaces.
 - **Touch selection handles**: Android and iOS long-press selections expose
   draggable platform-styled endpoint handles with adaptive magnifiers and edge
   autoscroll. Toggling the configured block-selection modifier while dragging
