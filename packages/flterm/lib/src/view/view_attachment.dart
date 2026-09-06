@@ -105,6 +105,8 @@ final class ViewAttachment extends ChangeNotifier {
 
   Terminal get terminal => _controller.terminal;
 
+  Listenable get viewportChanges => _controller.viewportChanges;
+
   Mods get virtualMods => _controller.virtualMods;
 
   Mods get _physicalMods {

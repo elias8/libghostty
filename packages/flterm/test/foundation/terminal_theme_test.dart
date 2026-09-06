@@ -167,6 +167,16 @@ void main() {
     });
   });
 
+  group('SearchTheme', () {
+    test('distinguishes matches from the selected match by default', () {
+      const theme = SearchTheme();
+
+      expect(theme.match, isNot(theme.selectedMatch));
+      expect(theme.match.background, isNotNull);
+      expect(theme.selectedMatch.background, isNotNull);
+    });
+  });
+
   group('HyperlinkStyle', () {
     test('defaults: no underline, no colors', () {
       const style = HyperlinkStyle();
@@ -288,6 +298,7 @@ void main() {
       expect(theme.minimumContrast, 1.0);
       expect(theme.fontFamilyFallback, isNotEmpty);
       expect(theme.selection, const SelectionTheme());
+      expect(theme.search, const SearchTheme());
     });
 
     test('prioritizes the proportional Nerd Symbols fallback', () {

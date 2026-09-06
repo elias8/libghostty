@@ -21,12 +21,15 @@ export 'package:libghostty/libghostty.dart'
         Formatter,
         FormatterExtra,
         FormatterFormat,
+        GridRef,
         Key,
         Mods,
         MouseTracking,
         PointTag,
         Position,
         Scrollbar,
+        SearchScroll,
+        Selection,
         SelectionGestureBehavior,
         SelectionGestureBehaviors,
         TerminalMode,
@@ -38,6 +41,8 @@ export 'package:libghostty/libghostty.dart'
 
 export 'src/controller/terminal_controller.dart'
     show OnResize, TerminalController;
+export 'src/controller/terminal_search_controller.dart'
+    show TerminalSearchController;
 export 'src/foundation/cell_range.dart' show CellRange;
 export 'src/foundation/color_palette.dart' show ColorPalette;
 export 'src/foundation/dynamic_color.dart' show DynamicColor;
@@ -55,6 +60,7 @@ export 'src/foundation/terminal_theme.dart'
         CursorTheme,
         HyperlinkStyle,
         HyperlinkTheme,
+        SearchTheme,
         SelectionTheme,
         TerminalTheme;
 export 'src/links/activation_modifier.dart' show ActivationModifier;
@@ -68,4 +74,5 @@ export 'src/links/link_settings.dart'
         LinkedFile;
 export 'src/view/terminal_scope.dart' show TerminalScope;
 export 'src/view/terminal_scroll_controller.dart' show TerminalScrollController;
-export 'src/view/terminal_view.dart' show TerminalView;
+export 'src/view/terminal_view.dart'
+    show TerminalOverlayBuilder, TerminalView, TerminalViewGeometry;

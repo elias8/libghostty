@@ -80,6 +80,8 @@ void main() {
       bool blinkVisible = true,
       String preeditText = '',
       LinkSnapshot linkSnapshot = LinkSnapshot.empty,
+      List<Selection> searchMatches = const [],
+      Selection? selectedSearchMatch,
       ValueChanged<SurfaceMeasurement>? onGeometryChanged,
     }) {
       final resolvedTheme =
@@ -110,6 +112,8 @@ void main() {
                 blinkVisible: blinkVisible,
                 preeditText: preeditText,
                 linkSnapshot: linkSnapshot,
+                searchMatches: searchMatches,
+                selectedSearchMatch: selectedSearchMatch,
                 onGeometryChanged: (geometry) {
                   terminal.resize(
                     cols: geometry.cols,
@@ -154,6 +158,8 @@ void main() {
       TerminalTheme? overrideTheme,
       TestSelection? selection,
       LinkSnapshot linkSnapshot = LinkSnapshot.empty,
+      List<Selection> searchMatches = const [],
+      Selection? selectedSearchMatch,
     }) async {
       tester.view.devicePixelRatio = 1.0;
       await tester.pumpWidget(
@@ -163,6 +169,8 @@ void main() {
           selection: selection,
           metrics: goldenMetrics,
           linkSnapshot: linkSnapshot,
+          searchMatches: searchMatches,
+          selectedSearchMatch: selectedSearchMatch,
         ),
       );
     }
@@ -636,6 +644,82 @@ void main() {
         await expectLater(
           find.byType(TerminalRenderer),
           matchesGoldenFile('goldens/selection_beyond_bounds.png'),
+        );
+      });
+    });
+
+    group('search', () {
+      testWidgets('renders distinct search match states', (tester) async {
+        final search = Search(terminal);
+        addTearDown(search.dispose);
+        writeUtf8(
+          terminal,
+          'alpha beta gamma\r\n'
+          'beta delta beta\r\n'
+          'omega beta sigma',
+        );
+        search.setNeedle('beta');
+        search.run();
+        search.selectNext();
+
+        await pump(
+          tester,
+          overrideTheme: theme.copyWith(
+            search: const SearchTheme(
+              match: SelectionTheme(
+                background: DynamicColor.fixed(Color(0xFFF0C674)),
+                foreground: DynamicColor.fixed(Color(0xFF1D1F21)),
+              ),
+              selectedMatch: SelectionTheme(
+                background: DynamicColor.fixed(Color(0xFFE64A3B)),
+                foreground: DynamicColor.fixed(Color(0xFFFFFFFF)),
+              ),
+            ),
+          ),
+          searchMatches: search.viewportMatches,
+          selectedSearchMatch: search.selectedMatch,
+        );
+        await expectLater(
+          find.byType(TerminalRenderer),
+          matchesGoldenFile('goldens/search_match_states.png'),
+        );
+      });
+
+      testWidgets('renders the visible part of a multiline match', (
+        tester,
+      ) async {
+        const cols = 12;
+        const rows = 3;
+        final terminal = Terminal(cols: cols, rows: rows);
+        addTearDown(terminal.dispose);
+        final search = Search(terminal);
+        addTearDown(search.dispose);
+        writeUtf8(
+          terminal,
+          'multiline-match\r\n'
+          'second line\r\n'
+          'third line\r\n'
+          'fourth line',
+        );
+        search.setNeedle('multiline-match');
+        search.run();
+        terminal.scrollToRow(1);
+        search.run();
+
+        tester.view.devicePixelRatio = 1.0;
+        await tester.pumpWidget(
+          wrap(
+            terminal,
+            theme: theme,
+            metrics: goldenMetrics,
+            maxWidth: cols * goldenMetrics.cellWidth,
+            maxHeight: rows * goldenMetrics.cellHeight,
+            searchMatches: search.viewportMatches,
+          ),
+        );
+        await expectLater(
+          find.byType(TerminalRenderer),
+          matchesGoldenFile('goldens/search_multiline_clipped.png'),
         );
       });
     });

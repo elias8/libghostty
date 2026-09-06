@@ -145,6 +145,24 @@ void main() {
 
         expect(result, const Position(row: 0, col: 2));
       });
+
+      test('returns null outside the requested coordinate space', () {
+        final scrolled = Terminal(cols: 5, rows: 2);
+        addTearDown(scrolled.dispose);
+        scrolled.write(
+          Uint8List.fromList('first\r\nsecond\r\nthird'.codeUnits),
+        );
+        final ref = GridRef.at(
+          scrolled,
+          const Position(row: 0, col: 0),
+          pointTag: .screen,
+        );
+        scrolled.scrollToBottom();
+
+        final result = ref.positionIn(.viewport);
+
+        expect(result, isNull);
+      });
     });
   });
 }

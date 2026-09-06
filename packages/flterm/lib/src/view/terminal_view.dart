@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
+import 'package:libghostty/libghostty.dart' show GridRef, Position, Selection;
 
 import '../controller/terminal_controller.dart';
 import '../foundation.dart';
@@ -15,6 +16,8 @@ import 'shortcut_scope.dart';
 import 'terminal_scope.dart';
 import 'terminal_scroll_controller.dart';
 import 'view_attachment.dart';
+
+part 'terminal_view_geometry.dart';
 
 /// Displays a terminal and handles user interaction.
 ///
@@ -95,6 +98,28 @@ class TerminalView extends StatefulWidget {
   /// Created internally when null.
   final TerminalScrollController? scrollController;
 
+  /// Builds application-defined content over the complete terminal surface.
+  ///
+  /// The builder receives cell-aware geometry in the overlay's coordinate
+  /// system. Use it for any application-defined content that belongs over the
+  /// terminal, including controls, annotations, status UI, or effects.
+  /// It rebuilds when the overlay constraints, search state, or terminal
+  /// viewport changes. The returned subtree owns any additional state, layout,
+  /// input, and semantics.
+  ///
+  /// ```dart
+  /// overlayBuilder: (context, geometry) => Stack(
+  ///   children: [
+  ///     Positioned(
+  ///       left: geometry.gridBounds.left,
+  ///       top: geometry.gridBounds.top,
+  ///       child: const TerminalStatusBadge(),
+  ///     ),
+  ///   ],
+  /// ),
+  /// ```
+  final TerminalOverlayBuilder? overlayBuilder;
+
   /// Shortcut bindings merged over platform defaults.
   ///
   /// Defaults: Command+C/V/A/K on macOS and iOS,
@@ -124,6 +149,7 @@ class TerminalView extends StatefulWidget {
     this.shortcuts,
     this.scrollPhysics,
     this.scrollController,
+    this.overlayBuilder,
     this.autofocus = false,
     this.showKeyboard = true,
     this.padding = const .all(8),
@@ -325,22 +351,40 @@ final class _TerminalViewState extends State<TerminalView>
       onTap: _attachment.requestFocus,
       child: ColoredBox(
         color: _theme.background.withValues(alpha: _theme.backgroundOpacity),
-        child: Padding(
-          padding: widget.padding,
-          child: Focus(
-            onKeyEvent: _handleKeyEvent,
-            child: ShortcutScope(
-              onPaste: _handlePaste,
-              controller: _controller,
-              shortcuts: widget.shortcuts,
-              enableSelectAll: widget.gestureSettings.selectAllShortcut,
-              child: ListenableBuilder(
-                listenable: _attachment.interaction,
-                builder: (_, _) =>
-                    _buildInteraction(atlasPool, _gestureScrollPhysics),
+        child: Stack(
+          fit: .expand,
+          children: [
+            Padding(
+              padding: widget.padding,
+              child: Focus(
+                onKeyEvent: _handleKeyEvent,
+                child: ShortcutScope(
+                  onPaste: _handlePaste,
+                  controller: _controller,
+                  shortcuts: widget.shortcuts,
+                  enableSelectAll: widget.gestureSettings.selectAllShortcut,
+                  child: ListenableBuilder(
+                    listenable: _attachment.interaction,
+                    builder: (_, _) =>
+                        _buildInteraction(atlasPool, _gestureScrollPhysics),
+                  ),
+                ),
               ),
             ),
-          ),
+            if (widget.overlayBuilder case final builder?)
+              Positioned.fill(
+                child: ListenableBuilder(
+                  listenable: Listenable.merge([
+                    _controller.search,
+                    _attachment.viewportChanges,
+                  ]),
+                  builder: (context, _) => LayoutBuilder(
+                    builder: (context, constraints) =>
+                        builder(context, _geometryFor(constraints)),
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
     );
@@ -372,28 +416,38 @@ final class _TerminalViewState extends State<TerminalView>
           scrollController: _scrollController,
           onLinkActivate: widget.linkSettings.onActivate,
           child: ListenableBuilder(
-            listenable: Listenable.merge([
-              _focusNode,
-              _attachment.input,
-              _cursorBlink,
-              _links,
-            ]),
-            builder: (context, _) => TerminalRenderer(
-              key: _rendererKey,
-              theme: _theme,
-              offset: offset,
-              metrics: _metrics,
-              focused: _focusNode.hasFocus,
-              frameSource: _attachment.frameSource,
-              atlasPool: atlasPool,
-              surfacePadding: widget.padding,
-              devicePixelRatio: _devicePixelRatio,
-              preeditText: _attachment.input.preeditText,
-              blinkVisible: _cursorBlink.value,
-              linkSnapshot: _links.snapshot(),
-              onGeometryChanged: _handleResize,
-              onViewportRowChanged: _attachment.handleViewportRowChanged,
-            ),
+            listenable: _controller.search,
+            builder: (context, _) {
+              final search = _controller.search;
+              final searchMatches = search.viewportMatches;
+              final selectedSearchMatch = search.selectedMatch;
+              return ListenableBuilder(
+                listenable: Listenable.merge([
+                  _focusNode,
+                  _attachment.input,
+                  _cursorBlink,
+                  _links,
+                ]),
+                builder: (context, _) => TerminalRenderer(
+                  key: _rendererKey,
+                  theme: _theme,
+                  offset: offset,
+                  metrics: _metrics,
+                  focused: _focusNode.hasFocus,
+                  frameSource: _attachment.frameSource,
+                  searchMatches: searchMatches,
+                  selectedSearchMatch: selectedSearchMatch,
+                  atlasPool: atlasPool,
+                  surfacePadding: widget.padding,
+                  devicePixelRatio: _devicePixelRatio,
+                  preeditText: _attachment.input.preeditText,
+                  blinkVisible: _cursorBlink.value,
+                  linkSnapshot: _links.snapshot(),
+                  onGeometryChanged: _handleResize,
+                  onViewportRowChanged: _attachment.handleViewportRowChanged,
+                ),
+              );
+            },
           ),
         ),
       ),
@@ -415,6 +469,27 @@ final class _TerminalViewState extends State<TerminalView>
     if (_links.highlighted != null) return SystemMouseCursors.click;
     if (_controller.mouseTracking != .none) return SystemMouseCursors.basic;
     return SystemMouseCursors.text;
+  }
+
+  TerminalViewGeometry _geometryFor(BoxConstraints constraints) {
+    final width = constraints.hasBoundedWidth ? constraints.maxWidth : 0.0;
+    final height = constraints.hasBoundedHeight ? constraints.maxHeight : 0.0;
+    final gridWidth = (width - widget.padding.horizontal).clamp(0.0, width);
+    final gridHeight = (height - widget.padding.vertical).clamp(0.0, height);
+    final (cols, rows) = _metrics.gridSize(gridWidth, gridHeight);
+    return TerminalViewGeometry._(
+      surfaceBounds: Rect.fromLTWH(0, 0, width, height),
+      gridBounds: Rect.fromLTWH(
+        widget.padding.left,
+        widget.padding.top,
+        cols * _metrics.cellWidth,
+        rows * _metrics.cellHeight,
+      ),
+      metrics: _metrics,
+      cols: cols,
+      rows: rows,
+      viewportOffset: _controller.scrollbar.offset,
+    );
   }
 
   void _handleFocusChange(bool focused) {

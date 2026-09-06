@@ -204,12 +204,24 @@ class FrameBuilder {
   void sync(
     Terminal terminal, {
     required bool terminalDirty,
+    bool searchDirty = false,
+    List<Selection> searchMatches = const [],
+    Selection? selectedSearchMatch,
     String preeditText = '',
     LinkSnapshot linkSnapshot = .empty,
   }) {
     var dirty = DirtyState.clean;
 
     _rowBuilder.linkSnapshot = linkSnapshot;
+
+    if (searchDirty) {
+      _rowBuilder.updateSearch(
+        searchMatches,
+        selectedSearchMatch,
+        viewportOffset: terminal.scrollbar.offset,
+      );
+      _dirtyRows.markAll();
+    }
 
     if (terminalDirty) {
       dirty = _renderState.update(terminal);
@@ -755,6 +767,108 @@ final class _PreeditCluster {
   });
 }
 
+enum _CellHighlight { none, searchMatch, selection, selectedSearchMatch }
+
+/// Cell coverage precomputed when a search snapshot changes.
+final class _SearchHighlights {
+  var _cells = Uint8List(0);
+  var _active = false;
+  var _cols = 0;
+  var _rows = 0;
+  var _viewportOffset = 0;
+
+  void update(
+    List<Selection> matches,
+    Selection? selected, {
+    required int rows,
+    required int cols,
+    required int viewportOffset,
+  }) {
+    _rows = rows;
+    _cols = cols;
+    _viewportOffset = viewportOffset;
+    _active = matches.isNotEmpty || selected != null;
+    if (!_active) return;
+
+    final length = rows * cols;
+    if (_cells.length != length) {
+      _cells = Uint8List(length);
+    } else {
+      _cells.fillRange(0, length, 0);
+    }
+
+    for (final match in matches) {
+      _mark(match, 1);
+    }
+    if (selected != null) _mark(selected, 2);
+  }
+
+  _CellHighlight at(int row, int col, {required bool selected}) {
+    if (!_active) return selected ? .selection : .none;
+    if (row < 0 || row >= _rows || col < 0 || col >= _cols) {
+      return selected ? .selection : .none;
+    }
+    return switch (_cells[row * _cols + col]) {
+      2 => .selectedSearchMatch,
+      1 when !selected => .searchMatch,
+      _ when selected => .selection,
+      _ => .none,
+    };
+  }
+
+  void _mark(Selection selection, int value) {
+    var start = _positionInViewport(selection.start);
+    var end = _positionInViewport(selection.end);
+    if (start == null || end == null || _rows == 0 || _cols == 0) return;
+    if (_after(start, end)) (start, end) = (end, start);
+
+    final firstRow = start.row.clamp(0, _rows - 1);
+    final lastRow = end.row.clamp(0, _rows - 1);
+    if (end.row < 0 || start.row >= _rows || firstRow > lastRow) return;
+
+    if (selection.rectangle) {
+      final firstCol = start.col < end.col ? start.col : end.col;
+      final lastCol = start.col > end.col ? start.col : end.col;
+      for (var row = firstRow; row <= lastRow; row++) {
+        _markRow(row, firstCol, lastCol + 1, value);
+      }
+      return;
+    }
+
+    for (var row = firstRow; row <= lastRow; row++) {
+      _markRow(
+        row,
+        row == start.row ? start.col : 0,
+        row == end.row ? end.col + 1 : _cols,
+        value,
+      );
+    }
+  }
+
+  Position? _positionInViewport(GridRef ref) {
+    final viewport = ref.positionIn(.viewport);
+    if (viewport != null) return viewport;
+    final screen = ref.positionIn(.screen);
+    if (screen == null) return null;
+    return Position(row: screen.row - _viewportOffset, col: screen.col);
+  }
+
+  void _markRow(int row, int startCol, int endCol, int value) {
+    final start = startCol.clamp(0, _cols);
+    final end = endCol.clamp(0, _cols);
+    if (start >= end) return;
+    final offset = row * _cols;
+    for (var col = start; col < end; col++) {
+      final index = offset + col;
+      if (_cells[index] < value) _cells[index] = value;
+    }
+  }
+
+  static bool _after(Position first, Position second) =>
+      first.row > second.row ||
+      (first.row == second.row && first.col > second.col);
+}
+
 /// Cell-based terminal range temporarily replaced by visible preedit text.
 ///
 /// [startCol] and [endCol] are terminal columns. [clusterOffset] points at
@@ -896,7 +1010,7 @@ final class _RowBuildState {
 
   var prevStyleId = -1;
   int? prevBackgroundArgb;
-  var prevSelected = false;
+  var prevHighlight = _CellHighlight.none;
   HyperlinkStyle? prevLinkStyle;
 
   var baseForeground = 0xFFFFFFFF;
@@ -930,7 +1044,7 @@ final class _RowBuildState {
     spriteX = 0.0;
     prevStyleId = -1;
     prevBackgroundArgb = null;
-    prevSelected = false;
+    prevHighlight = .none;
     prevLinkStyle = null;
     baseForeground = 0xFFFFFFFF;
     baseBackground = frame.defaultBackgroundArgb;
@@ -983,7 +1097,7 @@ final class _StyleResolver {
   void update(
     CellIterator cell, {
     required int? backgroundArgb,
-    required bool selected,
+    required _CellHighlight highlight,
     required HyperlinkStyle? linkStyle,
     required _RowBuildState row,
   }) {
@@ -1006,17 +1120,25 @@ final class _StyleResolver {
           style.underline != .none || style.strikethrough || style.overline;
     }
 
-    if (selected) {
-      final selection = _state.theme.selection;
+    if (highlight != .none) {
+      final selection = switch (highlight) {
+        .searchMatch => _state.theme.search.match,
+        .selection => _state.theme.selection,
+        .selectedSearchMatch => _state.theme.search.selectedMatch,
+        .none => throw StateError(
+          'No highlight style for an unhighlighted cell.',
+        ),
+      };
+      final searchHighlight = highlight != .selection;
       row.foreground = _resolveSelectionColor(
         row,
         selection.foreground,
-        _state.terminalBackgroundArgb,
+        searchHighlight ? row.baseForeground : _state.terminalBackgroundArgb,
       );
       row.background = _resolveSelectionColor(
         row,
         selection.background,
-        _state.terminalForegroundArgb,
+        searchHighlight ? row.baseBackground : _state.terminalForegroundArgb,
       );
       row.backgroundExplicit = true;
     } else {
@@ -1048,7 +1170,7 @@ final class _StyleResolver {
       }
     }
 
-    row.prevSelected = selected;
+    row.prevHighlight = highlight;
     row.prevLinkStyle = linkStyle;
   }
 
@@ -1142,6 +1264,7 @@ final class _RowBuilder {
   final _FrameSnapshot _frame;
   final _RowBuildState _row;
   final _StyleResolver _styles;
+  final _SearchHighlights _searchHighlights;
   late final _ForegroundEmitter _foreground;
   var _preeditText = '';
   _PreeditRange? _preeditRange;
@@ -1155,11 +1278,26 @@ final class _RowBuilder {
     required CellContentResolver content,
   }) : _frame = _FrameSnapshot(),
        _row = _RowBuildState(),
-       _styles = _StyleResolver(_state) {
+       _styles = _StyleResolver(_state),
+       _searchHighlights = _SearchHighlights() {
     _foreground = _ForegroundEmitter(_sprites, content, _frame, _state);
   }
 
   bool get hasPreedit => _preeditRange != null;
+
+  void updateSearch(
+    List<Selection> matches,
+    Selection? selected, {
+    required int viewportOffset,
+  }) {
+    _searchHighlights.update(
+      matches,
+      selected,
+      rows: _state.rows,
+      cols: _state.cols,
+      viewportOffset: viewportOffset,
+    );
+  }
 
   void beginFrame() {
     _frame.update(_state, atlas: _atlas);
@@ -1345,7 +1483,11 @@ final class _RowBuilder {
       return;
     }
 
-    final selected = cell.isSelected;
+    final highlight = _searchHighlights.at(
+      row.row,
+      row.col,
+      selected: cell.isSelected,
+    );
     final HyperlinkStyle? linkStyle;
     if (!_hasLinks) {
       linkStyle = null;
@@ -1360,13 +1502,13 @@ final class _RowBuilder {
     final backgroundArgb = cell.hasText ? null : cell.backgroundArgb;
     if (cell.styleId != row.prevStyleId ||
         backgroundArgb != row.prevBackgroundArgb ||
-        selected != row.prevSelected ||
+        highlight != row.prevHighlight ||
         linkStyle != row.prevLinkStyle) {
       _foreground.flush(row);
       _styles.update(
         cell,
         backgroundArgb: backgroundArgb,
-        selected: selected,
+        highlight: highlight,
         linkStyle: linkStyle,
         row: row,
       );

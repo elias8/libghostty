@@ -229,6 +229,68 @@ final class HyperlinkTheme {
   }
 }
 
+/// Search highlight colors for ordinary and selected matches.
+///
+/// Both styles use [SelectionTheme] so foreground and background colors can
+/// be fixed or resolved against each matched cell. A null color preserves the
+/// matched cell's corresponding color. The selected style paints above
+/// terminal selection; ordinary matches paint below it.
+///
+/// ```dart
+/// final theme = TerminalTheme.dark().copyWith(
+///   search: const SearchTheme(
+///     match: SelectionTheme(background: DynamicColor.fixed(Colors.amber)),
+///     selectedMatch: SelectionTheme(
+///       background: DynamicColor.fixed(Colors.orange),
+///     ),
+///   ),
+/// );
+/// ```
+@immutable
+final class SearchTheme {
+  /// Appearance of every visible search match except the selected match.
+  final SelectionTheme match;
+
+  /// Appearance of the match selected by search navigation.
+  final SelectionTheme selectedMatch;
+
+  const SearchTheme({
+    this.match = const SelectionTheme(
+      background: DynamicColor.fixed(Color(0x99F0C674)),
+      foreground: DynamicColor.fixed(Color(0xFF1D1F21)),
+    ),
+    this.selectedMatch = const SelectionTheme(
+      background: DynamicColor.fixed(Color(0xFFF09A54)),
+      foreground: DynamicColor.fixed(Color(0xFF1D1F21)),
+    ),
+  });
+
+  @override
+  int get hashCode => Object.hash(match, selectedMatch);
+
+  @override
+  bool operator ==(Object other) =>
+      other is SearchTheme &&
+      other.match == match &&
+      other.selectedMatch == selectedMatch;
+
+  @override
+  String toString() =>
+      'SearchTheme(match: $match, selectedMatch: $selectedMatch)';
+
+  /// Linearly interpolates between two search themes.
+  ///
+  /// Dynamic colors snap at `t >= 0.5` through [SelectionTheme.lerp].
+  static SearchTheme? lerp(SearchTheme? a, SearchTheme? b, double t) {
+    if (identical(a, b)) return a;
+    if (a == null || b == null) return t < 0.5 ? a : b;
+    return SearchTheme(
+      match: SelectionTheme.lerp(a.match, b.match, t)!,
+      selectedMatch: SelectionTheme.lerp(a.selectedMatch, b.selectedMatch, t)!,
+    );
+  }
+}
+
 /// Selection highlight colors. See [DynamicColor] for per-cell variants.
 @immutable
 final class SelectionTheme {
@@ -278,6 +340,7 @@ final class SelectionTheme {
 /// **Rendering-only properties** (used by Flutter painters directly):
 /// - [fontSize], [fontFamily], [fontFamilyFallback]: text layout
 /// - [selection]: selection highlight colors
+/// - [search]: search match and selected-match highlight colors
 /// - [hyperlink]: idle and highlighted hyperlink styling
 /// - [cursor].shape: initial cursor shape (terminal programs may override)
 /// - [cursor].blinkInterval, [cursor].opacity: cursor animation
@@ -319,6 +382,9 @@ final class TerminalTheme {
 
   /// Selection highlight colors.
   final SelectionTheme selection;
+
+  /// Search match and selected-match highlight colors.
+  final SearchTheme search;
 
   /// When true, bold text uses bright palette colors (indices 8-15).
   final bool boldIsBright;
@@ -367,6 +433,7 @@ final class TerminalTheme {
     this.fontFamily = 'JetBrains Mono',
     this.fontFamilyFallback = _defaultFontFamilyFallback,
     this.selection = const SelectionTheme(),
+    this.search = const SearchTheme(),
     this.boldIsBright = false,
     this.boldColor,
     this.faintOpacity = 0.5,
@@ -418,6 +485,7 @@ final class TerminalTheme {
     fontFamily,
     Object.hashAll(fontFamilyFallback),
     selection,
+    search,
     boldIsBright,
     boldColor,
     faintOpacity,
@@ -437,6 +505,7 @@ final class TerminalTheme {
       other.fontFamily == fontFamily &&
       listEquals(other.fontFamilyFallback, fontFamilyFallback) &&
       other.selection == selection &&
+      other.search == search &&
       other.boldIsBright == boldIsBright &&
       other.boldColor == boldColor &&
       other.faintOpacity == faintOpacity &&
@@ -457,6 +526,7 @@ final class TerminalTheme {
     String? fontFamily,
     List<String>? fontFamilyFallback,
     SelectionTheme? selection,
+    SearchTheme? search,
     bool? boldIsBright,
     Color? boldColor,
     double? faintOpacity,
@@ -472,6 +542,7 @@ final class TerminalTheme {
     fontFamily: fontFamily ?? this.fontFamily,
     fontFamilyFallback: fontFamilyFallback ?? this.fontFamilyFallback,
     selection: selection ?? this.selection,
+    search: search ?? this.search,
     boldIsBright: boldIsBright ?? this.boldIsBright,
     boldColor: boldColor ?? this.boldColor,
     faintOpacity: faintOpacity ?? this.faintOpacity,
@@ -518,6 +589,7 @@ final class TerminalTheme {
       fontFamily: t < 0.5 ? a.fontFamily : b.fontFamily,
       fontFamilyFallback: t < 0.5 ? a.fontFamilyFallback : b.fontFamilyFallback,
       selection: SelectionTheme.lerp(a.selection, b.selection, t)!,
+      search: SearchTheme.lerp(a.search, b.search, t)!,
       boldIsBright: t < 0.5 ? a.boldIsBright : b.boldIsBright,
       boldColor: Color.lerp(a.boldColor, b.boldColor, t),
       faintOpacity: lerpDouble(a.faintOpacity, b.faintOpacity, t)!,
