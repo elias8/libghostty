@@ -3,6 +3,7 @@ library;
 
 import 'dart:convert';
 
+import 'package:fake_async/fake_async.dart';
 import 'package:flterm/src/controller/terminal_controller.dart';
 import 'package:flterm/src/foundation.dart';
 import 'package:flterm/src/input/input_message.dart';
@@ -57,7 +58,513 @@ void main() {
       );
     }
 
+    group('fromSnapshot', () {
+      Terminal terminalWithHistory({int lineCount = 10000}) {
+        final terminal = Terminal(cols: 16, rows: 2)
+          ..scrollbackMaxBytes = null
+          ..scrollbackMaxLines = null;
+        addTearDown(terminal.dispose);
+        terminal.write(
+          utf8.encode(
+            List.generate(lineCount, (index) => 'line$index').join('\r\n'),
+          ),
+        );
+        return terminal;
+      }
+
+      TerminalControllerImpl restore(
+        Terminal source, {
+        bool progressive = true,
+        bool deferResize = true,
+      }) {
+        final restored =
+            TerminalController.fromSnapshot(
+                  source.encodeSnapshot(),
+                  progressive: progressive,
+                  deferResize: deferResize,
+                )
+                as TerminalControllerImpl;
+        addTearDown(restored.dispose);
+        return restored;
+      }
+
+      SurfaceMeasurement measurement(int cols, int rows) {
+        return SurfaceMeasurement(
+          cols: cols,
+          rows: rows,
+          cellWidth: 8,
+          cellHeight: 16,
+          paddingLeft: 0,
+          paddingRight: 0,
+          paddingTop: 0,
+          paddingBottom: 0,
+          devicePixelRatio: 1,
+        );
+      }
+
+      group('validation', () {
+        test('rejects a malformed snapshot prefix', () {
+          final bytes = Uint8List.fromList([1, 2, 3]);
+
+          expect(
+            () => TerminalController.fromSnapshot(bytes),
+            throwsA(isA<InvalidValueException>()),
+          );
+        });
+
+        test('rejects a continuation limit below zero', () {
+          expect(
+            () => TerminalController.fromSnapshot(
+              Uint8List(0),
+              maxContinuationBytes: -1,
+            ),
+            throwsRangeError,
+          );
+        });
+
+        test('rejects a continuation limit above the uint32 maximum', () {
+          expect(
+            () => TerminalController.fromSnapshot(
+              Uint8List(0),
+              maxContinuationBytes: 0x100000000,
+            ),
+            throwsRangeError,
+          );
+        });
+      });
+
+      group('synchronous restoration', () {
+        test('reports complete restoration state before returning', () {
+          final source = Terminal(cols: 16, rows: 2);
+          addTearDown(source.dispose);
+
+          final restored = restore(source, progressive: false);
+
+          expect(restored.restoration, RestorationState.complete);
+        });
+
+        test('restores terminal content before returning', () {
+          final source = Terminal(cols: 16, rows: 2);
+          addTearDown(source.dispose);
+          source.write(utf8.encode('restored'));
+
+          final restored = restore(source, progressive: false);
+          final formatter = restored.createFormatter(format: .plain);
+          addTearDown(formatter.dispose);
+
+          expect(formatter.format(), startsWith('restored'));
+        });
+
+        test('completes restored before returning', () async {
+          final source = Terminal(cols: 16, rows: 2);
+          addTearDown(source.dispose);
+
+          final restored = restore(source, progressive: false);
+
+          await expectLater(restored.restored, completes);
+        });
+      });
+
+      group('progressive restoration', () {
+        test('reports restoring while older scrollback is pending', () {
+          final source = terminalWithHistory();
+
+          final restored = restore(source);
+
+          expect(restored.restoration, RestorationState.restoring);
+        });
+
+        test('returns with older scrollback still pending', () {
+          final source = terminalWithHistory();
+
+          final restored = restore(source);
+
+          expect(restored.scrollbackRows, lessThan(source.scrollbackRows));
+        });
+
+        test('loads remaining scrollback automatically', () {
+          fakeAsync((async) {
+            final source = terminalWithHistory();
+            final restored = restore(source);
+
+            async.elapse(const Duration(seconds: 1));
+
+            expect(restored.scrollbackRows, source.scrollbackRows);
+          });
+        });
+
+        test('reports complete after loading history', () {
+          fakeAsync((async) {
+            final source = terminalWithHistory();
+            final restored = restore(source);
+
+            async.elapse(const Duration(seconds: 1));
+
+            expect(restored.restoration, RestorationState.complete);
+          });
+        });
+
+        test('notifies listeners when restoration completes', () {
+          fakeAsync((async) {
+            final source = terminalWithHistory();
+            final restored = restore(source);
+            final states = <RestorationState>[];
+            restored.addListener(() => states.add(restored.restoration));
+
+            async.elapse(const Duration(seconds: 1));
+
+            expect(states, contains(RestorationState.complete));
+          });
+        });
+
+        test('completes restored after loading history', () {
+          fakeAsync((async) {
+            final source = terminalWithHistory();
+            final restored = restore(source);
+            var completed = false;
+            restored.restored.then<void>((_) => completed = true).ignore();
+
+            async.elapse(const Duration(seconds: 1));
+            async.flushMicrotasks();
+
+            expect(completed, isTrue);
+          });
+        });
+
+        test('copies the source bytes', () {
+          fakeAsync((async) {
+            final source = terminalWithHistory();
+            final bytes = source.encodeSnapshot();
+            final restored = TerminalController.fromSnapshot(bytes);
+            addTearDown(restored.dispose);
+            bytes.fillRange(0, bytes.length, 0);
+
+            async.elapse(const Duration(seconds: 1));
+
+            expect(restored.scrollbackRows, source.scrollbackRows);
+          });
+        });
+
+        test('refreshes an active search as history arrives', () {
+          fakeAsync((async) {
+            final source = terminalWithHistory();
+            final restored = restore(source);
+            restored.search.search('line');
+            async.elapse(Duration.zero);
+
+            async.elapse(const Duration(seconds: 1));
+
+            expect(restored.search.totalMatches, 10000);
+          });
+        });
+
+        test('preserves live output while history arrives', () {
+          fakeAsync((async) {
+            final source = terminalWithHistory();
+            final restored = restore(source);
+            final output = utf8.encode('\r\nlive output');
+            source.write(output);
+
+            restored.write(output);
+            async.elapse(const Duration(seconds: 1));
+
+            final expected = Formatter(terminal: source, format: .plain);
+            addTearDown(expected.dispose);
+            final actual = restored.createFormatter(format: .plain);
+            addTearDown(actual.dispose);
+            expect(actual.format(), expected.format());
+          });
+        });
+      });
+
+      group('failure', () {
+        TerminalControllerImpl restoreDamaged() {
+          final source = terminalWithHistory();
+          final bytes = source.encodeSnapshot()..last ^= 0xff;
+          final restored =
+              TerminalController.fromSnapshot(bytes) as TerminalControllerImpl;
+          addTearDown(restored.dispose);
+          return restored;
+        }
+
+        test('reports failed after a late decoding error', () {
+          fakeAsync((async) {
+            final restored = restoreDamaged();
+
+            async.elapse(const Duration(seconds: 1));
+
+            expect(restored.restoration, RestorationState.failed);
+          });
+        });
+
+        test('notifies listeners when restoration fails', () {
+          fakeAsync((async) {
+            final restored = restoreDamaged();
+            final states = <RestorationState>[];
+            restored.addListener(() => states.add(restored.restoration));
+
+            async.elapse(const Duration(seconds: 1));
+
+            expect(states, contains(RestorationState.failed));
+          });
+        });
+
+        test('reports a late decoding error through restored', () {
+          fakeAsync((async) {
+            final restored = restoreDamaged();
+            Object? failure;
+            restored.restored
+                .then<void>(
+                  (_) {},
+                  onError: (Object error, StackTrace _) => failure = error,
+                )
+                .ignore();
+
+            async.elapse(const Duration(seconds: 1));
+            async.flushMicrotasks();
+
+            expect(failure, isA<InvalidValueException>());
+          });
+        });
+
+        test('keeps the terminal usable after a late decoding error', () {
+          fakeAsync((async) {
+            final restored = restoreDamaged();
+
+            async.elapse(const Duration(seconds: 1));
+
+            expect(
+              () => restored.write(utf8.encode('still usable')),
+              returnsNormally,
+            );
+          });
+        });
+
+        test('reports disposal during restoration through restored', () {
+          fakeAsync((async) {
+            final source = terminalWithHistory();
+            final restored = restore(source);
+            Object? failure;
+            restored.restored
+                .then<void>(
+                  (_) {},
+                  onError: (Object error, StackTrace _) => failure = error,
+                )
+                .ignore();
+
+            restored.dispose();
+            async.flushMicrotasks();
+
+            expect(failure, isA<StateError>());
+          });
+        });
+      });
+
+      group('terminal state', () {
+        test('preserves restored modes after leaving the alternate screen', () {
+          final source = Terminal(cols: 16, rows: 2);
+          addTearDown(source.dispose);
+          source.write(utf8.encode('\x1b[?7lprimary\x1b[?1049halternate'));
+          final restored = restore(source, progressive: false);
+
+          restored.write(utf8.encode('\x1b[?1049l'));
+
+          expect(restored.modeGet(const .autoWrap()), isFalse);
+        });
+
+        test('exposes the restored working directory immediately', () {
+          final source = Terminal(cols: 16, rows: 2)
+            ..pwd = 'file:///tmp/session';
+          addTearDown(source.dispose);
+
+          final restored = restore(source, progressive: false);
+
+          expect(restored.pwd, 'file:///tmp/session');
+        });
+      });
+
+      group('continuation', () {
+        test('resumes a split UTF-8 character', () {
+          final source = TerminalController(
+            config: const TerminalConfig(continuationMaxBytes: 1024),
+          );
+          addTearDown(source.dispose);
+          source.write(Uint8List.fromList([0xe7, 0x95]));
+          final restored = TerminalController.fromSnapshot(
+            source.snapshot(),
+            progressive: false,
+          );
+          addTearDown(restored.dispose);
+
+          restored.write(Uint8List.fromList([0x8c]));
+
+          final formatter = restored.createFormatter(format: .plain);
+          addTearDown(formatter.dispose);
+          expect(formatter.format(), startsWith('界'));
+        });
+
+        test('retains unfinished input when requested', () {
+          final source = TerminalController(
+            config: const TerminalConfig(continuationMaxBytes: 1024),
+          );
+          addTearDown(source.dispose);
+          source.write(utf8.encode('\x1b['));
+          final restored = TerminalController.fromSnapshot(
+            source.snapshot(),
+            progressive: false,
+            retainContinuation: true,
+            maxContinuationBytes: 1024,
+          );
+          addTearDown(restored.dispose);
+
+          final decoder = SnapshotDecoder(
+            restored.snapshot(),
+            retainContinuation: true,
+          );
+          addTearDown(decoder.dispose);
+          final terminal = decoder.decode();
+          addTearDown(terminal.dispose);
+
+          expect(terminal.continuation, utf8.encode('\x1b['));
+        });
+
+        test('stops continuation tracking by default', () {
+          final source = TerminalController(
+            config: const TerminalConfig(continuationMaxBytes: 1024),
+          );
+          addTearDown(source.dispose);
+          source.write(utf8.encode('\x1b['));
+          final restored = TerminalController.fromSnapshot(
+            source.snapshot(),
+            progressive: false,
+          );
+          addTearDown(restored.dispose);
+
+          expect(restored.snapshot, throwsA(isA<InvalidValueException>()));
+        });
+
+        test('rejects unfinished input above the decoder limit', () {
+          final source = TerminalController(
+            config: const TerminalConfig(continuationMaxBytes: 1024),
+          );
+          addTearDown(source.dispose);
+          source.write(utf8.encode('\x1b['));
+          final bytes = source.snapshot();
+
+          expect(
+            () =>
+                TerminalController.fromSnapshot(bytes, maxContinuationBytes: 0),
+            throwsA(isA<LimitExceededException>()),
+          );
+        });
+      });
+
+      group('deferred resize', () {
+        test('defers backend resize reports while history loads', () {
+          final restored = restore(terminalWithHistory());
+          final sizes = <(int, int)>[];
+          restored.onResize = (cols, rows) => sizes.add((cols, rows));
+
+          restored.handleResize(measurement(80, 24));
+
+          expect(sizes, isEmpty);
+        });
+
+        test('commits only the latest measurement after restoration', () {
+          fakeAsync((async) {
+            final restored = restore(terminalWithHistory());
+            final sizes = <(int, int)>[];
+            restored.onResize = (cols, rows) => sizes.add((cols, rows));
+            restored.handleResize(measurement(80, 24));
+            restored.handleResize(measurement(100, 30));
+
+            async.elapse(const Duration(seconds: 1));
+
+            expect(sizes, [(100, 30)]);
+          });
+        });
+
+        test('allows resize to skip incompatible history when requested', () {
+          fakeAsync((async) {
+            final source = terminalWithHistory();
+            final restored = restore(source, deferResize: false);
+
+            restored.handleResize(measurement(80, 24));
+            async.elapse(const Duration(seconds: 1));
+
+            expect(restored.scrollbackRows, lessThan(source.scrollbackRows));
+          });
+        });
+
+        test('keeps completion when the resize callback disposes', () {
+          fakeAsync((async) {
+            final restored = restore(terminalWithHistory());
+            var completed = false;
+            restored.onResize = (cols, rows) => restored.dispose();
+            restored.handleResize(measurement(80, 24));
+            restored.restored.then<void>((_) => completed = true).ignore();
+
+            async.elapse(const Duration(seconds: 1));
+            async.flushMicrotasks();
+
+            expect(completed, isTrue);
+          });
+        });
+      });
+    });
+
+    group('snapshot', () {
+      test('rejects unfinished input without prior tracking', () {
+        controller.write(utf8.encode('\x1b['));
+
+        expect(controller.snapshot, throwsA(isA<InvalidValueException>()));
+      });
+
+      test('captures only scrollback that is currently loaded', () {
+        final source = Terminal(cols: 16, rows: 2)..scrollbackMaxBytes = null;
+        addTearDown(source.dispose);
+        source.write(
+          utf8.encode(
+            List.generate(10000, (index) => 'line$index').join('\r\n'),
+          ),
+        );
+        final restored = TerminalController.fromSnapshot(
+          source.encodeSnapshot(),
+        );
+        addTearDown(restored.dispose);
+        final loadedRows = restored.scrollbackRows;
+
+        final decoder = SnapshotDecoder(restored.snapshot());
+        addTearDown(decoder.dispose);
+        final decoded = decoder.decode();
+        addTearDown(decoded.dispose);
+
+        expect(decoded.scrollbackRows, loadedRows);
+      });
+
+      test('produces a libghostty-compatible snapshot', () {
+        controller.write(utf8.encode('saved terminal'));
+
+        final decoder = SnapshotDecoder(controller.snapshot());
+        addTearDown(decoder.dispose);
+        final terminal = decoder.decode();
+        addTearDown(terminal.dispose);
+        final formatter = Formatter(terminal: terminal, format: .plain);
+        addTearDown(formatter.dispose);
+
+        expect(formatter.format(), startsWith('saved terminal'));
+      });
+    });
+
     group('constructor', () {
+      test('has no restoration state for an ordinary controller', () {
+        expect(controller.restoration, RestorationState.none);
+      });
+
+      test('is already restored for an ordinary controller', () async {
+        await expectLater(controller.restored, completes);
+      });
+
       test('exposes terminal state without a view attachment', () {
         expect(controller.terminal, isA<Terminal>());
       });

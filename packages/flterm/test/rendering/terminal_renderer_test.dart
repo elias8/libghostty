@@ -49,6 +49,7 @@ void main() {
     ValueChanged<int>? onViewportRowChanged,
     AtlasPool? atlasPool,
     ViewportOffset? offset,
+    bool resizeDeferred = false,
   }) {
     selection?.applyTo(terminal);
     atlasPool ??= createAtlasPool();
@@ -72,6 +73,7 @@ void main() {
             devicePixelRatio: devicePixelRatio,
             focused: focused,
             blinkVisible: blinkVisible,
+            resizeDeferred: resizeDeferred,
             onGeometryChanged: (geometry) {
               terminal.resize(
                 cols: geometry.cols,
@@ -123,6 +125,43 @@ void main() {
         find.byType(TerminalRenderer),
       );
       expect(box.size.height, 80.0);
+    });
+
+    testWidgets('uses the terminal grid while resize is deferred', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        wrap(
+          terminal,
+          maxWidth: 10 * defaultMetrics.cellWidth,
+          maxHeight: 3 * defaultMetrics.cellHeight,
+          resizeDeferred: true,
+        ),
+      );
+
+      final box = tester.renderObject<TerminalRenderBox>(
+        find.byType(TerminalRenderer),
+      );
+
+      expect(box.debugGridSize, (cols: defaultCols, rows: defaultRows));
+    });
+
+    testWidgets('reports measured grid while resize is deferred', (
+      tester,
+    ) async {
+      SurfaceMeasurement? reportedGeometry;
+
+      await tester.pumpWidget(
+        wrap(
+          terminal,
+          maxWidth: 10 * defaultMetrics.cellWidth,
+          maxHeight: 3 * defaultMetrics.cellHeight,
+          resizeDeferred: true,
+          onGeometryChanged: (geometry) => reportedGeometry = geometry,
+        ),
+      );
+
+      expect((reportedGeometry!.cols, reportedGeometry!.rows), (10, 3));
     });
 
     testWidgets('metrics change triggers layout', (tester) async {

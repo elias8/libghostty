@@ -82,6 +82,9 @@ final class TerminalRenderer extends LeafRenderObjectWidget {
   /// Toggled by a timer in [TerminalView].
   final bool blinkVisible;
 
+  /// Whether layout preserves the terminal grid while reporting view geometry.
+  final bool resizeDeferred;
+
   /// IME preedit text to draw at the cursor before it is committed.
   final String preeditText;
 
@@ -116,6 +119,7 @@ final class TerminalRenderer extends LeafRenderObjectWidget {
     required this.atlasPool,
     this.devicePixelRatio = 1,
     this.blinkVisible = true,
+    this.resizeDeferred = false,
     this.preeditText = '',
     this.linkSnapshot = .empty,
     required this.onGeometryChanged,
@@ -137,6 +141,7 @@ final class TerminalRenderer extends LeafRenderObjectWidget {
       onGeometryChanged: onGeometryChanged,
       onViewportRowChanged: onViewportRowChanged,
       blinkVisible: blinkVisible,
+      resizeDeferred: resizeDeferred,
       preeditText: preeditText,
       linkSnapshot: linkSnapshot,
       focused: focused,
@@ -180,6 +185,7 @@ final class TerminalRenderer extends LeafRenderObjectWidget {
       ..onViewportRowChanged = onViewportRowChanged
       ..focused = focused
       ..blinkVisible = blinkVisible
+      ..resizeDeferred = resizeDeferred
       ..preeditText = preeditText
       ..linkSnapshot = linkSnapshot;
   }
@@ -218,6 +224,8 @@ final class TerminalRenderBox extends RenderBox {
   var _lastCellHeight = 0.0;
   var _lastCellWidth = 0.0;
   var _lastDevicePixelRatio = 0.0;
+  var _lastMeasuredCols = 0;
+  var _lastMeasuredRows = 0;
   var _lastScrollbackRows = 0;
   var _lastSurfacePadding = EdgeInsets.zero;
   LinkSnapshot _linkSnapshot;
@@ -226,9 +234,11 @@ final class TerminalRenderBox extends RenderBox {
   ViewportOffset _offset;
   ValueChanged<SurfaceMeasurement> _onGeometryChanged;
   ValueChanged<int> _onViewportRowChanged;
+  double? _pendingPixelCorrection;
   int? _pendingViewportRow;
   var _performingLayout = false;
   var _preeditText = '';
+  bool _resizeDeferred;
   bool? _primaryStickToBottom;
   AtlasPool _atlasPool;
   var _stickToBottom = true;
@@ -246,6 +256,7 @@ final class TerminalRenderBox extends RenderBox {
     required this._atlasPool,
     required this._devicePixelRatio,
     bool blinkVisible = true,
+    this._resizeDeferred = false,
     this._linkSnapshot = .empty,
     this._preeditText = '',
     required this._onGeometryChanged,
@@ -272,6 +283,10 @@ final class TerminalRenderBox extends RenderBox {
 
   Terminal get _terminal => _frameSource.terminal;
 
+  @visibleForTesting
+  ({int cols, int rows}) get debugGridSize =>
+      (cols: _paintState.cols, rows: _paintState.rows);
+
   set surfacePadding(EdgeInsets value) {
     if (_surfacePadding == value) return;
     _surfacePadding = value;
@@ -292,6 +307,12 @@ final class TerminalRenderBox extends RenderBox {
     if (_preeditText == value) return;
     _preeditText = value;
     markNeedsPaint();
+  }
+
+  set resizeDeferred(bool value) {
+    if (_resizeDeferred == value) return;
+    _resizeDeferred = value;
+    markNeedsLayout();
   }
 
   set linkSnapshot(LinkSnapshot value) {
@@ -407,6 +428,7 @@ final class TerminalRenderBox extends RenderBox {
       _primaryStickToBottom = null;
       _cellWidthPx = 0;
       _cellHeightPx = 0;
+      _pendingPixelCorrection = null;
       _pendingViewportRow = null;
     }
     _needsFrameSync = true;
@@ -516,12 +538,25 @@ final class TerminalRenderBox extends RenderBox {
     try {
       final maxW = constraints.hasBoundedWidth ? constraints.maxWidth : 0.0;
       final maxH = constraints.hasBoundedHeight ? constraints.maxHeight : 0.0;
-      final (newCols, newRows) = _paintState.metrics.gridSize(maxW, maxH);
+      final (measuredCols, measuredRows) = _paintState.metrics.gridSize(
+        maxW,
+        maxH,
+      );
+      late final int renderCols;
+      late final int renderRows;
+      if (_resizeDeferred) {
+        final terminalGeometry = _terminal.geometry;
+        renderCols = terminalGeometry.cols;
+        renderRows = terminalGeometry.rows;
+      } else {
+        renderCols = measuredCols;
+        renderRows = measuredRows;
+      }
 
       size = constraints.constrain(
         Size(
-          newCols * _paintState.metrics.cellWidth,
-          newRows * _paintState.metrics.cellHeight,
+          measuredCols * _paintState.metrics.cellWidth,
+          measuredRows * _paintState.metrics.cellHeight,
         ),
       );
 
@@ -529,7 +564,10 @@ final class TerminalRenderBox extends RenderBox {
       final atlasReconfigured = _acquireAtlasForCurrentConfig(dpr: dpr);
 
       final gridChanged =
-          newCols != _paintState.cols || newRows != _paintState.rows;
+          renderCols != _paintState.cols || renderRows != _paintState.rows;
+      final measuredGridChanged =
+          measuredCols != _lastMeasuredCols ||
+          measuredRows != _lastMeasuredRows;
       final cellWidthPx = (_paintState.metrics.cellWidth * dpr).round();
       final cellHeightPx = (_paintState.metrics.cellHeight * dpr).round();
       final logicalMetricsChanged =
@@ -537,7 +575,7 @@ final class TerminalRenderBox extends RenderBox {
           _paintState.metrics.cellHeight != _lastCellHeight;
       final devicePixelRatioChanged = dpr != _lastDevicePixelRatio;
       final geometryChanged =
-          gridChanged ||
+          measuredGridChanged ||
           cellWidthPx != _cellWidthPx ||
           cellHeightPx != _cellHeightPx ||
           logicalMetricsChanged ||
@@ -546,15 +584,19 @@ final class TerminalRenderBox extends RenderBox {
       if (_paintState.devicePixelRatio != dpr) {
         _paintState.devicePixelRatio = dpr;
       }
+      if (gridChanged) {
+        _paintState.cols = renderCols;
+        _paintState.rows = renderRows;
+        if (renderCols > 0 && renderRows > 0) {
+          _pipeline.configureGrid(renderRows, renderCols);
+        }
+      }
       if (geometryChanged) {
-        _paintState.cols = newCols;
-        _paintState.rows = newRows;
-        if (newCols > 0 && newRows > 0) {
-          if (gridChanged) _pipeline.configureGrid(newRows, newCols);
+        if (measuredCols > 0 && measuredRows > 0) {
           _onGeometryChanged(
             SurfaceMeasurement(
-              cols: newCols,
-              rows: newRows,
+              cols: measuredCols,
+              rows: measuredRows,
               cellWidth: _paintState.metrics.cellWidth,
               cellHeight: _paintState.metrics.cellHeight,
               paddingLeft: _surfacePadding.left,
@@ -570,6 +612,8 @@ final class TerminalRenderBox extends RenderBox {
         _lastCellWidth = _paintState.metrics.cellWidth;
         _lastCellHeight = _paintState.metrics.cellHeight;
         _lastDevicePixelRatio = dpr;
+        _lastMeasuredCols = measuredCols;
+        _lastMeasuredRows = measuredRows;
       }
       _lastSurfacePadding = _surfacePadding;
 
@@ -579,7 +623,9 @@ final class TerminalRenderBox extends RenderBox {
       // rebinding invalidates atlas references inside the pipeline.
       if (gridChanged) _pipeline.markAllRowsDirty();
 
-      if (geometryChanged || atlasReconfigured) _markFrameDirty();
+      if (geometryChanged || gridChanged || atlasReconfigured) {
+        _markFrameDirty();
+      }
     } finally {
       _performingLayout = false;
     }
@@ -654,9 +700,14 @@ final class TerminalRenderBox extends RenderBox {
 
     final scrollbar = _terminal.scrollbar;
     final scrollbackLen = scrollbar.total - scrollbar.visible;
-    final flutterRow = (_offset.pixels / _paintState.metrics.cellHeight)
-        .floor();
-    if (flutterRow != scrollbar.offset) {
+    final cellHeight = _paintState.metrics.cellHeight;
+    final flutterRow = (_offset.pixels / cellHeight).floor();
+    final addedRows = scrollbackLen - _lastScrollbackRows;
+    if (addedRows > 0 && scrollbar.offset == flutterRow + addedRows) {
+      _pendingPixelCorrection = addedRows * cellHeight;
+      _pendingViewportRow = null;
+      _stickToBottom = scrollbackLen <= 0 || scrollbar.offset >= scrollbackLen;
+    } else if (flutterRow != scrollbar.offset) {
       _pendingViewportRow = scrollbar.offset;
       _stickToBottom = scrollbackLen <= 0 || scrollbar.offset >= scrollbackLen;
     }
@@ -683,6 +734,7 @@ final class TerminalRenderBox extends RenderBox {
 
     if (_terminal.activeScreen == .alternate) {
       _primaryStickToBottom ??= _stickToBottom;
+      _pendingPixelCorrection = null;
       _pendingViewportRow = null;
       _offset.applyContentDimensions(0, 0);
       _lastScrollbackRows = 0;
@@ -700,6 +752,12 @@ final class TerminalRenderBox extends RenderBox {
     final scrollbackLen = scrollbar.total - scrollbar.visible;
     final cellHeight = _paintState.metrics.cellHeight;
     final maxExtent = scrollbackLen * cellHeight;
+
+    final pendingPixelCorrection = _pendingPixelCorrection;
+    _pendingPixelCorrection = null;
+    if (pendingPixelCorrection != null) {
+      _offset.correctBy(pendingPixelCorrection);
+    }
 
     final pendingViewportRow = _pendingViewportRow;
     _pendingViewportRow = null;

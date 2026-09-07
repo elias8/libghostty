@@ -233,6 +233,87 @@ void main() {
 
     tearDown(() => controller.dispose());
 
+    group('snapshot restoration', () {
+      void replaceWithHistorySnapshot({int lineCount = 10000}) {
+        final source = Terminal(cols: 12, rows: 3)
+          ..scrollbackMaxBytes = null
+          ..scrollbackMaxLines = null;
+        addTearDown(source.dispose);
+        source.write(
+          utf8.encode(
+            List.generate(lineCount, (index) => 'line$index').join('\r\n'),
+          ),
+        );
+        controller.dispose();
+        controller = TerminalController.fromSnapshot(source.encodeSnapshot());
+      }
+
+      testWidgets('renders the saved grid while history loads', (tester) async {
+        replaceWithHistorySnapshot();
+
+        await tester.pumpWidget(wrapInApp(controller: controller));
+
+        final renderBox = tester.renderObject<TerminalRenderBox>(
+          find.byType(TerminalRenderer),
+        );
+        expect(renderBox.debugGridSize, (cols: 12, rows: 3));
+
+        controller.dispose();
+        await tester.pumpWidget(const SizedBox());
+      });
+
+      testWidgets('commits the measured grid after restoration', (
+        tester,
+      ) async {
+        replaceWithHistorySnapshot();
+        await tester.pumpWidget(wrapInApp(controller: controller));
+
+        await tester.pumpAndSettle();
+
+        final renderBox = tester.renderObject<TerminalRenderBox>(
+          find.byType(TerminalRenderer),
+        );
+        expect(renderBox.debugGridSize, isNot((cols: 12, rows: 3)));
+      });
+
+      testWidgets(
+        'keeps the visible scrollback row anchored as history arrives',
+        (tester) async {
+          replaceWithHistorySnapshot();
+          final scrollController = TerminalScrollController();
+          addTearDown(scrollController.dispose);
+          await tester.pumpWidget(
+            wrapInApp(
+              controller: controller,
+              scrollController: scrollController,
+            ),
+          );
+          await tester.pump(const Duration(milliseconds: 1));
+          final cellHeight = tester
+              .widget<TerminalRenderer>(find.byType(TerminalRenderer))
+              .metrics
+              .cellHeight;
+          scrollController.jumpTo(
+            scrollController.position.maxScrollExtent / 2,
+          );
+          await tester.pump();
+          final pixelsBefore = scrollController.position.pixels;
+          final rowsBefore = controller.scrollbackRows;
+
+          await tester.pump(const Duration(milliseconds: 1));
+
+          final addedRows = controller.scrollbackRows - rowsBefore;
+          expect(
+            scrollController.position.pixels,
+            closeTo(pixelsBefore + addedRows * cellHeight, 0.01),
+          );
+
+          controller.dispose();
+          await tester.pumpWidget(const SizedBox());
+        },
+      );
+    });
+
     void writeNumberedLines(int count) {
       for (var i = 0; i < count; i++) {
         writeUtf8(controller, 'line $i\r\n');

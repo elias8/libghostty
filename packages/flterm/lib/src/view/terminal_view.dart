@@ -177,6 +177,7 @@ final class _TerminalViewState extends State<TerminalView>
   late CellMetrics _metrics;
   var _ownsFocusNode = false;
   var _ownsScrollController = false;
+  late bool _resizeDeferred;
   Uint8List? _resolvedFontData;
   late TerminalScrollController _scrollController;
   late TerminalTheme _theme;
@@ -265,6 +266,7 @@ final class _TerminalViewState extends State<TerminalView>
     if (controllerChanged) {
       _attachment = ViewAttachment(_controller);
       _attachment.addListener(_onControllerChanged);
+      _resizeDeferred = _attachment.resizeDeferred;
       _links.invalidateContent();
     }
 
@@ -278,7 +280,11 @@ final class _TerminalViewState extends State<TerminalView>
     if (themeChanged) {
       _theme = widget.theme ?? TerminalTheme.dark();
     }
-    if (controllerChanged || themeChanged) _attachment.applyTheme(_theme);
+    if (controllerChanged) {
+      _attachment.applyTheme(_theme, initial: true);
+    } else if (themeChanged) {
+      _attachment.applyTheme(_theme);
+    }
 
     final fontDataChanged = widget.fontData != oldWidget.fontData;
     final fontFamilyChanged = _theme.fontFamily != oldTheme.fontFamily;
@@ -332,13 +338,14 @@ final class _TerminalViewState extends State<TerminalView>
     _ownsFocusNode = widget.focusNode == null;
 
     _theme = widget.theme ?? TerminalTheme.dark();
-    _attachment.applyTheme(_theme);
+    _attachment.applyTheme(_theme, initial: true);
     _metrics = _measureMetrics();
 
     if (widget.fontData == null) unawaited(_resolveFontData(_theme.fontFamily));
 
     _scrollController = widget.scrollController ?? TerminalScrollController();
     _ownsScrollController = widget.scrollController == null;
+    _resizeDeferred = _attachment.resizeDeferred;
     _scrollController.activeScreen = _controller.activeScreen;
     _scrollController.addListener(_onScrollChanged);
     _attachment.addListener(_onControllerChanged);
@@ -442,6 +449,7 @@ final class _TerminalViewState extends State<TerminalView>
                   devicePixelRatio: _devicePixelRatio,
                   preeditText: _attachment.input.preeditText,
                   blinkVisible: _cursorBlink.value,
+                  resizeDeferred: _resizeDeferred,
                   linkSnapshot: _links.snapshot(),
                   onGeometryChanged: _handleResize,
                   onViewportRowChanged: _attachment.handleViewportRowChanged,
@@ -552,6 +560,10 @@ final class _TerminalViewState extends State<TerminalView>
   void _onControllerChanged() {
     _links.invalidateContent();
     _syncLinkInteraction();
+    final resizeDeferred = _attachment.resizeDeferred;
+    if (_resizeDeferred != resizeDeferred) {
+      setState(() => _resizeDeferred = resizeDeferred);
+    }
     final activeScreen = _controller.activeScreen;
     if (_scrollController.activeScreen != activeScreen) {
       _scrollController.activeScreen = activeScreen;

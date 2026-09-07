@@ -87,6 +87,14 @@ class TerminalConfig {
   /// existing terminal; [TerminalView] supplies its measured live dimensions.
   final int rows;
 
+  /// Maximum number of unfinished VT or UTF-8 bytes retained for snapshots.
+  ///
+  /// Defaults to zero, which disables continuation tracking. Valid values range
+  /// from zero through `0xffffffff` for consistent native and WebAssembly
+  /// behavior. Set a positive limit before writing input that may be unfinished
+  /// when [TerminalController.snapshot] is called.
+  final int continuationMaxBytes;
+
   /// Maximum scrollback buffer size in bytes.
   ///
   /// Defaults to 10,000 bytes. Set to null for no limit, or 0 to disable
@@ -173,6 +181,7 @@ class TerminalConfig {
   const TerminalConfig({
     this.cols = 80,
     this.rows = 24,
+    this.continuationMaxBytes = 0,
     this.cursorBlink,
     this.glyphProtocol = false,
     this.apcBufferLimit = defaultApcBufferLimit,
@@ -188,6 +197,14 @@ class TerminalConfig {
     this.deviceAttributes = const DeviceAttributesResponse(),
   }) : assert(cols > 0, 'cols must be positive'),
        assert(rows > 0, 'rows must be positive'),
+       assert(
+         continuationMaxBytes >= 0,
+         'continuationMaxBytes must be non-negative',
+       ),
+       assert(
+         continuationMaxBytes <= 0xffffffff,
+         'continuationMaxBytes must fit an unsigned 32-bit integer',
+       ),
        assert(
          scrollbackMaxBytes == null || scrollbackMaxBytes >= 0,
          'scrollbackMaxBytes must be non-negative',
@@ -210,6 +227,7 @@ class TerminalConfig {
   int get hashCode => Object.hash(
     cols,
     rows,
+    continuationMaxBytes,
     scrollbackMaxBytes,
     scrollbackMaxLines,
     kittyImageStorageLimit,
@@ -231,6 +249,7 @@ class TerminalConfig {
       other is TerminalConfig &&
           cols == other.cols &&
           rows == other.rows &&
+          continuationMaxBytes == other.continuationMaxBytes &&
           scrollbackMaxBytes == other.scrollbackMaxBytes &&
           scrollbackMaxLines == other.scrollbackMaxLines &&
           kittyImageStorageLimit == other.kittyImageStorageLimit &&
@@ -249,6 +268,7 @@ class TerminalConfig {
   TerminalConfig copyWith({
     int? cols,
     int? rows,
+    int? continuationMaxBytes,
     int? scrollbackMaxBytes,
     int? scrollbackMaxLines,
     int? kittyImageStorageLimit,
@@ -266,6 +286,7 @@ class TerminalConfig {
     return TerminalConfig(
       cols: cols ?? this.cols,
       rows: rows ?? this.rows,
+      continuationMaxBytes: continuationMaxBytes ?? this.continuationMaxBytes,
       scrollbackMaxBytes: scrollbackMaxBytes ?? this.scrollbackMaxBytes,
       scrollbackMaxLines: scrollbackMaxLines ?? this.scrollbackMaxLines,
       kittyImageStorageLimit:
@@ -289,6 +310,7 @@ class TerminalConfig {
   String toString() =>
       'TerminalConfig('
       'cols: $cols, rows: $rows, '
+      'continuationMaxBytes: $continuationMaxBytes, '
       'scrollbackMaxBytes: $scrollbackMaxBytes, '
       'scrollbackMaxLines: $scrollbackMaxLines, '
       'modes: ${modes.length} entries)';

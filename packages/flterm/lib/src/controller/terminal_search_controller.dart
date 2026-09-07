@@ -242,6 +242,8 @@ final class TerminalSearchControllerImpl extends ChangeNotifier
     notifyListeners();
   }
 
+  void refresh() => _handleTerminalChanged();
+
   @override
   void search(String query) {
     _checkNotDisposed();

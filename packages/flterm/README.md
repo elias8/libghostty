@@ -152,6 +152,24 @@ TerminalView(
 );
 ```
 
+## Snapshots
+
+Capture terminal state with `controller.snapshot()` and restore it into a new
+controller:
+
+```dart
+final snapshot = controller.snapshot();
+final session = TerminalController.fromSnapshot(snapshot)
+  ..onOutput = backend.write;
+final view = TerminalView(controller: session);
+await session.restored;
+```
+
+The terminal is available immediately while older scrollback loads. Read
+`session.restoration` for lifecycle state, or await `session.restored` for
+completion and late errors. Enable `TerminalConfig.continuationMaxBytes` before
+writing unfinished VT or UTF-8 input that must be captured.
+
 ## License
 
 MIT. See [LICENSE](LICENSE).

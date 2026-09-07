@@ -9,7 +9,8 @@ import 'package:flterm/src/foundation.dart';
 import 'package:flterm/src/view/view_attachment.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:libghostty/libghostty.dart' show Mods, RgbColor, TerminalScreen;
+import 'package:libghostty/libghostty.dart'
+    show Mods, RgbColor, Terminal, TerminalScreen;
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -117,6 +118,23 @@ void main() {
     });
 
     group('applyTheme', () {
+      void replaceWithRestored({bool preserveSnapshotColors = true}) {
+        final source = Terminal(cols: 12, rows: 3)
+          ..foreground = const RgbColor(12, 34, 56)
+          ..background = const RgbColor(65, 43, 21);
+        addTearDown(source.dispose);
+        attachment.dispose();
+        controller.dispose();
+        controller =
+            TerminalController.fromSnapshot(
+                  source.encodeSnapshot(),
+                  progressive: false,
+                  preserveSnapshotColors: preserveSnapshotColors,
+                )
+                as TerminalControllerImpl;
+        attachment = ViewAttachment(controller);
+      }
+
       test('applies view colors to the terminal session', () {
         final theme = TerminalTheme.dark();
 
@@ -125,6 +143,42 @@ void main() {
         expect(attachment.terminal.foreground, rgb(theme.foreground));
         expect(attachment.terminal.background, rgb(theme.background));
         expect(attachment.terminal.palette[1], rgb(theme.palette[1]));
+      });
+
+      test('preserves snapshot colors on initial attachment', () {
+        replaceWithRestored();
+
+        attachment.applyTheme(TerminalTheme.dark(), initial: true);
+
+        expect(
+          (attachment.terminal.foreground, attachment.terminal.background),
+          (const RgbColor(12, 34, 56), const RgbColor(65, 43, 21)),
+        );
+      });
+
+      test('applies a later theme after preserving snapshot colors', () {
+        replaceWithRestored();
+        final theme = TerminalTheme.light();
+        attachment.applyTheme(TerminalTheme.dark(), initial: true);
+
+        attachment.applyTheme(theme);
+
+        expect(
+          (attachment.terminal.foreground, attachment.terminal.background),
+          (rgb(theme.foreground), rgb(theme.background)),
+        );
+      });
+
+      test('applies initial colors when preservation is disabled', () {
+        replaceWithRestored(preserveSnapshotColors: false);
+        final theme = TerminalTheme.dark();
+
+        attachment.applyTheme(theme, initial: true);
+
+        expect(
+          (attachment.terminal.foreground, attachment.terminal.background),
+          (rgb(theme.foreground), rgb(theme.background)),
+        );
       });
     });
 

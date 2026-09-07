@@ -40,7 +40,7 @@ export 'package:libghostty/libghostty.dart'
         initializeForWeb;
 
 export 'src/controller/terminal_controller.dart'
-    show OnResize, TerminalController;
+    show OnResize, RestorationState, TerminalController;
 export 'src/controller/terminal_search_controller.dart'
     show TerminalSearchController;
 export 'src/foundation/cell_range.dart' show CellRange;

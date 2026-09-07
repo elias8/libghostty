@@ -103,6 +103,8 @@ final class ViewAttachment extends ChangeNotifier {
 
   MouseTracking get mouseTracking => _controller.mouseTracking;
 
+  bool get resizeDeferred => _controller.isResizeDeferred;
+
   Terminal get terminal => _controller.terminal;
 
   Listenable get viewportChanges => _controller.viewportChanges;
@@ -119,13 +121,17 @@ final class ViewAttachment extends ChangeNotifier {
     return mods;
   }
 
-  void applyTheme(TerminalTheme theme) {
-    final background = _rgb(theme.background);
+  void applyTheme(TerminalTheme theme, {bool initial = false}) {
+    final preserveColors = initial && _controller.preservesSnapshotColors;
+    final background = preserveColors
+        ? terminal.background ?? _rgb(theme.background)
+        : _rgb(theme.background);
     final Brightness brightness = colorPerceivedLuminance(background) > 0.5
         ? .light
         : .dark;
     input.keyboardAppearance = brightness;
     _controller.setColorScheme(brightness == .light ? .light : .dark);
+    if (preserveColors) return;
     terminal
       ..foreground = _rgb(theme.foreground)
       ..background = background

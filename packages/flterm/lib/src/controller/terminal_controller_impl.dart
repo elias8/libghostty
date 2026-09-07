@@ -24,8 +24,11 @@ final class TerminalControllerImpl extends TerminalController {
   static final _cursorDown = Uint8List.fromList([0x1b, 0x5b, 0x42]);
   static final _cursorUp = Uint8List.fromList([0x1b, 0x5b, 0x41]);
   static final _formFeedBytes = Uint8List.fromList([_formFeed]);
+  static final _alreadyRestored = Future<void>.value();
 
   final Terminal _terminal;
+  final bool _deferResize;
+  final bool _preserveSnapshotColors;
   final _viewportChanges = ChangeNotifier();
   late final InputEncoder _inputEncoder;
   late final SelectionSession _selection;
@@ -33,6 +36,7 @@ final class TerminalControllerImpl extends TerminalController {
 
   ColorScheme _colorScheme = .dark;
   SurfaceGeometry? _committedGeometry;
+  SurfaceGeometry? _deferredGeometry;
   TerminalConfig _config;
   var _disposed = false;
   late _Observation _observation;
@@ -43,20 +47,91 @@ final class TerminalControllerImpl extends TerminalController {
   OnResize? _onResize;
   var _pwd = '';
   var _pwdChanged = false;
+  Completer<void>? _restorationCompletion;
+  var _restorationState = RestorationState.none;
+  Timer? _restorationWork;
+  SnapshotDecoder? _snapshotDecoder;
   Object? _viewToken;
   Mods _virtualMods = const .none();
 
   TerminalControllerImpl({TerminalConfig config = const TerminalConfig()})
-    : _config = config,
+    : _deferResize = false,
+      _preserveSnapshotColors = false,
+      _config = config,
       _terminal = Terminal(cols: config.cols, rows: config.rows),
       super.base() {
+    _initialize(applyConfig: true);
+  }
+
+  factory TerminalControllerImpl.fromSnapshot(
+    Uint8List bytes, {
+    bool progressive = true,
+    int? maxContinuationBytes,
+    bool retainContinuation = false,
+    bool deferResize = true,
+    bool preserveSnapshotColors = true,
+  }) {
+    final decoder = SnapshotDecoder(
+      bytes,
+      maxContinuationBytes: maxContinuationBytes,
+      retainContinuation: retainContinuation,
+    );
+    try {
+      final terminal = progressive ? decoder.ready() : decoder.decode();
+      try {
+        final controller = TerminalControllerImpl._restored(
+          terminal,
+          deferResize: deferResize,
+          preserveSnapshotColors: preserveSnapshotColors,
+        ).._snapshotDecoder = decoder;
+        controller._restorationCompletion = Completer<void>();
+        controller._restorationCompletion!.future.ignore();
+        if (progressive) {
+          controller._restorationState = .restoring;
+          controller._scheduleRestoration();
+        } else {
+          controller._restorationState = .complete;
+          controller._releaseSnapshotDecoder();
+          controller._restorationCompletion!.complete();
+        }
+        return controller;
+      } catch (_) {
+        terminal.dispose();
+        rethrow;
+      }
+    } catch (_) {
+      decoder.dispose();
+      rethrow;
+    }
+  }
+
+  TerminalControllerImpl._restored(
+    this._terminal, {
+    required this._deferResize,
+    required this._preserveSnapshotColors,
+  }) : _config = TerminalConfig(
+         cols: _terminal.geometry.cols,
+         rows: _terminal.geometry.rows,
+         scrollbackMaxBytes: _terminal.scrollbackMaxBytes,
+         scrollbackMaxLines: _terminal.scrollbackMaxLines,
+         continuationMaxBytes: _terminal.continuationMaxBytes,
+         modes: const {},
+       ),
+       super.base() {
+    _initialize(applyConfig: false);
+  }
+
+  void _initialize({required bool applyConfig}) {
     _inputEncoder = InputEncoder(_terminal);
     _search = TerminalSearchControllerImpl(_terminal, _viewportChanges);
     _selection = SelectionSession(_terminal, notifyListeners);
     installDefaultKittyPngDecoder();
     _wireTerminalCallbacks();
-    _applyModes();
-    _applyTerminalOptions();
+    if (applyConfig) {
+      _applyModes();
+      _applyTerminalOptions();
+    }
+    _pwd = _terminal.pwd;
     _observation = _readObservation();
     _terminal.addListener(_onTerminalChanged);
   }
@@ -97,6 +172,22 @@ final class TerminalControllerImpl extends TerminalController {
   }
 
   bool get isDisposed => _disposed;
+
+  bool get isResizeDeferred => _deferResize && _restorationState == .restoring;
+
+  bool get preservesSnapshotColors => _preserveSnapshotColors;
+
+  @override
+  RestorationState get restoration {
+    _checkNotDisposed();
+    return _restorationState;
+  }
+
+  @override
+  Future<void> get restored {
+    _checkNotDisposed();
+    return _restorationCompletion?.future ?? _alreadyRestored;
+  }
 
   @override
   MouseTracking get mouseTracking {
@@ -155,7 +246,7 @@ final class TerminalControllerImpl extends TerminalController {
   set onResize(OnResize? value) {
     _checkNotDisposed();
     _onResize = value;
-    if (value == null) return;
+    if (value == null || isResizeDeferred) return;
 
     final geometry = _committedGeometry;
     if (geometry != null) value(geometry.cols, geometry.rows);
@@ -283,6 +374,18 @@ final class TerminalControllerImpl extends TerminalController {
   void dispose() {
     if (_disposed) return;
     _disposed = true;
+    if (_restorationState == .restoring) {
+      _restorationState = .failed;
+    }
+    _releaseSnapshotDecoder();
+    final completion = _restorationCompletion;
+    if (completion != null && !completion.isCompleted) {
+      completion.completeError(
+        StateError(
+          'TerminalController was disposed during snapshot restoration.',
+        ),
+      );
+    }
     _viewToken = null;
     _terminal.removeListener(_onTerminalChanged);
     _search.dispose();
@@ -316,10 +419,35 @@ final class TerminalControllerImpl extends TerminalController {
   void handleResize(SurfaceMeasurement measurement) {
     _checkNotDisposed();
     final geometry = SurfaceGeometry.tryFrom(measurement);
-    if (geometry == null || geometry == _committedGeometry) return;
+    if (geometry == null) return;
+    if (isResizeDeferred) {
+      _deferredGeometry = geometry;
+      final saved = _terminal.geometry;
+      final inputGeometry = SurfaceGeometry.tryFrom(
+        SurfaceMeasurement(
+          cols: saved.cols,
+          rows: saved.rows,
+          cellWidth: measurement.cellWidth,
+          cellHeight: measurement.cellHeight,
+          paddingLeft: measurement.paddingLeft,
+          paddingRight: measurement.paddingRight,
+          paddingTop: measurement.paddingTop,
+          paddingBottom: measurement.paddingBottom,
+          devicePixelRatio: measurement.devicePixelRatio,
+        ),
+      );
+      if (inputGeometry != null) {
+        _inputEncoder.updateGeometry(inputGeometry);
+        _selection.updateGeometry(inputGeometry);
+        _committedGeometry = inputGeometry;
+      }
+      return;
+    }
+    if (geometry == _committedGeometry) return;
 
     final previous = _committedGeometry;
     _commitGeometry(geometry);
+    if (_disposed) return;
     if (previous == null ||
         previous.cols != geometry.cols ||
         previous.rows != geometry.rows) {
@@ -554,6 +682,12 @@ final class TerminalControllerImpl extends TerminalController {
     clearVirtualMods();
   }
 
+  @override
+  Uint8List snapshot() {
+    _checkNotDisposed();
+    return _terminal.encodeSnapshot();
+  }
+
   void setColorScheme(ColorScheme value) {
     _checkNotDisposed();
     if (_colorScheme == value) return;
@@ -601,6 +735,7 @@ final class TerminalControllerImpl extends TerminalController {
   }
 
   void _applyTerminalOptions() {
+    _terminal.continuationMaxBytes = _config.continuationMaxBytes;
     _terminal.scrollbackMaxBytes = _config.scrollbackMaxBytes;
     _terminal.scrollbackMaxLines = _config.scrollbackMaxLines;
     _terminal.kittyImageStorageLimit = _config.kittyImageStorageLimit;
@@ -613,6 +748,59 @@ final class TerminalControllerImpl extends TerminalController {
 
   void _checkNotDisposed() {
     if (_disposed) throw StateError('TerminalController is disposed.');
+  }
+
+  void _releaseSnapshotDecoder() {
+    _restorationWork?.cancel();
+    _restorationWork = null;
+    _snapshotDecoder?.dispose();
+    _snapshotDecoder = null;
+  }
+
+  void _scheduleRestoration() {
+    _restorationWork = Timer(const Duration(milliseconds: 1), _restoreHistory);
+  }
+
+  void _restoreHistory() {
+    _restorationWork = null;
+    final decoder = _snapshotDecoder!;
+    SnapshotProgress? progress;
+    try {
+      progress = decoder.next();
+    } on Object catch (error, stackTrace) {
+      _finishRestoration(error: error, stackTrace: stackTrace);
+      return;
+    }
+    if (progress == null) {
+      _finishRestoration();
+      return;
+    }
+    _scheduleRestoration();
+    if (progress.rows > 0) _search.refresh();
+    if (!_disposed) _viewportChanges.notifyListeners();
+    if (!_disposed) notifyListeners();
+  }
+
+  void _finishRestoration({Object? error, StackTrace? stackTrace}) {
+    _restorationState = error == null ? .complete : .failed;
+    _releaseSnapshotDecoder();
+    final completion = _restorationCompletion!;
+    if (error != null) {
+      completion.completeError(error, stackTrace);
+    } else {
+      completion.complete();
+    }
+    final geometry = _deferredGeometry;
+    _deferredGeometry = null;
+    try {
+      if (geometry != null) {
+        _commitGeometry(geometry);
+        if (!_disposed) _onResize?.call(geometry.cols, geometry.rows);
+      }
+    } finally {
+      if (!_disposed) _viewportChanges.notifyListeners();
+      if (!_disposed) notifyListeners();
+    }
   }
 
   void _commitGeometry(SurfaceGeometry geometry) {
@@ -629,6 +817,7 @@ final class TerminalControllerImpl extends TerminalController {
         cellWidthPx: geometry.cellWidthPx,
         cellHeightPx: geometry.cellHeightPx,
       );
+      if (_disposed) return;
     }
 
     _inputEncoder.updateGeometry(geometry);
