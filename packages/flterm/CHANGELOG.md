@@ -18,6 +18,12 @@
 
 ### Added
 
+- **Terminal snapshots**: `TerminalController.snapshot()` captures libghostty
+  state, and `TerminalController.fromSnapshot()` restores it progressively or
+  synchronously. `restoration` exposes lifecycle state, while the
+  `restored` future reports completion and late errors. Continuation tracking
+  supports captures between VT or UTF-8 fragments; view integration preserves
+  snapshot colors and defers resizing while scrollback loads.
 - **Terminal search**: `TerminalController.search` manages incremental searches,
   match navigation, scroll policy, and automatic viewport highlighting.
   `TerminalTheme.search` styles ordinary and selected matches, while
