@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart' hide Key;
@@ -14,6 +15,24 @@ part 'terminal_controller_impl.dart';
 
 /// Reports the committed terminal grid dimensions to the backend.
 typedef OnResize = void Function(int cols, int rows);
+
+/// Describes the snapshot restoration lifecycle of a [TerminalController].
+enum RestorationState {
+  /// The controller was not created from a snapshot.
+  none,
+
+  /// The terminal is ready while older scrollback is still being restored.
+  restoring,
+
+  /// The complete snapshot was restored and validated.
+  complete,
+
+  /// Progressive restoration stopped before the snapshot was complete.
+  ///
+  /// The terminal remains usable. [TerminalController.restored] completes with
+  /// the restoration error.
+  failed,
+}
 
 /// Manages terminal state and bridges it with [TerminalView].
 ///
@@ -54,6 +73,45 @@ abstract class TerminalController extends ChangeNotifier {
   @internal
   TerminalController.base();
 
+  /// Creates a controller from libghostty snapshot [bytes].
+  ///
+  /// Copies [bytes]. When [progressive] is true, the default, the terminal is
+  /// ready to render before this returns and older scrollback loads
+  /// automatically. When false, the complete snapshot is restored and
+  /// validated before this returns.
+  ///
+  /// [maxContinuationBytes] limits the unfinished terminal input accepted from
+  /// the snapshot. Null uses the libghostty default; zero rejects snapshots
+  /// with unfinished input. [retainContinuation] defaults to false. Set it to
+  /// true to keep tracking unfinished input for subsequent [snapshot] calls.
+  ///
+  /// [deferResize] defaults to true and preserves the snapshot grid size until
+  /// restoration finishes. When false, a view-driven resize may cause
+  /// incompatible scrollback pages to be skipped. [preserveSnapshotColors]
+  /// defaults to true and preserves terminal colors on initial view attachment;
+  /// later theme changes apply normally.
+  ///
+  /// Dimensions, modes, cursor state, and scrollback limits come from the
+  /// snapshot. Replacing [config] afterward applies the new configuration
+  /// normally. Callbacks and backend connections must be wired by the caller.
+  /// Failures before the terminal is renderable throw from this constructor;
+  /// later failures complete [restored] with the restoration error. Dispose the
+  /// controller to cancel progressive restoration and release its resources.
+  ///
+  /// ```dart
+  /// final controller = TerminalController.fromSnapshot(bytes)
+  ///   ..onOutput = backend.write;
+  /// final view = TerminalView(controller: controller);
+  /// ```
+  factory TerminalController.fromSnapshot(
+    Uint8List bytes, {
+    bool progressive,
+    int? maxContinuationBytes,
+    bool retainContinuation,
+    bool deferResize,
+    bool preserveSnapshotColors,
+  }) = TerminalControllerImpl.fromSnapshot;
+
   /// The active [TerminalScreen] buffer, either primary or alternate.
   ///
   /// Full-screen programs such as vim, less, and htop commonly enter the
@@ -66,6 +124,11 @@ abstract class TerminalController extends ChangeNotifier {
   /// The value contains the defaults applied by the controller. A program can
   /// change live terminal modes with [modeSet], so mode state may differ from
   /// [config].
+  ///
+  /// Restored controllers inherit snapshot dimensions and scrollback and
+  /// continuation limits. Their mode override map starts empty. Cursor defaults
+  /// describe host preferences and may differ from the restored terminal until
+  /// [config] is replaced.
   TerminalConfig get config;
 
   /// Replaces the configuration.
@@ -195,6 +258,22 @@ abstract class TerminalController extends ChangeNotifier {
   /// Empty when no directory has been reported or the shell cleared it. The
   /// value is not parsed or normalized: it may be a `file://` URI or a path.
   String get pwd;
+
+  /// The current snapshot restoration state.
+  ///
+  /// Ordinary controllers report [RestorationState.none]. Synchronous
+  /// restoration reports [RestorationState.complete] before construction
+  /// returns. Changes during progressive restoration notify this controller's
+  /// listeners.
+  RestorationState get restoration;
+
+  /// A future that completes when initial snapshot restoration finishes.
+  ///
+  /// The future is already complete for ordinary controllers and synchronous
+  /// restoration. Progressive restoration errors complete it with the original
+  /// error. Disposing the controller during restoration completes it with a
+  /// [StateError]. Read [restoration] for the current lifecycle state.
+  Future<void> get restored;
 
   /// The number of scrollback rows in the active screen.
   int get scrollbackRows;
@@ -369,6 +448,23 @@ abstract class TerminalController extends ChangeNotifier {
   /// terminal keyboard modes, and [paste] for clipboard content. Empty text is
   /// ignored; otherwise virtual modifiers are cleared after output is sent.
   void sendText(String text);
+
+  /// Encodes the current terminal state as libghostty snapshot bytes.
+  ///
+  /// Returns a newly allocated list that remains valid independently of this
+  /// controller. During progressive restoration, the snapshot includes only
+  /// scrollback that has already loaded. Unfinished VT or UTF-8 input requires
+  /// continuation tracking to have been enabled through
+  /// [TerminalConfig.continuationMaxBytes] before that input arrived. Throws
+  /// when unfinished input cannot be reconstructed. Call serially with [write]
+  /// and outside terminal callbacks.
+  ///
+  /// ```dart
+  /// final controller = TerminalController();
+  /// final bytes = controller.snapshot();
+  /// await sessionStore.save(bytes);
+  /// ```
+  Uint8List snapshot();
 
   /// Toggles a virtual modifier on or off.
   void toggleMod(Mods mod);

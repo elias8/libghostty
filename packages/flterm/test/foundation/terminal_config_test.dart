@@ -12,6 +12,7 @@ void main() {
         expect(config.rows, 24);
         expect(config.scrollbackMaxBytes, 10000);
         expect(config.scrollbackMaxLines, isNull);
+        expect(config.continuationMaxBytes, 0);
         expect(config.cursorStyle, CursorShape.block);
         expect(config.cursorBlink, isNull);
         expect(config.glyphProtocol, isFalse);
@@ -30,6 +31,26 @@ void main() {
 
         expect(config.modes[const TerminalMode.autoWrap()], isFalse);
         expect(config.modes[const TerminalMode.cursorBlinking()], isTrue);
+      });
+
+      test('accepts the maximum portable continuation limit', () {
+        const config = TerminalConfig(continuationMaxBytes: 0xffffffff);
+
+        expect(config.continuationMaxBytes, 0xffffffff);
+      });
+
+      test('rejects a negative continuation limit', () {
+        expect(
+          () => TerminalConfig(continuationMaxBytes: -1),
+          throwsA(isA<AssertionError>()),
+        );
+      });
+
+      test('rejects a continuation limit above the portable maximum', () {
+        expect(
+          () => TerminalConfig(continuationMaxBytes: 0x100000000),
+          throwsA(isA<AssertionError>()),
+        );
       });
     });
 
@@ -56,6 +77,7 @@ void main() {
           rows: 40,
           scrollbackMaxBytes: 50000,
           scrollbackMaxLines: 500,
+          continuationMaxBytes: 600,
         );
         final copy = original.copyWith(cols: 80);
 
@@ -63,6 +85,7 @@ void main() {
         expect(copy.rows, 40);
         expect(copy.scrollbackMaxBytes, 50000);
         expect(copy.scrollbackMaxLines, 500);
+        expect(copy.continuationMaxBytes, 600);
 
         const config = TerminalConfig();
         final updated = config.copyWith(
@@ -71,6 +94,7 @@ void main() {
           apcBufferLimit: 1024,
           glyphProtocol: true,
           cursorBlink: false,
+          continuationMaxBytes: 2048,
         );
 
         expect(updated.scrollbackMaxBytes, 99999);
@@ -78,6 +102,7 @@ void main() {
         expect(updated.apcBufferLimit, 1024);
         expect(updated.glyphProtocol, isTrue);
         expect(updated.cursorBlink, isFalse);
+        expect(updated.continuationMaxBytes, 2048);
         expect(updated.cols, config.cols);
       });
     });
@@ -120,6 +145,12 @@ void main() {
         const lineLimited = TerminalConfig(scrollbackMaxLines: 1024);
         expect(a, isNot(equals(byteLimited)));
         expect(a, isNot(equals(lineLimited)));
+
+        const continuationA = TerminalConfig(continuationMaxBytes: 1024);
+        const continuationB = TerminalConfig(continuationMaxBytes: 2048);
+        const continuationC = TerminalConfig(continuationMaxBytes: 1024);
+        expect(continuationA, equals(continuationC));
+        expect(continuationA, isNot(equals(continuationB)));
       });
 
       test('ignores map order', () {
