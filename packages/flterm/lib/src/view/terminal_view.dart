@@ -284,33 +284,16 @@ final class _TerminalViewState extends State<TerminalView>
                     child: ListenableBuilder(
                       listenable: _overlayChanges,
                       builder: (context, _) => LayoutBuilder(
-                        builder: (context, constraints) {
-                          final width = constraints.hasBoundedWidth
-                              ? constraints.maxWidth
-                              : 0.0;
-                          final height = constraints.hasBoundedHeight
-                              ? constraints.maxHeight
-                              : 0.0;
-                          final gridWidth = (width - widget.padding.horizontal)
-                              .clamp(0.0, width);
-                          final gridHeight = (height - widget.padding.vertical)
-                              .clamp(0.0, height);
-                          final committed = _attachment.committedGeometry;
-                          final (cols, rows) = committed == null
-                              ? _metrics.gridSize(gridWidth, gridHeight)
-                              : (committed.cols, committed.rows);
-                          return builder(
-                            context,
-                            TerminalViewGeometry._(
-                              surfaceSize: Size(width, height),
-                              padding: widget.padding,
-                              metrics: _metrics,
-                              cols: cols,
-                              rows: rows,
-                              viewportOffset: _controller.scrollbar.offset,
-                            ),
-                          );
-                        },
+                        builder: (context, constraints) => builder(
+                          context,
+                          TerminalViewGeometry._fromConstraints(
+                            metrics: _metrics,
+                            padding: widget.padding,
+                            constraints: constraints,
+                            committed: _attachment.committedGeometry,
+                            viewportOffset: _controller.scrollbar.offset,
+                          ),
+                        ),
                       ),
                     ),
                   ),

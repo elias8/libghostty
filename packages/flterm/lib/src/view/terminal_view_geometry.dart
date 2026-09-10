@@ -49,6 +49,30 @@ final class TerminalViewGeometry {
            padding.topLeft &
            Size(_cols * _metrics.cellWidth, _rows * _metrics.cellHeight);
 
+  factory TerminalViewGeometry._fromConstraints({
+    required EdgeInsets padding,
+    required int viewportOffset,
+    required CellMetrics metrics,
+    required BoxConstraints constraints,
+    required SurfaceGeometry? committed,
+  }) {
+    final width = constraints.hasBoundedWidth ? constraints.maxWidth : 0.0;
+    final height = constraints.hasBoundedHeight ? constraints.maxHeight : 0.0;
+    final gridWidth = (width - padding.horizontal).clamp(0.0, width);
+    final gridHeight = (height - padding.vertical).clamp(0.0, height);
+    final (cols, rows) = committed == null
+        ? metrics.gridSize(gridWidth, gridHeight)
+        : (committed.cols, committed.rows);
+    return TerminalViewGeometry._(
+      surfaceSize: Size(width, height),
+      padding: padding,
+      metrics: metrics,
+      cols: cols,
+      rows: rows,
+      viewportOffset: viewportOffset,
+    );
+  }
+
   /// Returns the visible cell containing [offset], or null outside the grid.
   ///
   /// [offset] uses the overlay coordinate system, including terminal padding.
