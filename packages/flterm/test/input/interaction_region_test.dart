@@ -7,8 +7,7 @@ import 'package:flterm/src/controller/terminal_controller.dart'
     show TerminalController, ViewAttachment;
 import 'package:flterm/src/foundation.dart';
 import 'package:flterm/src/input/interaction_region.dart';
-import 'package:flterm/src/interaction/selection_session.dart'
-    show SelectionEndpoint;
+import 'package:flterm/src/input/selection_session.dart' show SelectionEndpoint;
 import 'package:flterm/src/links/link_interaction.dart';
 import 'package:flterm/src/links/link_settings.dart';
 import 'package:flutter/foundation.dart'

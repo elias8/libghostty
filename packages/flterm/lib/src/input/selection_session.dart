@@ -43,7 +43,6 @@ final class SelectionInteraction extends ChangeNotifier {
   List<int>? _wordBoundaryCodepoints;
   Timer? _autoscrollTimer;
   SelectionAutoscrollPolicy? _autoscrollPolicy;
-  VoidCallback? _autoscrollCallback;
   var _cellHeight = 0.0;
   var _cellWidth = 0.0;
   var _columns = 0;
@@ -67,7 +66,6 @@ final class SelectionInteraction extends ChangeNotifier {
 
   void cancelGesture() {
     if (_disposed) return;
-    _checkNotDisposed();
     stopAutoscroll();
     _gesture.reset();
     _selection._set(null, clearIfNull: true);
@@ -151,10 +149,9 @@ final class SelectionInteraction extends ChangeNotifier {
     if (_autoscrollPolicy == policy && _autoscrollTimer != null) return;
     stopAutoscroll();
     _autoscrollPolicy = policy;
-    _autoscrollCallback = callback;
     _autoscrollTimer = Timer.periodic(
       const Duration(milliseconds: 50),
-      (_) => _autoscrollCallback?.call(),
+      (_) => callback(),
     );
   }
 
@@ -164,7 +161,6 @@ final class SelectionInteraction extends ChangeNotifier {
     _autoscrollTimer?.cancel();
     _autoscrollTimer = null;
     _autoscrollPolicy = null;
-    _autoscrollCallback = null;
   }
 
   void updateEndpoint(
@@ -469,16 +465,11 @@ final class SelectionSession {
   void _set(Selection? value, {bool clearIfNull = false, bool notify = true}) {
     if (value == null) {
       if (!clearIfNull || _terminal.selection == null) return;
-      _setTerminalSelection(null);
-      if (notify) {
-        _notifyChanged();
-        _interaction?._notifySelectionChanged();
-      }
-      return;
+    } else {
+      final current = _terminal.selection;
+      if (current != null && current.equal(value)) return;
     }
 
-    final current = _terminal.selection;
-    if (current != null && current.equal(value)) return;
     _setTerminalSelection(value);
     if (notify) {
       _notifyChanged();

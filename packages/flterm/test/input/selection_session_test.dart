@@ -1,7 +1,7 @@
 @Tags(['ffi'])
 library;
 
-import 'package:flterm/src/interaction/selection_session.dart'
+import 'package:flterm/src/input/selection_session.dart'
     show SelectionInteraction, SelectionSession;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:libghostty/libghostty.dart'

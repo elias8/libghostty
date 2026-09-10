@@ -7,7 +7,6 @@ import 'package:libghostty/libghostty.dart'
 import 'package:meta/meta.dart';
 
 import '../foundation.dart';
-import '../interaction/selection_session.dart';
 import '../links/link_interaction.dart';
 import '../links/link_settings.dart';
 import 'input_message.dart';
@@ -16,6 +15,7 @@ import 'primitive_gesture_detector.dart';
 import 'scroll_gesture_region.dart';
 import 'selection_handles.dart';
 import 'selection_modifier.dart';
+import 'selection_session.dart';
 
 _MouseTarget _mouseTarget(InteractionRegion value) =>
     (send: value.onMouseInput, readVirtualMods: value.readVirtualMods);
@@ -24,6 +24,8 @@ typedef _MouseTarget = ({
   ValueChanged<MouseInput> send,
   ValueGetter<Mods> readVirtualMods,
 });
+
+typedef _SelectionSnapshot = ({Position? start, Position? end, bool rectangle});
 
 /// Owns pointer-sequence arbitration for one terminal view.
 ///
@@ -96,8 +98,7 @@ final class _InteractionRegionState extends State<InteractionRegion> {
   Position? _pressCell;
   var _selectionGestureUpdate = false;
   var _selectionHandleDragActive = false;
-  ({Position? start, Position? end, bool rectangle})?
-  _visibleHandleSelectionSnapshot;
+  _SelectionSnapshot? _visibleHandleSelectionSnapshot;
   var _selectionHandlesVisible = false;
   var _terminalDragActive = false;
   var _terminalOwnsInteraction = false;
@@ -579,9 +580,7 @@ final class _InteractionRegionState extends State<InteractionRegion> {
     }
   }
 
-  ({Position? start, Position? end, bool rectangle})? _selectionSnapshotOf(
-    Selection? selection,
-  ) {
+  _SelectionSnapshot? _selectionSnapshotOf(Selection? selection) {
     if (selection == null) return null;
     return (
       start: selection.start.positionIn(.viewport),

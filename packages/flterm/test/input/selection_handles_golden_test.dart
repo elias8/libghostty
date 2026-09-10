@@ -7,8 +7,7 @@ import 'package:flterm/src/input/selection_handle_geometry.dart'
     show SelectionHandleLayout;
 import 'package:flterm/src/input/selection_handle_target.dart'
     show SelectionHandleTarget;
-import 'package:flterm/src/interaction/selection_session.dart'
-    show SelectionEndpoint;
+import 'package:flterm/src/input/selection_session.dart' show SelectionEndpoint;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:libghostty/libghostty.dart' show Position;
 import 'package:material_ui/material_ui.dart';

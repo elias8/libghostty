@@ -5,12 +5,12 @@ import 'package:meta/meta.dart';
 
 import '../foundation/cell_metrics.dart';
 import '../foundation/terminal_gesture_settings.dart';
-import '../interaction/selection_session.dart';
 import 'input_modifiers.dart';
 import 'selection_handle_geometry.dart';
 import 'selection_handle_layer.dart';
 import 'selection_magnifier.dart';
 import 'selection_modifier.dart';
+import 'selection_session.dart';
 
 @internal
 final class TerminalSelectionHandles extends StatefulWidget {

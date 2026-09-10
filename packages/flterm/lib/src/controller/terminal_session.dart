@@ -1,5 +1,13 @@
 part of 'terminal_controller.dart';
 
+typedef _TerminalSessionState = ({
+  TerminalScreen activeScreen,
+  MouseTracking mouseTracking,
+  bool alternateScroll,
+  bool cursorKeyApplication,
+  bool cursorBlinking,
+});
+
 /// Owns one terminal session and its renderer-neutral behavior.
 ///
 /// Flutter lifecycle and device events reach this implementation only after
@@ -34,14 +42,7 @@ final class TerminalSession extends TerminalController with ChangeNotifier {
   TerminalConfig _config;
   var _disposed = false;
   var _selectionChangeDepth = 0;
-  late ({
-    TerminalScreen activeScreen,
-    MouseTracking mouseTracking,
-    bool alternateScroll,
-    bool cursorKeyApplication,
-    bool cursorBlinking,
-  })
-  _state;
+  late _TerminalSessionState _state;
   ClipboardWriteCallback? _onClipboardWrite;
   ClipboardReadCallback? _onClipboardRead;
   ValueChanged<Uint8List>? _onOutput;
@@ -817,14 +818,7 @@ final class TerminalSession extends TerminalController with ChangeNotifier {
     _publishFrameChange();
   }
 
-  ({
-    TerminalScreen activeScreen,
-    MouseTracking mouseTracking,
-    bool alternateScroll,
-    bool cursorKeyApplication,
-    bool cursorBlinking,
-  })
-  _readState() => (
+  _TerminalSessionState _readState() => (
     activeScreen: _terminal.activeScreen,
     mouseTracking: _terminal.mouseTracking,
     alternateScroll: _terminal.modeGet(const .alternateScroll()),

@@ -6,7 +6,7 @@ import 'package:libghostty/libghostty.dart'
 import 'package:meta/meta.dart';
 
 import '../foundation/cell_metrics.dart';
-import '../interaction/selection_session.dart';
+import 'selection_session.dart';
 
 final class SelectionHandleGeometry {
   const SelectionHandleGeometry._();

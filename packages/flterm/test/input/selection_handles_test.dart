@@ -9,7 +9,7 @@ import 'package:flterm/src/input/selection_handle_target.dart'
     show SelectionHandleTarget;
 import 'package:flterm/src/input/selection_handles.dart'
     show TerminalSelectionHandles;
-import 'package:flterm/src/interaction/selection_session.dart'
+import 'package:flterm/src/input/selection_session.dart'
     show SelectionAutoscrollPolicy, SelectionEndpoint, SelectionInteraction;
 import 'package:flutter/foundation.dart'
     show ChangeNotifier, Listenable, ValueListenable;

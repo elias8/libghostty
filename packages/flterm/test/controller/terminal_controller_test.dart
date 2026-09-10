@@ -7,7 +7,7 @@ import 'package:fake_async/fake_async.dart';
 import 'package:flterm/src/controller/terminal_controller.dart';
 import 'package:flterm/src/foundation.dart';
 import 'package:flterm/src/input/input_message.dart';
-import 'package:flterm/src/interaction/selection_session.dart';
+import 'package:flterm/src/input/selection_session.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:libghostty/libghostty.dart' hide KeyEvent;

@@ -4,8 +4,7 @@ import 'dart:io';
 
 import 'package:flterm/src/controller/terminal_controller.dart';
 import 'package:flterm/src/foundation.dart';
-import 'package:flterm/src/interaction/selection_session.dart'
-    show SelectionEndpoint;
+import 'package:flterm/src/input/selection_session.dart' show SelectionEndpoint;
 import 'package:flterm/src/links/link_settings.dart';
 import 'package:flterm/src/rendering.dart';
 import 'package:flterm/src/view/terminal_scope.dart';
