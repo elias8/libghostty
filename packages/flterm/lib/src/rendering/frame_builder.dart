@@ -5,6 +5,7 @@ import 'dart:ui';
 import 'package:libghostty/libghostty.dart';
 
 import '../foundation/terminal_theme.dart';
+import '../foundation/viewport_selection.dart';
 import '../links/link_snapshot.dart';
 import 'atlas/atlas.dart';
 import 'atlas/sprite_buffer.dart';
@@ -825,47 +826,20 @@ final class _SearchHighlights {
   }
 
   void _mark(Selection selection, int value, RowDirtyTracker dirtyRows) {
-    var start = _positionInViewport(selection.start);
-    var end = _positionInViewport(selection.end);
-    if (start == null || end == null || _rows == 0 || _cols == 0) return;
-    if (_after(start, end)) (start, end) = (end, start);
-
-    final firstRow = start.row.clamp(0, _rows - 1);
-    final lastRow = end.row.clamp(0, _rows - 1);
-    if (end.row < 0 || start.row >= _rows || firstRow > lastRow) return;
-
-    if (selection.rectangle) {
-      final firstCol = start.col < end.col ? start.col : end.col;
-      final lastCol = start.col > end.col ? start.col : end.col;
-      for (var row = firstRow; row <= lastRow; row++) {
-        _markRow(row, firstCol, lastCol + 1, value);
-        dirtyRows.markRow(row);
-      }
-      return;
-    }
-
-    for (var row = firstRow; row <= lastRow; row++) {
-      _markRow(
-        row,
-        row == start.row ? start.col : 0,
-        row == end.row ? end.col + 1 : _cols,
-        value,
-      );
+    final range = ViewportSelection.resolve(
+      selection,
+      rows: _rows,
+      cols: _cols,
+      viewportOffset: _viewportOffset,
+    );
+    if (range == null) return;
+    for (var row = range.firstRow; row <= range.lastRow; row++) {
+      _markRow(row, range.startColumn(row), range.endColumn(row), value);
       dirtyRows.markRow(row);
     }
   }
 
-  Position? _positionInViewport(GridRef ref) {
-    final viewport = ref.positionIn(.viewport);
-    if (viewport != null) return viewport;
-    final screen = ref.positionIn(.screen);
-    if (screen == null) return null;
-    return Position(row: screen.row - _viewportOffset, col: screen.col);
-  }
-
-  void _markRow(int row, int startCol, int endCol, int value) {
-    final start = startCol.clamp(0, _cols);
-    final end = endCol.clamp(0, _cols);
+  void _markRow(int row, int start, int end, int value) {
     if (start >= end) return;
     final offset = row * _cols;
     for (var col = start; col < end; col++) {
@@ -873,10 +847,6 @@ final class _SearchHighlights {
       if (_cells[index] < value) _cells[index] = value;
     }
   }
-
-  static bool _after(Position first, Position second) =>
-      first.row > second.row ||
-      (first.row == second.row && first.col > second.col);
 }
 
 /// Cell-based terminal range temporarily replaced by visible preedit text.
@@ -1107,10 +1077,51 @@ final class _StyleResolver {
     required HyperlinkStyle? linkStyle,
     required _RowBuildState row,
   }) {
-    final (fg, bg, style, explicitBg) = _resolveBase(
+    var (fg, bg, style, explicitBg) = _resolveBase(
       cell,
       backgroundArgb: backgroundArgb,
     );
+    final selection = switch (highlight) {
+      .searchMatch => _state.theme.search.match,
+      .selection => _state.theme.selection,
+      .selectedSearchMatch => _state.theme.search.selectedMatch,
+      .none => null,
+    };
+    if (selection != null) {
+      final searchHighlight = highlight != .selection;
+      final foreground =
+          selection.foreground
+              ?.resolve(cellForeground: Color(fg), cellBackground: Color(bg))
+              .toARGB32() ??
+          (searchHighlight ? fg : _state.terminalBackgroundArgb);
+      final background =
+          selection.background
+              ?.resolve(cellForeground: Color(fg), cellBackground: Color(bg))
+              .toARGB32() ??
+          (searchHighlight ? bg : _state.terminalForegroundArgb);
+      fg = foreground;
+      bg = background;
+      explicitBg = true;
+    }
+
+    fg = linkStyle?.textColor?.toARGB32() ?? fg;
+    if (linkStyle != null && linkStyle.underline != .none) {
+      style = Style(
+        bold: style.bold,
+        italic: style.italic,
+        faint: style.faint,
+        blink: style.blink,
+        inverse: style.inverse,
+        invisible: style.invisible,
+        overline: style.overline,
+        strikethrough: style.strikethrough,
+        foreground: style.foreground,
+        background: style.background,
+        underline: style.underline == .none ? linkStyle.underline : .double,
+        underlineColor: _rgbColor(linkStyle.underlineColor),
+      );
+    }
+
     row.prevStyleId = cell.styleId;
     row.prevBackgroundArgb = backgroundArgb;
     row.backgroundInverse = style.inverse;
@@ -1119,56 +1130,9 @@ final class _StyleResolver {
     row.hasBlink = row.hasBlink || style.blink;
     row.hasDecoration =
         style.underline != .none || style.strikethrough || style.overline;
-
-    if (highlight != .none) {
-      final selection = switch (highlight) {
-        .searchMatch => _state.theme.search.match,
-        .selection => _state.theme.selection,
-        .selectedSearchMatch => _state.theme.search.selectedMatch,
-        .none => throw StateError(
-          'No highlight style for an unhighlighted cell.',
-        ),
-      };
-      final searchHighlight = highlight != .selection;
-      row.foreground =
-          selection.foreground
-              ?.resolve(cellForeground: Color(fg), cellBackground: Color(bg))
-              .toARGB32() ??
-          (searchHighlight ? fg : _state.terminalBackgroundArgb);
-      row.background =
-          selection.background
-              ?.resolve(cellForeground: Color(fg), cellBackground: Color(bg))
-              .toARGB32() ??
-          (searchHighlight ? bg : _state.terminalForegroundArgb);
-      row.backgroundExplicit = true;
-    } else {
-      row.foreground = fg;
-      row.background = bg;
-      row.backgroundExplicit = explicitBg;
-    }
-
-    if (linkStyle != null) {
-      final textColor = linkStyle.textColor;
-      if (textColor != null) row.foreground = textColor.toARGB32();
-      if (linkStyle.underline != .none) {
-        row.style = Style(
-          bold: style.bold,
-          italic: style.italic,
-          faint: style.faint,
-          blink: style.blink,
-          inverse: style.inverse,
-          invisible: style.invisible,
-          overline: style.overline,
-          strikethrough: style.strikethrough,
-          foreground: style.foreground,
-          background: style.background,
-          underline: style.underline == .none ? linkStyle.underline : .double,
-          underlineColor: _rgbColor(linkStyle.underlineColor),
-        );
-        row.hasDecoration = true;
-      }
-    }
-
+    row.foreground = fg;
+    row.background = bg;
+    row.backgroundExplicit = explicitBg;
     row.prevHighlight = highlight;
     row.prevLinkStyle = linkStyle;
   }
@@ -1476,17 +1440,7 @@ final class _RowBuilder {
       row.col,
       selected: cell.isSelected,
     );
-    final HyperlinkStyle? linkStyle;
-    if (!_hasLinks) {
-      linkStyle = null;
-    } else {
-      final position = Position(row: row.row, col: row.col);
-      linkStyle = linkSnapshot.isHighlighted(position)
-          ? _state.theme.hyperlink.highlighted
-          : linkSnapshot.contains(position)
-          ? _state.theme.hyperlink.idle
-          : null;
-    }
+    final linkStyle = _linkStyle();
     final backgroundArgb = cell.hasText ? null : cell.backgroundArgb;
     if (cell.styleId != row.prevStyleId ||
         backgroundArgb != row.prevBackgroundArgb ||
@@ -1519,6 +1473,15 @@ final class _RowBuilder {
       cell.next();
     }
     row.advance(span, _frame.cellWidth);
+  }
+
+  HyperlinkStyle? _linkStyle() {
+    if (!_hasLinks) return null;
+    final position = Position(row: _row.row, col: _row.col);
+    if (linkSnapshot.isHighlighted(position)) {
+      return _state.theme.hyperlink.highlighted;
+    }
+    return linkSnapshot.contains(position) ? _state.theme.hyperlink.idle : null;
   }
 
   int _glyphSpan(CellIterator cell, int span) {
@@ -1556,20 +1519,24 @@ final class _RowBuilder {
 bool _isSymbolCodepoint(int codepoint) {
   // Matches the symbol blocks Ghostty considers for glyph constraints.
   if (codepoint < 0x2190) return false;
-  return (codepoint >= 0xE000 && codepoint <= 0xF8FF) ||
-      (codepoint >= 0xF0000 && codepoint <= 0xFFFFD) ||
-      (codepoint >= 0x100000 && codepoint <= 0x10FFFD) ||
-      (codepoint >= 0x2190 && codepoint <= 0x21FF) ||
-      (codepoint >= 0x2460 && codepoint <= 0x24FF) ||
-      (codepoint >= 0x2600 && codepoint <= 0x26FF) ||
-      (codepoint >= 0x2700 && codepoint <= 0x27BF) ||
-      (codepoint >= 0x1F100 && codepoint <= 0x1F1FF) ||
-      (codepoint >= 0x1F300 && codepoint <= 0x1F6FF);
+  return switch (codepoint) {
+    >= 0xE000 && <= 0xF8FF ||
+    >= 0xF0000 && <= 0xFFFFD ||
+    >= 0x100000 && <= 0x10FFFD ||
+    >= 0x2190 && <= 0x21FF ||
+    >= 0x2460 && <= 0x24FF ||
+    >= 0x2600 && <= 0x26FF ||
+    >= 0x2700 && <= 0x27BF ||
+    >= 0x1F100 && <= 0x1F1FF ||
+    >= 0x1F300 && <= 0x1F6FF => true,
+    _ => false,
+  };
 }
 
-bool _isGraphicsElement(int codepoint) {
-  return (codepoint >= 0x2500 && codepoint <= 0x259F) ||
-      (codepoint >= 0xE0B0 && codepoint <= 0xE0D7) ||
-      (codepoint >= 0x1CC00 && codepoint <= 0x1CEBF) ||
-      (codepoint >= 0x1FB00 && codepoint <= 0x1FBFF);
-}
+bool _isGraphicsElement(int codepoint) => switch (codepoint) {
+  >= 0x2500 && <= 0x259F ||
+  >= 0xE0B0 && <= 0xE0D7 ||
+  >= 0x1CC00 && <= 0x1CEBF ||
+  >= 0x1FB00 && <= 0x1FBFF => true,
+  _ => false,
+};

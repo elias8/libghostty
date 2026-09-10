@@ -399,7 +399,8 @@ final class TerminalSurface {
       preeditText: _preeditText,
       linkSnapshot: _linkSnapshot,
     );
-    if (!_kittyPlacementCache.sync(terminal, geometryDirty: terminalDirty)) {
+    final graphics = KittyGraphics.of(terminal);
+    if (!_kittyPlacementCache.sync(graphics, geometryDirty: terminalDirty)) {
       return;
     }
     _kittyBelowBackground.clear();

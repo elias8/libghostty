@@ -71,7 +71,7 @@ void main() {
       final placements = KittyPlacementCache(state: state, images: images);
       writePlacedImage(terminal);
       terminal.resize(cols: 8, rows: 2, cellWidthPx: 8, cellHeightPx: 16);
-      placements.sync(terminal, geometryDirty: true);
+      placements.sync(KittyGraphics.of(terminal), geometryDirty: true);
       return (
         decodeCallbacks: decodeCallbacks,
         images: images,
@@ -94,7 +94,7 @@ void main() {
       images = KittyImageCache(onImageReady: () {});
       placements = KittyPlacementCache(state: state, images: images);
       writePlacedImage(terminal);
-      placements.sync(terminal, geometryDirty: false);
+      placements.sync(KittyGraphics.of(terminal), geometryDirty: false);
     });
 
     tearDown(() {
@@ -104,7 +104,10 @@ void main() {
 
     group('sync', () {
       test('returns false when generation and geometry are unchanged', () {
-        final rebuilt = placements.sync(terminal, geometryDirty: false);
+        final rebuilt = placements.sync(
+          KittyGraphics.of(terminal),
+          geometryDirty: false,
+        );
 
         expect(rebuilt, isFalse);
       });
@@ -112,7 +115,10 @@ void main() {
       test('returns true when geometry changes', () {
         state.devicePixelRatio = 2.0;
 
-        final rebuilt = placements.sync(terminal, geometryDirty: false);
+        final rebuilt = placements.sync(
+          KittyGraphics.of(terminal),
+          geometryDirty: false,
+        );
 
         expect(rebuilt, isTrue);
       });
@@ -122,7 +128,10 @@ void main() {
         addTearDown(fixture.images.dispose);
         addTearDown(fixture.terminal.dispose);
         fixture.decodeCallbacks.single(await testImage());
-        fixture.placements.sync(fixture.terminal, geometryDirty: false);
+        fixture.placements.sync(
+          KittyGraphics.of(fixture.terminal),
+          geometryDirty: false,
+        );
         fixture.state.metrics = const CellMetrics(
           cellWidth: 16,
           cellHeight: 32,
@@ -134,7 +143,10 @@ void main() {
           cellWidthPx: 16,
           cellHeightPx: 32,
         );
-        fixture.placements.sync(fixture.terminal, geometryDirty: true);
+        fixture.placements.sync(
+          KittyGraphics.of(fixture.terminal),
+          geometryDirty: true,
+        );
 
         expect(
           fixture.placements.snapshots.single.dst.size,
@@ -158,7 +170,10 @@ void main() {
           cellHeightPx: 32,
         );
 
-        fixture.placements.sync(fixture.terminal, geometryDirty: true);
+        fixture.placements.sync(
+          KittyGraphics.of(fixture.terminal),
+          geometryDirty: true,
+        );
 
         expect(fixture.decodeCallbacks, hasLength(1));
       });
@@ -166,7 +181,7 @@ void main() {
       test('removes snapshots hidden by terminal scrolling', () {
         terminal.write(Uint8List.fromList('\x1b[2;1H\n'.codeUnits));
 
-        placements.sync(terminal, geometryDirty: true);
+        placements.sync(KittyGraphics.of(terminal), geometryDirty: true);
 
         expect(placements.snapshots, isEmpty);
       });
@@ -202,7 +217,10 @@ void main() {
           ),
         );
         expect(
-          () => chunkedPlacements.sync(chunkedTerminal, geometryDirty: true),
+          () => chunkedPlacements.sync(
+            KittyGraphics.of(chunkedTerminal),
+            geometryDirty: true,
+          ),
           returnsNormally,
         );
         expect(chunkedPlacements.snapshots, isEmpty);
@@ -213,9 +231,15 @@ void main() {
         chunkedTerminal.write(
           Uint8List.fromList('\x1b_Ga=p,i=31,c=1,r=1\x1b\\'.codeUnits),
         );
-        chunkedPlacements.sync(chunkedTerminal, geometryDirty: true);
+        chunkedPlacements.sync(
+          KittyGraphics.of(chunkedTerminal),
+          geometryDirty: true,
+        );
         callbacks.single(await testImage());
-        chunkedPlacements.sync(chunkedTerminal, geometryDirty: true);
+        chunkedPlacements.sync(
+          KittyGraphics.of(chunkedTerminal),
+          geometryDirty: true,
+        );
 
         expect(chunkedPlacements.snapshots, hasLength(1));
         expect(chunkedImages.lookupById(31), isA<KittyImageReady>());
@@ -235,7 +259,10 @@ void main() {
           );
           addTearDown(controlledImages.dispose);
           terminal.resize(cols: 8, rows: 2, cellWidthPx: 8, cellHeightPx: 16);
-          controlledPlacements.sync(terminal, geometryDirty: true);
+          controlledPlacements.sync(
+            KittyGraphics.of(terminal),
+            geometryDirty: true,
+          );
           callbacks.single(await testImage());
 
           terminal.write(
@@ -243,14 +270,20 @@ void main() {
           );
           terminal.write(Uint8List.fromList('\x1b[1;1H'.codeUnits));
           writePlacedImage(terminal, id: 12);
-          controlledPlacements.sync(terminal, geometryDirty: true);
+          controlledPlacements.sync(
+            KittyGraphics.of(terminal),
+            geometryDirty: true,
+          );
           final whilePending =
               controlledPlacements.snapshots.firstOrNull?.imageId;
           final oldReadyWhilePending =
               controlledImages.lookupById(11) is KittyImageReady;
           callbacks.last(await testImage());
 
-          controlledPlacements.sync(terminal, geometryDirty: false);
+          controlledPlacements.sync(
+            KittyGraphics.of(terminal),
+            geometryDirty: false,
+          );
 
           expect(whilePending, 11);
           expect(oldReadyWhilePending, isTrue);
@@ -273,19 +306,31 @@ void main() {
           );
           addTearDown(controlledImages.dispose);
           terminal.resize(cols: 8, rows: 2, cellWidthPx: 8, cellHeightPx: 16);
-          controlledPlacements.sync(terminal, geometryDirty: true);
+          controlledPlacements.sync(
+            KittyGraphics.of(terminal),
+            geometryDirty: true,
+          );
           callbacks.single(await testImage());
-          controlledPlacements.sync(terminal, geometryDirty: false);
+          controlledPlacements.sync(
+            KittyGraphics.of(terminal),
+            geometryDirty: false,
+          );
           final original = controlledPlacements.snapshots.single;
 
           terminal.write(Uint8List.fromList('\x1b[1;1H'.codeUnits));
           writePlacedImage(terminal);
-          controlledPlacements.sync(terminal, geometryDirty: true);
+          controlledPlacements.sync(
+            KittyGraphics.of(terminal),
+            geometryDirty: true,
+          );
 
           expect(controlledPlacements.snapshots.single, same(original));
 
           callbacks.last(await testImage());
-          controlledPlacements.sync(terminal, geometryDirty: false);
+          controlledPlacements.sync(
+            KittyGraphics.of(terminal),
+            geometryDirty: false,
+          );
 
           expect(
             controlledPlacements.snapshots.single.imageGeneration,
@@ -308,13 +353,22 @@ void main() {
           );
           addTearDown(controlledImages.dispose);
           terminal.resize(cols: 8, rows: 2, cellWidthPx: 8, cellHeightPx: 16);
-          controlledPlacements.sync(terminal, geometryDirty: true);
+          controlledPlacements.sync(
+            KittyGraphics.of(terminal),
+            geometryDirty: true,
+          );
           callbacks.single(await testImage());
-          controlledPlacements.sync(terminal, geometryDirty: false);
+          controlledPlacements.sync(
+            KittyGraphics.of(terminal),
+            geometryDirty: false,
+          );
           final original = controlledPlacements.snapshots.single;
 
           writePlacedImage(terminal, width: 2, columns: 2);
-          controlledPlacements.sync(terminal, geometryDirty: true);
+          controlledPlacements.sync(
+            KittyGraphics.of(terminal),
+            geometryDirty: true,
+          );
 
           final replacement = controlledPlacements.snapshots.single;
           final staleImage =
@@ -324,7 +378,10 @@ void main() {
           expect(staleImage.generation, isNot(replacement.imageGeneration));
 
           callbacks.last(await testImage());
-          controlledPlacements.sync(terminal, geometryDirty: false);
+          controlledPlacements.sync(
+            KittyGraphics.of(terminal),
+            geometryDirty: false,
+          );
 
           expect(
             controlledPlacements.snapshots.single.dst.width,
@@ -361,10 +418,16 @@ void main() {
           writePlacedImage(multiTerminal, placementId: 11);
           multiTerminal.write(Uint8List.fromList('\x1b[1;2H'.codeUnits));
           writePlacedImage(multiTerminal, id: 12, placementId: 12);
-          controlledPlacements.sync(multiTerminal, geometryDirty: true);
+          controlledPlacements.sync(
+            KittyGraphics.of(multiTerminal),
+            geometryDirty: true,
+          );
           callbacks[0](await testImage());
           callbacks[1](await testImage());
-          controlledPlacements.sync(multiTerminal, geometryDirty: false);
+          controlledPlacements.sync(
+            KittyGraphics.of(multiTerminal),
+            geometryDirty: false,
+          );
 
           multiTerminal.write(
             Uint8List.fromList(
@@ -376,7 +439,10 @@ void main() {
           multiTerminal.write(Uint8List.fromList('\x1b[1;2H'.codeUnits));
           writePlacedImage(multiTerminal, id: 10, placementId: 10);
 
-          controlledPlacements.sync(multiTerminal, geometryDirty: true);
+          controlledPlacements.sync(
+            KittyGraphics.of(multiTerminal),
+            geometryDirty: true,
+          );
 
           expect(
             controlledPlacements.snapshots.map((snapshot) => snapshot.imageId),
@@ -422,7 +488,10 @@ void main() {
           cellHeightPx: 16,
         );
 
-        equalZPlacements.sync(equalZTerminal, geometryDirty: true);
+        equalZPlacements.sync(
+          KittyGraphics.of(equalZTerminal),
+          geometryDirty: true,
+        );
 
         expect(equalZPlacements.snapshots.map((snapshot) => snapshot.imageId), [
           2,

@@ -23,15 +23,14 @@ final class KittyPlacementCache {
   /// Placement snapshots ordered by signed z-index, then image ID.
   Iterable<KittyPlacementSnapshot> get snapshots => _snapshots;
 
-  /// Refreshes snapshots from [terminal] when protocol or geometry inputs have
+  /// Refreshes snapshots from [graphics] when protocol or geometry inputs have
   /// changed.
   ///
   /// [geometryDirty] must be true after terminal mutations that can change
   /// placement render information without changing Kitty storage generation.
   ///
   /// Returns whether callers must rebuild their paint-order buckets.
-  bool sync(Terminal terminal, {required bool geometryDirty}) {
-    final graphics = KittyGraphics.of(terminal);
+  bool sync(KittyGraphics? graphics, {required bool geometryDirty}) {
     if (graphics == null) {
       final changed = _key != null || _snapshots.isNotEmpty;
       _clear();
@@ -51,6 +50,40 @@ final class KittyPlacementCache {
     );
     if (!geometryDirty && _key == key) return false;
 
+    final (:nextSnapshots, :nextLiveImageIds, :replacementPending) =
+        _collectSnapshots(graphics, key);
+
+    if (nextSnapshots.length > 1) nextSnapshots.sort(_compareZ);
+    // Animated clients often replace every image before its decode completes.
+    // Keep the last complete frame only while its placement geometry remains
+    // compatible; changed geometry must wait for matching pixels instead.
+    if (replacementPending && _hasCompatibleGeometry(nextSnapshots)) {
+      _images.evict({..._liveImageIds, ...nextLiveImageIds});
+      return false;
+    }
+
+    _snapshots
+      ..clear()
+      ..addAll(nextSnapshots);
+    _liveImageIds
+      ..clear()
+      ..addAll(nextLiveImageIds);
+    _images.evict(_liveImageIds);
+    _key = key;
+    return true;
+  }
+
+  void _clear() {
+    _snapshots.clear();
+    _liveImageIds.clear();
+  }
+
+  ({
+    List<KittyPlacementSnapshot> nextSnapshots,
+    Set<int> nextLiveImageIds,
+    bool replacementPending,
+  })
+  _collectSnapshots(KittyGraphics graphics, _SnapshotKey key) {
     final nextSnapshots = <KittyPlacementSnapshot>[];
     final nextLiveImageIds = <int>{};
     var replacementPending = false;
@@ -91,30 +124,11 @@ final class KittyPlacementCache {
         ),
       );
     }
-
-    if (nextSnapshots.length > 1) nextSnapshots.sort(_compareZ);
-    // Animated clients often replace every image before its decode completes.
-    // Keep the last complete frame only while its placement geometry remains
-    // compatible; changed geometry must wait for matching pixels instead.
-    if (replacementPending && _hasCompatibleGeometry(nextSnapshots)) {
-      _images.evict({..._liveImageIds, ...nextLiveImageIds});
-      return false;
-    }
-
-    _snapshots
-      ..clear()
-      ..addAll(nextSnapshots);
-    _liveImageIds
-      ..clear()
-      ..addAll(nextLiveImageIds);
-    _images.evict(_liveImageIds);
-    _key = key;
-    return true;
-  }
-
-  void _clear() {
-    _snapshots.clear();
-    _liveImageIds.clear();
+    return (
+      nextSnapshots: nextSnapshots,
+      nextLiveImageIds: nextLiveImageIds,
+      replacementPending: replacementPending,
+    );
   }
 
   bool _hasCompatibleGeometry(List<KittyPlacementSnapshot> next) {
