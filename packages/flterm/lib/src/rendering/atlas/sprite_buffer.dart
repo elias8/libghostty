@@ -286,13 +286,15 @@ class AtlasSprites {
 /// dirty row keep their vertex data from the previous call. A fresh
 /// [Vertices] is constructed only when rect contents actually changed.
 class RectSprites {
+  static const _maxRectsPerBatch = 0x10000 ~/ 4;
+
   var _rects = Float32List(0);
   var _colors = Int32List(0);
   var _rowCounts = Int32List(0);
   var _positions = Float32List(0);
   var _vertexColors = Int32List(0);
   var _vertexStarts = Int32List(0);
-  Vertices? _cachedVertices;
+  List<Vertices> _cachedVertices = const [];
   var _rowCount = 0;
   var _stride = 0;
   var _activeSlots = 0;
@@ -300,9 +302,8 @@ class RectSprites {
   var _writeOffset = 0;
   var _firstDirtyRow = 0;
 
-  /// The [Vertices] produced by the most recent [buildVertices] call,
-  /// or null when no row has an active rect.
-  Vertices? get cachedVertices => _cachedVertices;
+  /// The vertex batches produced by the most recent [buildVertices] call.
+  List<Vertices> get cachedVertices => _cachedVertices;
 
   /// Total number of active rects across all rows.
   int get count => _activeSlots;
@@ -334,10 +335,10 @@ class RectSprites {
   /// Walks per-row active rects and expands them into a tight indexed
   /// triangle-quad buffer for [Canvas.drawVertices].
   ///
-  /// Returns null when no row has any active rect. Returns the cached
-  /// [Vertices] unchanged when no row has been dirtied since the last
-  /// call (skipping the per-cell expand and the [Vertices.raw] alloc).
-  Vertices? buildVertices(Uint16List indices) {
+  /// Returns an empty list when no row has any active rect. Returns the cached
+  /// batches unchanged when no row has been dirtied since the last call.
+  /// Each batch stays within the 16-bit index range accepted by [Vertices].
+  List<Vertices> buildVertices(Uint16List indices) {
     if (_firstDirtyRow >= _rowCount) return _cachedVertices;
 
     final posLen = _activeSlots * 8;
@@ -388,14 +389,32 @@ class RectSprites {
     _vertexStarts[_rowCount] = dst;
     _firstDirtyRow = _rowCount;
 
-    _cachedVertices?.dispose();
-    if (_activeSlots == 0) return _cachedVertices = null;
-    return _cachedVertices = Vertices.raw(
-      VertexMode.triangles,
-      Float32List.sublistView(_positions, 0, posLen),
-      colors: Int32List.sublistView(_vertexColors, 0, colLen),
-      indices: Uint16List.sublistView(indices, 0, _activeSlots * 6),
-    );
+    _disposeCachedVertices();
+    if (_activeSlots == 0) return _cachedVertices;
+
+    final batches = <Vertices>[];
+    var firstRect = 0;
+    while (firstRect < _activeSlots) {
+      final remaining = _activeSlots - firstRect;
+      final batchCount = remaining > _maxRectsPerBatch
+          ? _maxRectsPerBatch
+          : remaining;
+      final endRect = firstRect + batchCount;
+      batches.add(
+        Vertices.raw(
+          VertexMode.triangles,
+          Float32List.sublistView(_positions, firstRect * 8, endRect * 8),
+          colors: Int32List.sublistView(
+            _vertexColors,
+            firstRect * 4,
+            endRect * 4,
+          ),
+          indices: Uint16List.sublistView(indices, 0, batchCount * 6),
+        ),
+      );
+      firstRect = endRect;
+    }
+    return _cachedVertices = batches;
   }
 
   /// Reconfigures the buffer for [rowCount] rows with [stride] slots per row.
@@ -420,8 +439,7 @@ class RectSprites {
     _currentRow = -1;
     _writeOffset = 0;
     _firstDirtyRow = 0;
-    _cachedVertices?.dispose();
-    _cachedVertices = null;
+    _disposeCachedVertices();
   }
 
   /// Releases all buffers and any cached [Vertices]. The instance must
@@ -433,14 +451,20 @@ class RectSprites {
     _positions = Float32List(0);
     _vertexColors = Int32List(0);
     _vertexStarts = Int32List(0);
-    _cachedVertices?.dispose();
-    _cachedVertices = null;
+    _disposeCachedVertices();
     _activeSlots = 0;
     _rowCount = 0;
     _stride = 0;
     _currentRow = -1;
     _writeOffset = 0;
     _firstDirtyRow = 0;
+  }
+
+  void _disposeCachedVertices() {
+    for (final vertices in _cachedVertices) {
+      vertices.dispose();
+    }
+    _cachedVertices = const [];
   }
 
   /// Finishes the current row.
@@ -507,10 +531,10 @@ class SpriteBuffer {
       shaped = ShapedRunBuffer();
 
   /// Finalized background vertex data, available after [seal].
-  Vertices? get backgroundVertices => background.cachedVertices;
+  List<Vertices> get backgroundVertices => background.cachedVertices;
 
   /// Finalized decoration vertex data, available after [seal].
-  Vertices? get decorationVertices => decoration.cachedVertices;
+  List<Vertices> get decorationVertices => decoration.cachedVertices;
 
   /// Begins rewriting row [row] across every channel.
   ///
@@ -589,13 +613,19 @@ class SpriteBuffer {
   }
 
   void _ensureIndices(int rectCount) {
-    final needed = rectCount * 6;
+    final batchRectCount = rectCount > RectSprites._maxRectsPerBatch
+        ? RectSprites._maxRectsPerBatch
+        : rectCount;
+    final needed = batchRectCount * 6;
     if (_indices.length >= needed) return;
     // Power-of-two growth amortizes churn when rect counts drift across
     // frames.
     var size = _indices.isEmpty ? 384 : _indices.length;
     while (size < needed) {
       size *= 2;
+    }
+    if (size > RectSprites._maxRectsPerBatch * 6) {
+      size = RectSprites._maxRectsPerBatch * 6;
     }
     final indices = Uint16List(size);
     final quadCount = size ~/ 6;

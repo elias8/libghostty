@@ -12,10 +12,10 @@ import 'package:libghostty/libghostty.dart' show Position, Terminal;
 
 void main() {
   group('ShortcutScope', () {
-    late TerminalControllerImpl controller;
+    late TerminalController controller;
 
     setUp(() {
-      controller = TerminalControllerImpl();
+      controller = TerminalController();
     });
 
     tearDown(() => controller.dispose());
@@ -25,7 +25,7 @@ void main() {
     }
 
     Terminal terminalFor(TerminalController controller) {
-      return (controller as TerminalControllerImpl).terminal;
+      return (controller as TerminalSession).terminal;
     }
 
     Widget buildScope(

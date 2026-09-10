@@ -50,8 +50,13 @@ void main() {
       final terminal = Terminal(cols: cols, rows: rows);
       addTearDown(terminal.dispose);
       applyTerminalTheme(terminal, theme);
-      final frameSource = FrameSource(terminal);
-      addTearDown(frameSource.dispose);
+      final frameChanges = ChangeNotifier();
+      void onTerminalChanged() => frameChanges.notifyListeners();
+      terminal.addListener(onTerminalChanged);
+      addTearDown(() {
+        terminal.removeListener(onTerminalChanged);
+        frameChanges.dispose();
+      });
       writeUtf8(terminal, content);
 
       tester.view.devicePixelRatio = 1.0;
@@ -75,13 +80,14 @@ void main() {
                       alpha: theme.backgroundOpacity,
                     ),
                     child: TerminalRenderer(
-                      frameSource: frameSource,
+                      terminal: terminal,
+                      frameChanges: frameChanges,
                       theme: theme,
                       metrics: metrics,
                       offset: ViewportOffset.zero(),
                       atlasPool: atlasPool(),
                       focused: true,
-                      onGeometryChanged: (_) {},
+                      onGeometryChanged: SurfaceGeometry.tryFrom,
                       onViewportRowChanged: (_) {},
                     ),
                   ),

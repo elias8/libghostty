@@ -43,8 +43,8 @@ class BackgroundPainter implements TerminalPainter {
       );
     }
 
-    final vertices = _sprites.backgroundVertices;
-    if (vertices == null) return;
-    canvas.drawVertices(vertices, BlendMode.srcOver, _vertexPaint);
+    for (final vertices in _sprites.backgroundVertices) {
+      canvas.drawVertices(vertices, BlendMode.srcOver, _vertexPaint);
+    }
   }
 }

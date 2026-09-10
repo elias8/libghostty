@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart' show immutable;
+import 'package:flutter/foundation.dart' show immutable, mapEquals;
 import 'package:libghostty/libghostty.dart';
 
 /// When to auto-scroll the viewport to the bottom.
@@ -155,6 +155,9 @@ class TerminalConfig {
   /// Programs can change modes at runtime via escape sequences. Use
   /// [TerminalController.modeGet] and [TerminalController.modeSet] to
   /// query or override the live state.
+  ///
+  /// Treat the supplied map as immutable. To change configured modes, supply
+  /// a new map in a replacement configuration.
   final Map<TerminalMode, bool> modes;
 
   /// When to auto-scroll the viewport to the bottom.
@@ -258,7 +261,7 @@ class TerminalConfig {
           glyphProtocol == other.glyphProtocol &&
           cursorStyle == other.cursorStyle &&
           cursorBlink == other.cursorBlink &&
-          _modesEqual(modes, other.modes) &&
+          mapEquals(modes, other.modes) &&
           scrollToBottom == other.scrollToBottom &&
           selectionClearOnTyping == other.selectionClearOnTyping &&
           enquiryResponse == other.enquiryResponse &&
@@ -314,16 +317,4 @@ class TerminalConfig {
       'scrollbackMaxBytes: $scrollbackMaxBytes, '
       'scrollbackMaxLines: $scrollbackMaxLines, '
       'modes: ${modes.length} entries)';
-
-  static bool _modesEqual(
-    Map<TerminalMode, bool> a,
-    Map<TerminalMode, bool> b,
-  ) {
-    if (identical(a, b)) return true;
-    if (a.length != b.length) return false;
-    for (final entry in a.entries) {
-      if (b[entry.key] != entry.value) return false;
-    }
-    return true;
-  }
 }

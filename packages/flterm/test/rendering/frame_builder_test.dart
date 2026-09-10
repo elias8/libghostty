@@ -671,6 +671,39 @@ void main() {
       expect(xPositions(sprites.regular), [0.0, 8.0, 16.0, 24.0, 32.0, 40.0]);
     });
 
+    group('incremental invalidation', () {
+      test('blink changes retain rows without blinking cells', () {
+        writeUtf8(terminal, '\x1b[5m=>\x1b[0m\r\n!=');
+        builder.sync(terminal, terminalDirty: true);
+        final retainedRun = sprites.shaped.rows[1].single;
+        state.blinkVisible = false;
+        builder.markBlinkRowsDirty();
+
+        builder.sync(terminal, terminalDirty: false);
+
+        expect(sprites.shaped.rows[1].single, same(retainedRun));
+      });
+
+      test('search changes retain rows outside matches', () {
+        writeUtf8(terminal, '=>\r\n!=');
+        builder.sync(terminal, terminalDirty: true);
+        final retainedRun = sprites.shaped.rows[1].single;
+        final match = Selection.fromRefs(
+          start: GridRef.at(terminal, const Position(row: 0, col: 0)),
+          end: GridRef.at(terminal, const Position(row: 0, col: 1)),
+        );
+
+        builder.sync(
+          terminal,
+          terminalDirty: false,
+          searchDirty: true,
+          searchMatches: [match],
+        );
+
+        expect(sprites.shaped.rows[1].single, same(retainedRun));
+      });
+    });
+
     test('sync ignores zero-width preedit text', () {
       writeUtf8(terminal, 'abcdef\x1b[1;3H');
 

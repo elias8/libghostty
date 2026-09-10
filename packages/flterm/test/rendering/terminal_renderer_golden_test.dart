@@ -5,7 +5,8 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flterm/src/foundation.dart';
-import 'package:flterm/src/links/link_snapshot.dart';
+import 'package:flterm/src/links/link_interaction.dart';
+import 'package:flterm/src/links/link_settings.dart';
 import 'package:flterm/src/rendering.dart';
 import 'package:flterm/src/rendering/atlas_pool.dart';
 import 'package:flutter/rendering.dart';
@@ -79,7 +80,7 @@ void main() {
       bool focused = true,
       bool blinkVisible = true,
       String preeditText = '',
-      LinkSnapshot linkSnapshot = LinkSnapshot.empty,
+      LinkInteraction? links,
       List<Selection> searchMatches = const [],
       Selection? selectedSearchMatch,
       ValueChanged<SurfaceMeasurement>? onGeometryChanged,
@@ -91,8 +92,13 @@ void main() {
           );
       applyTerminalTheme(terminal, resolvedTheme);
       selection?.applyTo(terminal);
-      final frameSource = FrameSource(terminal);
-      addTearDown(frameSource.dispose);
+      final frameChanges = ChangeNotifier();
+      void onTerminalChanged() => frameChanges.notifyListeners();
+      terminal.addListener(onTerminalChanged);
+      addTearDown(() {
+        terminal.removeListener(onTerminalChanged);
+        frameChanges.dispose();
+      });
       final width = maxWidth ?? defaultCols * metrics.cellWidth;
       final height = maxHeight ?? defaultRows * metrics.cellHeight;
       return Directionality(
@@ -103,7 +109,8 @@ void main() {
             constraints: BoxConstraints(maxWidth: width, maxHeight: height),
             child: RepaintBoundary(
               child: TerminalRenderer(
-                frameSource: frameSource,
+                terminal: terminal,
+                frameChanges: frameChanges,
                 theme: resolvedTheme,
                 metrics: metrics,
                 offset: ViewportOffset.zero(),
@@ -111,21 +118,20 @@ void main() {
                 focused: focused,
                 blinkVisible: blinkVisible,
                 preeditText: preeditText,
-                linkSnapshot: linkSnapshot,
+                links: links,
                 searchMatches: searchMatches,
                 selectedSearchMatch: selectedSearchMatch,
-                onGeometryChanged: (geometry) {
+                onGeometryChanged: (measurement) {
+                  final geometry = SurfaceGeometry.tryFrom(measurement);
+                  if (geometry == null) return null;
                   terminal.resize(
                     cols: geometry.cols,
                     rows: geometry.rows,
-                    cellWidthPx:
-                        (geometry.cellWidth * geometry.devicePixelRatio)
-                            .round(),
-                    cellHeightPx:
-                        (geometry.cellHeight * geometry.devicePixelRatio)
-                            .round(),
+                    cellWidthPx: geometry.cellWidthPx,
+                    cellHeightPx: geometry.cellHeightPx,
                   );
-                  onGeometryChanged?.call(geometry);
+                  onGeometryChanged?.call(measurement);
+                  return geometry;
                 },
                 onViewportRowChanged: (_) {},
               ),
@@ -157,7 +163,7 @@ void main() {
       WidgetTester tester, {
       TerminalTheme? overrideTheme,
       TestSelection? selection,
-      LinkSnapshot linkSnapshot = LinkSnapshot.empty,
+      LinkInteraction? links,
       List<Selection> searchMatches = const [],
       Selection? selectedSearchMatch,
     }) async {
@@ -168,7 +174,7 @@ void main() {
           theme: overrideTheme ?? theme,
           selection: selection,
           metrics: goldenMetrics,
-          linkSnapshot: linkSnapshot,
+          links: links,
           searchMatches: searchMatches,
           selectedSearchMatch: selectedSearchMatch,
         ),
@@ -301,16 +307,25 @@ void main() {
         tester,
       ) async {
         writeUtf8(terminal, 'https://a.test tail');
-
-        await pump(
-          tester,
-          linkSnapshot: LinkSnapshot.highlighted(
-            const CellRange(
-              start: Position(row: 0, col: 0),
-              end: Position(row: 0, col: 13),
-            ),
+        final links = LinkInteraction();
+        addTearDown(links.dispose);
+        links.update(
+          context: LinkContext(
+            terminal: terminal,
+            rows: defaultRows,
+            cols: defaultCols,
+            cwd: null,
           ),
+          settings: LinkSettings(modifier: .none, onActivate: (_) {}),
+          idleStyle: theme.hyperlink.idle,
         );
+        links.handleHover(
+          localPosition: const Offset(4, 8),
+          metrics: goldenMetrics,
+          virtualMods: const Mods.none(),
+        );
+
+        await pump(tester, links: links);
 
         await expectLater(
           find.byType(TerminalRenderer),

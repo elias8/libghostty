@@ -12,6 +12,40 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   group('TerminalViewGeometry', () {
+    testWidgets('uses the saved grid while restoration defers resize', (
+      tester,
+    ) async {
+      final source = TerminalController(
+        config: const TerminalConfig(cols: 5, rows: 3),
+      );
+      addTearDown(source.dispose);
+      final controller = TerminalController.fromSnapshot(source.snapshot());
+      addTearDown(controller.dispose);
+      late TerminalViewGeometry geometry;
+
+      await tester.pumpWidget(
+        Directionality(
+          textDirection: .ltr,
+          child: Center(
+            child: SizedBox(
+              width: 300,
+              height: 100,
+              child: TerminalView(
+                controller: controller,
+                overlayBuilder: (context, value) {
+                  geometry = value;
+                  return const SizedBox.expand();
+                },
+              ),
+            ),
+          ),
+        ),
+      );
+
+      expect(geometry.cellRect(const Position(row: 0, col: 5)), isNull);
+      await tester.pumpAndSettle();
+    });
+
     testWidgets('uses the full view coordinate space including padding', (
       tester,
     ) async {

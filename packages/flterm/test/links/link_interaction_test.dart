@@ -162,6 +162,51 @@ void main() {
       });
     });
 
+    group('invalidateContent', () {
+      test('cancels activation of a pressed link', () {
+        write('https://example.test');
+        updateLinks(
+          settings: LinkSettings(modifier: .none, onActivate: (_) {}),
+        );
+        interaction.handlePress(
+          localPosition: const Offset(8, 0),
+          metrics: metrics,
+          pointerKind: .mouse,
+          virtualMods: const .none(),
+        );
+
+        interaction.invalidateContent();
+
+        expect(
+          interaction.handleRelease(
+            localPosition: const Offset(8, 0),
+            metrics: metrics,
+          ),
+          isNull,
+        );
+      });
+
+      test('refreshes stationary hover after content changes', () {
+        write('https://example.test');
+        updateLinks(
+          settings: LinkSettings(modifier: .none, onActivate: (_) {}),
+        );
+        interaction.handleHover(
+          localPosition: const Offset(8, 0),
+          metrics: metrics,
+          virtualMods: const Mods.none(),
+        );
+        var notifications = 0;
+        interaction.addListener(() => notifications++);
+
+        terminal.write(Uint8List.fromList(utf8.encode('\r\x1b[2Kplain text')));
+        interaction.invalidateContent();
+
+        expect(interaction.highlighted, isNull);
+        expect(notifications, 0);
+      });
+    });
+
     group('snapshot', () {
       test('returns highlight-only state without idle styling', () {
         write('https://example.test');

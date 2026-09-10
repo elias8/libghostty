@@ -2,16 +2,25 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart' hide Key;
-import 'package:libghostty/libghostty.dart' hide Listenable;
+import 'package:flutter/services.dart' hide KeyEvent;
+import 'package:flutter/widgets.dart' hide Key;
+import 'package:libghostty/libghostty.dart' hide KeyEvent, Listenable;
 
 import '../foundation.dart';
 import '../input/input_encoder.dart';
 import '../input/input_message.dart';
+import '../input/input_modifiers.dart';
+import '../input/text_input_session.dart';
 import '../interaction/selection_session.dart';
+import '../links/link_interaction.dart';
+import '../links/link_settings.dart';
+import '../view/compression_scheduler.dart';
 import 'kitty_png_decoder.dart';
 import 'terminal_search_controller.dart';
 
-part 'terminal_controller_impl.dart';
+part '../view/view_attachment.dart';
+part 'terminal_input.dart';
+part 'terminal_session.dart';
 
 /// Reports the committed terminal grid dimensions to the backend.
 typedef OnResize = void Function(int cols, int rows);
@@ -53,7 +62,8 @@ enum RestorationState {
 /// the current input before the exception is rethrown.
 ///
 /// ```dart
-/// final controller = TerminalController()
+/// final controller = TerminalController();
+/// controller
 ///   ..onOutput = (bytes) => pty.write(bytes)
 ///   ..onBell = () => playSound()
 ///   ..onTitleChanged = () => updateTitle(controller.title);
@@ -63,15 +73,12 @@ enum RestorationState {
 /// pty.onData = (bytes) => controller.write(bytes);
 /// controller.sendText('ls -la\n');
 /// ```
-abstract class TerminalController extends ChangeNotifier {
+sealed class TerminalController implements Listenable {
   /// Creates a controller with the given [config].
   ///
   /// The terminal is created immediately with the initial dimensions, modes,
   /// resource limits, and other behavior from [config].
-  factory TerminalController({TerminalConfig config}) = TerminalControllerImpl;
-
-  @internal
-  TerminalController.base();
+  factory TerminalController({TerminalConfig config}) = TerminalSession;
 
   /// Creates a controller from libghostty snapshot [bytes].
   ///
@@ -110,7 +117,9 @@ abstract class TerminalController extends ChangeNotifier {
     bool retainContinuation,
     bool deferResize,
     bool preserveSnapshotColors,
-  }) = TerminalControllerImpl.fromSnapshot;
+  }) = TerminalSession.fromSnapshot;
+
+  TerminalController._();
 
   /// The active [TerminalScreen] buffer, either primary or alternate.
   ///
@@ -352,6 +361,20 @@ abstract class TerminalController extends ChangeNotifier {
     bool trim = false,
     FormatterExtra extra = const FormatterExtra(),
   });
+
+  /// Releases the terminal session and every resource it owns.
+  ///
+  /// Dispose formatters and remove the attached [TerminalView] first. Repeated
+  /// calls are safe; terminal operations throw [StateError] afterward.
+  ///
+  /// ```dart
+  /// final controller = TerminalController();
+  /// final formatter = controller.createFormatter(format: .plain);
+  /// final text = formatter.format();
+  /// formatter.dispose();
+  /// controller.dispose();
+  /// ```
+  void dispose();
 
   /// Returns the live value of an ANSI or DEC private terminal [mode].
   ///

@@ -1,13 +1,12 @@
-import 'dart:async';
-
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
+import 'package:libghostty/libghostty.dart' show Mods;
 import 'package:meta/meta.dart';
 
 import '../foundation/cell_metrics.dart';
 import '../foundation/terminal_gesture_settings.dart';
 import '../interaction/selection_session.dart';
-import '../view/view_attachment.dart';
+import 'input_modifiers.dart';
 import 'selection_handle_geometry.dart';
 import 'selection_handle_layer.dart';
 import 'selection_magnifier.dart';
@@ -18,7 +17,9 @@ final class TerminalSelectionHandles extends StatefulWidget {
   final bool visible;
   final CellMetrics metrics;
   final Color terminalBackground;
-  final ViewAttachment attachment;
+  final SelectionInteraction selection;
+  final ValueGetter<Mods> readVirtualMods;
+  final ValueChanged<int> onViewportRowChanged;
   final ValueChanged<bool>? onDragStateChanged;
   final GestureModifier? blockSelectionModifier;
   final TextMagnifierConfiguration? magnifierConfiguration;
@@ -27,10 +28,12 @@ final class TerminalSelectionHandles extends StatefulWidget {
     super.key,
     required this.visible,
     required this.metrics,
+    required this.selection,
     this.onDragStateChanged,
-    required this.attachment,
     this.magnifierConfiguration,
+    required this.readVirtualMods,
     required this.terminalBackground,
+    required this.onViewportRowChanged,
     this.blockSelectionModifier = .alt,
   });
 
@@ -48,23 +51,24 @@ final class _SelectionHandlesState extends State<TerminalSelectionHandles> {
   Offset _dragOffset = .zero;
   Offset _magnifierOverlayOrigin = .zero;
   SelectionEndpoint? _draggedEndpoint;
-  Timer? _autoScrollTimer;
   SelectionMagnifier? _magnifier;
+
+  Mods get _currentMods => readPointerModifiers(widget.readVirtualMods());
 
   MagnifierInfo get _magnifierInfo => SelectionMagnifier.geometry(
     context: context,
     gesture: _gesturePosition!,
     anchor: _dragAnchor!,
     metrics: widget.metrics,
-    rows: widget.attachment.terminal.geometry.rows,
+    rows: widget.selection.rows,
   );
 
   @override
   Widget build(BuildContext context) {
     final scrollPosition = Scrollable.maybeOf(context)?.position;
     final changes = scrollPosition == null
-        ? widget.attachment
-        : Listenable.merge([widget.attachment, scrollPosition]);
+        ? widget.selection
+        : Listenable.merge([widget.selection, scrollPosition]);
     return LookupBoundary(
       child: Stack(
         clipBehavior: .none,
@@ -73,7 +77,7 @@ final class _SelectionHandlesState extends State<TerminalSelectionHandles> {
             child: ListenableBuilder(
               listenable: changes,
               builder: (context, _) {
-                final selection = widget.attachment.terminal.selection;
+                final selection = widget.selection.selection;
                 if (!widget.visible || selection == null) {
                   return const SizedBox.expand();
                 }
@@ -82,8 +86,8 @@ final class _SelectionHandlesState extends State<TerminalSelectionHandles> {
                   metrics: widget.metrics,
                   onDragStart: _startDrag,
                   onDragUpdate: _updateDrag,
-                  onDragEnd: (endpoint, _) => _endDrag(endpoint),
-                  onDragCancel: _endDrag,
+                  onDragEnd: (endpoint, _) => _endDrag(endpoint: endpoint),
+                  onDragCancel: (endpoint) => _endDrag(endpoint: endpoint),
                 );
               },
             ),
@@ -107,12 +111,12 @@ final class _SelectionHandlesState extends State<TerminalSelectionHandles> {
   @override
   void didUpdateWidget(TerminalSelectionHandles oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.attachment != oldWidget.attachment ||
+    if (widget.selection != oldWidget.selection ||
         widget.magnifierConfiguration != oldWidget.magnifierConfiguration ||
         widget.metrics != oldWidget.metrics ||
         widget.terminalBackground != oldWidget.terminalBackground ||
         !widget.visible) {
-      _endDrag();
+      _endDrag(owner: oldWidget.selection);
     }
   }
 
@@ -129,7 +133,7 @@ final class _SelectionHandlesState extends State<TerminalSelectionHandles> {
     final endpoint = _draggedEndpoint;
     final anchor = _dragAnchor;
     final gesture = _gesturePosition;
-    final selection = widget.attachment.terminal.selection;
+    final selection = widget.selection.selection;
     if (endpoint == null ||
         anchor == null ||
         gesture == null ||
@@ -142,21 +146,20 @@ final class _SelectionHandlesState extends State<TerminalSelectionHandles> {
       .end => handles.end,
     };
     if (moving == null) return;
-    final geometry = widget.attachment.terminal.geometry;
     final position = SelectionHandleGeometry.positionForDrag(
       anchor: anchor,
       leading: moving.leading,
       metrics: widget.metrics,
-      columns: geometry.cols,
-      rows: geometry.rows,
+      columns: widget.selection.columns,
+      rows: widget.selection.rows,
     );
     _magnifier?.update(_magnifierInfo);
-    widget.attachment.updateSelectionEndpoint(
+    widget.selection.updateEndpoint(
       endpoint,
       position,
       rectangle: isSelectionModifierPressed(
         widget.blockSelectionModifier,
-        widget.attachment.currentMods,
+        _currentMods,
       ),
     );
   }
@@ -165,19 +168,19 @@ final class _SelectionHandlesState extends State<TerminalSelectionHandles> {
     final anchor = _dragAnchor;
     if (anchor == null) return 0;
     final row = widget.metrics.cellAt(anchor).row;
-    final rows = widget.attachment.terminal.geometry.rows;
+    final rows = widget.selection.rows;
     if (row < 0) return -1;
     if (row >= rows) return 1;
     return 0;
   }
 
-  void _autoScrollTick(Timer timer) {
+  void _autoScrollTick() {
     final direction = _autoScrollDirection();
     if (direction == 0) {
       _stopAutoScroll();
       return;
     }
-    final scrollbar = widget.attachment.terminal.scrollbar;
+    final scrollbar = widget.selection.scrollbar;
     final maxOffset = scrollbar.total > scrollbar.visible
         ? scrollbar.total - scrollbar.visible
         : 0;
@@ -186,14 +189,14 @@ final class _SelectionHandlesState extends State<TerminalSelectionHandles> {
       _stopAutoScroll();
       return;
     }
-    widget.attachment.handleViewportRowChanged(nextOffset);
+    widget.onViewportRowChanged(nextOffset);
     _applyDrag();
   }
 
-  void _endDrag([SelectionEndpoint? endpoint]) {
+  void _endDrag({SelectionEndpoint? endpoint, SelectionInteraction? owner}) {
     if (endpoint != null && endpoint != _draggedEndpoint) return;
     final wasDragging = _draggedEndpoint != null;
-    _stopAutoScroll();
+    (owner ?? widget.selection).stopAutoscroll(.handle);
     if (wasDragging) {
       HardwareKeyboard.instance.removeHandler(_handleModifierKey);
     }
@@ -223,7 +226,7 @@ final class _SelectionHandlesState extends State<TerminalSelectionHandles> {
     _dragAnchor = layout.anchor;
     _dragOffset = layout.anchor - box.globalToLocal(details.globalPosition);
     _gesturePosition = details.globalPosition;
-    widget.attachment.requestFocus();
+    Focus.maybeOf(context)?.requestFocus();
     final magnifierContext = _magnifierContext.currentContext;
     if (magnifierContext == null) return;
     _magnifier = SelectionMagnifier(
@@ -232,21 +235,14 @@ final class _SelectionHandlesState extends State<TerminalSelectionHandles> {
     )..show(magnifierContext, _magnifierInfo);
   }
 
-  void _stopAutoScroll() {
-    _autoScrollTimer?.cancel();
-    _autoScrollTimer = null;
-  }
+  void _stopAutoScroll() => widget.selection.stopAutoscroll(.handle);
 
   void _updateAutoScroll() {
     if (_autoScrollDirection() == 0) {
       _stopAutoScroll();
       return;
     }
-    if (_autoScrollTimer != null) return;
-    _autoScrollTimer = Timer.periodic(
-      const Duration(milliseconds: 50),
-      _autoScrollTick,
-    );
+    widget.selection.startAutoscroll(.handle, _autoScrollTick);
   }
 
   void _updateDrag(SelectionEndpoint endpoint, DragUpdateDetails details) {

@@ -2,14 +2,15 @@ import 'dart:convert' show utf8;
 
 import 'package:crypto/crypto.dart' show sha256;
 import 'package:flterm/src/foundation/cell_metrics.dart';
+import 'package:flterm/src/foundation/surface_geometry.dart';
 import 'package:flterm/src/foundation/terminal_theme.dart';
 import 'package:flterm/src/rendering/atlas/atlas_config.dart';
 import 'package:flterm/src/rendering/atlas_pool.dart';
-import 'package:flterm/src/rendering/frame_source.dart';
 import 'package:flterm/src/rendering/terminal_renderer.dart';
 import 'package:flutter/rendering.dart' show ViewportOffset;
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
+import 'package:libghostty/libghostty.dart' show Terminal;
 import '../protocol.dart';
 
 const _metrics = CellMetrics(cellWidth: 8, cellHeight: 16, baseline: 12);
@@ -71,12 +72,14 @@ String benchmarkFontDigest({
 
 /// Fixed terminal surface shared by every rendering workload.
 final class BenchmarkTerminalSurface extends StatelessWidget {
-  final FrameSource frameSource;
+  final Terminal terminal;
+  final Listenable frameChanges;
   final AtlasPool atlasPool;
 
   const BenchmarkTerminalSurface({
     super.key,
-    required this.frameSource,
+    required this.terminal,
+    required this.frameChanges,
     required this.atlasPool,
   });
 
@@ -90,21 +93,25 @@ final class BenchmarkTerminalSurface extends StatelessWidget {
           width: benchmarkSurfaceSize.width,
           height: benchmarkSurfaceSize.height,
           child: TerminalRenderer(
-            frameSource: frameSource,
+            terminal: terminal,
+            frameChanges: frameChanges,
             theme: _theme,
             metrics: _metrics,
             offset: ViewportOffset.zero(),
             focused: true,
             atlasPool: atlasPool,
-            onGeometryChanged: (geometry) => frameSource.terminal.resize(
-              cols: geometry.cols,
-              rows: geometry.rows,
-              cellWidthPx: (geometry.cellWidth * geometry.devicePixelRatio)
-                  .round(),
-              cellHeightPx: (geometry.cellHeight * geometry.devicePixelRatio)
-                  .round(),
-            ),
-            onViewportRowChanged: frameSource.terminal.scrollToRow,
+            onGeometryChanged: (measurement) {
+              final geometry = SurfaceGeometry.tryFrom(measurement);
+              if (geometry == null) return null;
+              terminal.resize(
+                cols: geometry.cols,
+                rows: geometry.rows,
+                cellWidthPx: geometry.cellWidthPx,
+                cellHeightPx: geometry.cellHeightPx,
+              );
+              return geometry;
+            },
+            onViewportRowChanged: terminal.scrollToRow,
           ),
         ),
       ),

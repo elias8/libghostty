@@ -3,14 +3,14 @@ library;
 
 import 'dart:convert';
 
-import 'package:flterm/src/controller/terminal_controller.dart';
+import 'package:flterm/src/controller/terminal_controller.dart'
+    show TerminalController, ViewAttachment;
 import 'package:flterm/src/foundation.dart';
 import 'package:flterm/src/input/interaction_region.dart';
 import 'package:flterm/src/interaction/selection_session.dart'
     show SelectionEndpoint;
 import 'package:flterm/src/links/link_interaction.dart';
 import 'package:flterm/src/links/link_settings.dart';
-import 'package:flterm/src/view/view_attachment.dart';
 import 'package:flutter/foundation.dart'
     show TargetPlatform, debugDefaultTargetPlatformOverride;
 import 'package:flutter/gestures.dart';
@@ -93,13 +93,14 @@ void main() {
       TerminalController controller, {
       int cols = 80,
       int rows = 24,
+      CellMetrics metrics = defaultMetrics,
     }) {
-      bindingFor(controller).handleResize(
+      bindingFor(controller).commitGeometry(
         SurfaceMeasurement(
           cols: cols,
           rows: rows,
-          cellWidth: defaultMetrics.cellWidth,
-          cellHeight: defaultMetrics.cellHeight,
+          cellWidth: metrics.cellWidth,
+          cellHeight: metrics.cellHeight,
           paddingLeft: 0,
           paddingRight: 0,
           paddingTop: 0,
@@ -116,10 +117,15 @@ void main() {
       TerminalGestureSettings gestureSettings = const TerminalGestureSettings(),
       LinkInteraction? links,
       ValueChanged<ActivatedLink>? onLinkActivate,
-      ScrollController? scrollController,
       ScrollPhysics scrollPhysics = const ClampingScrollPhysics(),
     }) {
       final resolvedAttachment = attachment ?? bindingFor(controller);
+      commitGeometry(
+        controller,
+        cols: controller.config.cols,
+        rows: controller.config.rows,
+        metrics: metrics,
+      );
       final resolvedLinks = links ?? LinkInteraction();
       if (links == null) addTearDown(resolvedLinks.dispose);
       return Directionality(
@@ -127,14 +133,17 @@ void main() {
         child: Align(
           alignment: Alignment.topLeft,
           child: InteractionRegion(
-            attachment: resolvedAttachment,
+            readVirtualMods: resolvedAttachment.readVirtualMods,
+            onMouseInput: resolvedAttachment.onMouseInput,
+            onScrollInput: resolvedAttachment.onScrollInput,
+            selection: resolvedAttachment.selectionInput,
             metrics: metrics,
-            theme: TerminalTheme.dark(),
-            interaction: resolvedAttachment.interaction.value,
+            terminalBackground: TerminalTheme.dark().background,
+            interaction: resolvedAttachment.interaction,
+            onViewportRowChanged: resolvedAttachment.handleViewportRowChanged,
             links: resolvedLinks,
             onLinkActivate: onLinkActivate,
             settings: gestureSettings,
-            scrollController: scrollController,
             scrollPhysics: scrollPhysics,
             child: const SizedBox(width: 640, height: 384),
           ),
@@ -488,11 +497,8 @@ void main() {
             textDirection: .ltr,
             child: Scrollable(
               controller: scrollController,
-              viewportBuilder: (_, _) => buildHandler(
-                controller: target,
-                attachment: attachment,
-                scrollController: scrollController,
-              ),
+              viewportBuilder: (_, _) =>
+                  buildHandler(controller: target, attachment: attachment),
             ),
           ),
         );
@@ -500,9 +506,9 @@ void main() {
 
         await pointer.moveTo(const Offset(8, 64));
         await tester.pump();
-        final rowAfterMove = attachment.terminal.scrollbar.offset;
+        final rowAfterMove = target.scrollbar.offset;
         await tester.pump(const Duration(milliseconds: 120));
-        final viewportRow = attachment.terminal.scrollbar.offset;
+        final viewportRow = target.scrollbar.offset;
         await pointer.up();
         await tester.pump(const Duration(milliseconds: 250));
 
@@ -1252,7 +1258,7 @@ void main() {
           final replacement = TerminalController();
           addTearDown(replacement.dispose);
           writeToTerminal(replacement, 'selected');
-          bindingFor(replacement).handleResize(
+          bindingFor(replacement).commitGeometry(
             SurfaceMeasurement(
               cols: 80,
               rows: 24,
@@ -2099,10 +2105,7 @@ void main() {
             textDirection: TextDirection.ltr,
             child: Scrollable(
               controller: scrollController,
-              viewportBuilder: (_, _) => buildHandler(
-                controller: controller,
-                scrollController: scrollController,
-              ),
+              viewportBuilder: (_, _) => buildHandler(controller: controller),
             ),
           ),
         );

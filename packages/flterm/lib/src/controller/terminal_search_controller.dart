@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart' hide Key;
-import 'package:libghostty/libghostty.dart' hide Listenable;
+import 'package:libghostty/libghostty.dart' hide Listenable, ValueGetter;
 
 /// Controls search for one terminal controller.
 ///
@@ -116,6 +116,7 @@ final class TerminalSearchControllerImpl extends ChangeNotifier
     implements TerminalSearchController {
   final Terminal _terminal;
   final Listenable _viewportChanges;
+  final ValueGetter<bool> _shouldRefreshTerminalChange;
   late final Search _search;
 
   Timer? _work;
@@ -124,7 +125,11 @@ final class TerminalSearchControllerImpl extends ChangeNotifier
   var _needsFeed = false;
   var _selecting = false;
 
-  TerminalSearchControllerImpl(this._terminal, this._viewportChanges) {
+  TerminalSearchControllerImpl(
+    this._terminal,
+    this._viewportChanges,
+    this._shouldRefreshTerminalChange,
+  ) {
     _search = Search(_terminal);
     _terminal.addListener(_handleTerminalChanged);
     _viewportChanges.addListener(_handleViewportChanged);
@@ -215,32 +220,10 @@ final class TerminalSearchControllerImpl extends ChangeNotifier
   }
 
   @override
-  void next() {
-    _checkNotDisposed();
-    if (!_hasQuery) return;
-    _completePendingWork();
-    _selecting = true;
-    try {
-      _search.selectNext();
-    } finally {
-      _selecting = false;
-    }
-    notifyListeners();
-  }
+  void next() => _selectMatch(_search.selectNext);
 
   @override
-  void previous() {
-    _checkNotDisposed();
-    if (!_hasQuery) return;
-    _completePendingWork();
-    _selecting = true;
-    try {
-      _search.selectPrevious();
-    } finally {
-      _selecting = false;
-    }
-    notifyListeners();
-  }
+  void previous() => _selectMatch(_search.selectPrevious);
 
   void refresh() => _handleTerminalChanged();
 
@@ -278,6 +261,7 @@ final class TerminalSearchControllerImpl extends ChangeNotifier
   void _handleTerminalChanged() {
     if (_disposed || !_hasQuery) return;
     if (_selecting) return;
+    if (!_shouldRefreshTerminalChange()) return;
     _needsFeed = true;
     notifyListeners();
     _scheduleWork();
@@ -306,5 +290,18 @@ final class TerminalSearchControllerImpl extends ChangeNotifier
     if (_disposed || _work != null || !_hasQuery) return;
     final generation = _generation;
     _work = Timer(Duration.zero, () => _runWork(generation));
+  }
+
+  void _selectMatch(VoidCallback select) {
+    _checkNotDisposed();
+    if (!_hasQuery) return;
+    _completePendingWork();
+    _selecting = true;
+    try {
+      select();
+    } finally {
+      _selecting = false;
+    }
+    notifyListeners();
   }
 }

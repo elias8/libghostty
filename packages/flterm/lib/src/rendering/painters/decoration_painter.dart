@@ -17,8 +17,8 @@ class DecorationPainter implements TerminalPainter {
 
   @override
   void paint(Canvas canvas) {
-    final vertices = _sprites.decorationVertices;
-    if (vertices == null) return;
-    canvas.drawVertices(vertices, BlendMode.srcOver, _paint);
+    for (final vertices in _sprites.decorationVertices) {
+      canvas.drawVertices(vertices, BlendMode.srcOver, _paint);
+    }
   }
 }

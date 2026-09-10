@@ -37,14 +37,17 @@ final class TerminalViewGeometry {
   final int _rows;
   final int _viewportOffset;
 
-  const TerminalViewGeometry._({
-    required this.surfaceBounds,
-    required this.gridBounds,
+  TerminalViewGeometry._({
+    required Size surfaceSize,
+    required EdgeInsets padding,
     required this._metrics,
     required this._cols,
     required this._rows,
     required this._viewportOffset,
-  });
+  }) : surfaceBounds = Offset.zero & surfaceSize,
+       gridBounds =
+           padding.topLeft &
+           Size(_cols * _metrics.cellWidth, _rows * _metrics.cellHeight);
 
   /// Returns the visible cell containing [offset], or null outside the grid.
   ///
@@ -139,12 +142,6 @@ final class TerminalViewGeometry {
     ];
   }
 
-  bool _contains(Position position) =>
-      position.row >= 0 &&
-      position.row < _rows &&
-      position.col >= 0 &&
-      position.col < _cols;
-
   Rect? _clippedRect(int row, int startCol, int endCol) {
     final clippedStart = startCol.clamp(0, _cols);
     final clippedEnd = endCol.clamp(0, _cols);
@@ -155,6 +152,13 @@ final class TerminalViewGeometry {
       clippedEnd,
       gridBounds.topLeft,
     );
+  }
+
+  bool _contains(Position position) {
+    return position.row >= 0 &&
+        position.row < _rows &&
+        position.col >= 0 &&
+        position.col < _cols;
   }
 
   Position? _positionInViewport(GridRef ref) {

@@ -60,8 +60,13 @@ void main() {
       applyTerminalTheme(terminal, theme);
       final width = cols * metrics.cellWidth;
       final height = rows * metrics.cellHeight;
-      final frameSource = FrameSource(terminal);
-      addTearDown(frameSource.dispose);
+      final frameChanges = ChangeNotifier();
+      void onTerminalChanged() => frameChanges.notifyListeners();
+      terminal.addListener(onTerminalChanged);
+      addTearDown(() {
+        terminal.removeListener(onTerminalChanged);
+        frameChanges.dispose();
+      });
       tester.view.devicePixelRatio = 1.0;
       tester.view.physicalSize = Size(width, height);
       addTearDown(() {
@@ -79,11 +84,12 @@ void main() {
               child: TerminalRenderer(
                 theme: theme,
                 metrics: metrics,
-                frameSource: frameSource,
+                terminal: terminal,
+                frameChanges: frameChanges,
                 offset: ViewportOffset.zero(),
                 atlasPool: atlasPool(),
                 focused: true,
-                onGeometryChanged: (_) {},
+                onGeometryChanged: SurfaceGeometry.tryFrom,
                 onViewportRowChanged: (_) {},
               ),
             ),

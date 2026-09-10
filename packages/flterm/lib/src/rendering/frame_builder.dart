@@ -142,9 +142,8 @@ class RowDirtyTracker {
 /// Builds terminal visual layers for the current frame.
 ///
 /// Reads terminal cells and writes [SpriteBuffer] channels for text, emoji,
-/// built-in sprites, backgrounds, and decorations. The render object owns
-/// lifecycle/layout/paint ordering; this class owns frame state sync, dirty-row
-/// buffer generation, cursor visual resolution, and cell-content routing.
+/// built-in sprites, backgrounds, and decorations. The terminal surface owns
+/// this builder and coordinates its lifecycle with the atlas and painters.
 class FrameBuilder {
   final Atlas _atlas;
   final PaintState _state;
@@ -154,6 +153,7 @@ class FrameBuilder {
   final RenderState _renderState;
   final RowDirtyTracker _dirtyRows;
   final CellContentResolver _content;
+  var _blinkRows = Uint8List(0);
 
   late final _RowBuilder _rowBuilder;
   late final _CursorFrameBuilder _cursorBuilder;
@@ -177,6 +177,7 @@ class FrameBuilder {
   void configure(int rows, int cols) {
     _sprites.configure(rows, cols);
     _dirtyRows.resize(rows);
+    _blinkRows = Uint8List(rows);
   }
 
   /// Releases the owned libghostty iterators.
@@ -188,6 +189,13 @@ class FrameBuilder {
 
   /// Rebuilds every visible row on the next sync.
   void markAllRowsDirty() => _dirtyRows.markAll();
+
+  /// Rebuilds only rows containing SGR 5 blinking cells on the next sync.
+  void markBlinkRowsDirty() {
+    for (var row = 0; row < _blinkRows.length; row++) {
+      if (_blinkRows[row] != 0) _dirtyRows.markRow(row);
+    }
+  }
 
   /// Rebuilds rows `[from, toExclusive)` on the next sync.
   void markRowsDirty(int from, int toExclusive) {
@@ -219,8 +227,8 @@ class FrameBuilder {
         searchMatches,
         selectedSearchMatch,
         viewportOffset: terminal.scrollbar.offset,
+        dirtyRows: _dirtyRows,
       );
-      _dirtyRows.markAll();
     }
 
     if (terminalDirty) {
@@ -279,14 +287,14 @@ class FrameBuilder {
       while (_rows.nextDirty()) {
         final row = _rows.index;
         if (row >= _state.rows) break;
-        _rowBuilder.rebuildRow(row, _rows, _cells);
+        _blinkRows[row] = _rowBuilder.rebuildRow(row, _rows, _cells) ? 1 : 0;
       }
     } else {
       while (_rows.next()) {
         final row = _rows.index;
         if (row >= _state.rows) break;
         if (rebuildAll || _rows.dirty || _dirtyRows.isDirty(row)) {
-          _rowBuilder.rebuildRow(row, _rows, _cells);
+          _blinkRows[row] = _rowBuilder.rebuildRow(row, _rows, _cells) ? 1 : 0;
         }
       }
     }
@@ -783,12 +791,17 @@ final class _SearchHighlights {
     required int rows,
     required int cols,
     required int viewportOffset,
+    required RowDirtyTracker dirtyRows,
   }) {
+    for (var index = 0; index < _cells.length; index++) {
+      if (_cells[index] != 0 && _cols > 0) {
+        dirtyRows.markRow(index ~/ _cols);
+      }
+    }
     _rows = rows;
     _cols = cols;
     _viewportOffset = viewportOffset;
     _active = matches.isNotEmpty || selected != null;
-    if (!_active) return;
 
     final length = rows * cols;
     if (_cells.length != length) {
@@ -796,11 +809,12 @@ final class _SearchHighlights {
     } else {
       _cells.fillRange(0, length, 0);
     }
+    if (!_active) return;
 
     for (final match in matches) {
-      _mark(match, 1);
+      _mark(match, 1, dirtyRows);
     }
-    if (selected != null) _mark(selected, 2);
+    if (selected != null) _mark(selected, 2, dirtyRows);
   }
 
   _CellHighlight at(int row, int col, {required bool selected}) {
@@ -816,7 +830,7 @@ final class _SearchHighlights {
     };
   }
 
-  void _mark(Selection selection, int value) {
+  void _mark(Selection selection, int value, RowDirtyTracker dirtyRows) {
     var start = _positionInViewport(selection.start);
     var end = _positionInViewport(selection.end);
     if (start == null || end == null || _rows == 0 || _cols == 0) return;
@@ -831,6 +845,7 @@ final class _SearchHighlights {
       final lastCol = start.col > end.col ? start.col : end.col;
       for (var row = firstRow; row <= lastRow; row++) {
         _markRow(row, firstCol, lastCol + 1, value);
+        dirtyRows.markRow(row);
       }
       return;
     }
@@ -842,6 +857,7 @@ final class _SearchHighlights {
         row == end.row ? end.col + 1 : _cols,
         value,
       );
+      dirtyRows.markRow(row);
     }
   }
 
@@ -1022,6 +1038,7 @@ final class _RowBuildState {
   var backgroundExplicit = false;
   var hidden = false;
   var hasDecoration = false;
+  var hasBlink = false;
   var style = const Style();
 
   var bgRunStart = 0;
@@ -1055,6 +1072,7 @@ final class _RowBuildState {
     backgroundExplicit = false;
     hidden = false;
     hasDecoration = false;
+    hasBlink = false;
     style = const Style();
     bgRunStart = 0;
     bgRunArgb = frame.defaultBackgroundArgb;
@@ -1116,6 +1134,7 @@ final class _StyleResolver {
       row.backgroundInverse = style.inverse;
       row.style = style;
       row.hidden = style.invisible || (!_state.blinkVisible && style.blink);
+      row.hasBlink = row.hasBlink || style.blink;
       row.hasDecoration =
           style.underline != .none || style.strikethrough || style.overline;
     }
@@ -1289,6 +1308,7 @@ final class _RowBuilder {
     List<Selection> matches,
     Selection? selected, {
     required int viewportOffset,
+    required RowDirtyTracker dirtyRows,
   }) {
     _searchHighlights.update(
       matches,
@@ -1296,6 +1316,7 @@ final class _RowBuilder {
       rows: _state.rows,
       cols: _state.cols,
       viewportOffset: viewportOffset,
+      dirtyRows: dirtyRows,
     );
   }
 
@@ -1305,7 +1326,7 @@ final class _RowBuilder {
     _hasLinks = !linkSnapshot.isEmpty;
   }
 
-  void rebuildRow(int rowIndex, RowIterator rows, CellIterator cells) {
+  bool rebuildRow(int rowIndex, RowIterator rows, CellIterator cells) {
     _sprites.beginRow(rowIndex);
     _row.reset(rowIndex, _frame);
     cells.reset(rows);
@@ -1317,6 +1338,7 @@ final class _RowBuilder {
     _foreground.flush(_row);
     _finishBackgroundRun(_row);
     _sprites.endRow();
+    return _row.hasBlink;
   }
 
   ({int? previous, int? current}) updatePreedit(

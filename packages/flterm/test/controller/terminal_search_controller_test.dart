@@ -139,6 +139,22 @@ void main() {
         await tester.pumpAndSettle();
         expect(controller.search.totalMatches, 1);
       });
+
+      testWidgets('keeps results valid when only selection changes', (
+        tester,
+      ) async {
+        controller.write(Uint8List.fromList(utf8.encode('hello world hello')));
+        controller.search.search('hello');
+        await tester.pumpAndSettle();
+
+        controller.selectRange(
+          start: const Position(row: 0, col: 0),
+          end: const Position(row: 0, col: 4),
+        );
+
+        expect(controller.search.isSearching, isFalse);
+        expect(controller.search.totalMatches, 2);
+      });
     });
 
     group('navigation', () {
