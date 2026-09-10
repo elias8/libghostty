@@ -4,8 +4,8 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
-import '../interaction/selection_session.dart';
 import 'selection_handle_geometry.dart';
+import 'selection_session.dart';
 
 final class SelectionHandleTarget extends StatelessWidget {
   static const _minimumInteractiveDimension = 48.0;

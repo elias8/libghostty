@@ -1,8 +1,6 @@
 import 'dart:math';
 import 'dart:ui';
 
-import 'package:meta/meta.dart';
-
 import '../atlas_config.dart';
 import '../atlas_entry.dart';
 import 'atlas_lane.dart';
@@ -134,27 +132,20 @@ abstract class ParagraphLane extends AtlasLane {
           entry.srcBottom,
         ),
       );
-      paintPendingParagraph(
-        canvas,
-        pending.paragraph,
-        entry,
-        pending.widthScale,
-        pending.heightScale,
-        pending.paintOffset,
+      final offset = Offset(
+        entry.srcLeft + pending.paintOffset.dx,
+        entry.srcTop + pending.paintOffset.dy,
       );
+      if (pending.widthScale == 1.0 && pending.heightScale == 1.0) {
+        canvas.drawParagraph(pending.paragraph, offset);
+      } else {
+        canvas.translate(offset.dx, offset.dy);
+        canvas.scale(pending.widthScale, pending.heightScale);
+        canvas.drawParagraph(pending.paragraph, Offset.zero);
+      }
       canvas.restore();
       pending.paragraph.dispose();
     }
     _pending.clear();
   }
-
-  @protected
-  void paintPendingParagraph(
-    Canvas canvas,
-    Paragraph paragraph,
-    AtlasEntry entry,
-    double widthScale,
-    double heightScale,
-    Offset paintOffset,
-  );
 }

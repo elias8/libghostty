@@ -6,8 +6,13 @@ import 'dart:typed_data';
 import 'dart:ui';
 
 import 'package:flterm/src/foundation/cell_metrics.dart';
+import 'package:flterm/src/foundation/cell_range.dart';
 import 'package:flterm/src/foundation/dynamic_color.dart';
 import 'package:flterm/src/foundation/terminal_theme.dart';
+import 'package:flterm/src/links/link_match.dart';
+import 'package:flterm/src/links/link_settings.dart'
+    show ActivatedLink, LinkType;
+import 'package:flterm/src/links/link_snapshot.dart';
 import 'package:flterm/src/rendering/atlas/atlas.dart';
 import 'package:flterm/src/rendering/atlas/sprite_buffer.dart';
 import 'package:flterm/src/rendering/frame_builder.dart';
@@ -37,6 +42,11 @@ void main() {
     List<double> xPositions(AtlasSprites sprites) {
       final transforms = sprites.sealedTransforms;
       return List.generate(sprites.count, (index) => transforms[index * 4 + 2]);
+    }
+
+    List<double> yPositions(AtlasSprites sprites) {
+      final transforms = sprites.sealedTransforms;
+      return List.generate(sprites.count, (index) => transforms[index * 4 + 3]);
     }
 
     String entryRectKey(AtlasEntry entry) {
@@ -237,6 +247,17 @@ void main() {
       expect(atlas.cacheSize, initialCacheSize);
     });
 
+    test('sync separates operator runs at a foreground color boundary', () {
+      writeUtf8(terminal, '=>\x1b[31m!=');
+
+      builder.sync(terminal, terminalDirty: true);
+
+      expect(
+        sprites.shaped.rows.where((row) => row.isNotEmpty).single,
+        hasLength(2),
+      );
+    });
+
     test('sync chunks long operator runs without adding atlas entries', () {
       final localTerminal = Terminal(cols: 260, rows: 1);
       final localAtlas = Atlas(config());
@@ -343,6 +364,52 @@ void main() {
       builder.sync(terminal, terminalDirty: true);
 
       expect(sprites.underline.sealedColors.single, 0xFF010203.toSigned(32));
+    });
+
+    test('sync preserves link underline across a highlight boundary', () {
+      final singleUnderline = atlas.addDecoration(.single);
+      state.updateTheme(
+        TerminalTheme.dark().copyWith(
+          hyperlink: const HyperlinkTheme(
+            idle: HyperlinkStyle(underline: .single),
+          ),
+        ),
+      );
+      writeUtf8(terminal, 'ab');
+      terminal.selection = Selection.fromRefs(
+        start: GridRef.at(terminal, const Position(row: 0, col: 1)),
+        end: GridRef.at(terminal, const Position(row: 0, col: 1)),
+      );
+      const link = LinkMatch(
+        priority: 0,
+        sourceOrder: 0,
+        hoverOnly: false,
+        link: ActivatedLink(
+          type: LinkType.custom,
+          id: 'test',
+          text: 'ab',
+          range: CellRange(
+            start: Position(row: 0, col: 0),
+            end: Position(row: 0, col: 1),
+          ),
+        ),
+      );
+
+      builder.sync(
+        terminal,
+        terminalDirty: true,
+        linkSnapshot: const LinkSnapshot([link]),
+      );
+
+      expect(sprites.underline.count, 2);
+      expect(
+        spriteRectKey(sprites.underline, 0),
+        entryRectKey(singleUnderline),
+      );
+      expect(
+        spriteRectKey(sprites.underline, 1),
+        entryRectKey(singleUnderline),
+      );
     });
 
     test(
@@ -465,6 +532,47 @@ void main() {
       expect(ordinaryColors, contains(0xFF0000FF.toSigned(32)));
       expect(ordinaryColors, isNot(contains(0xFFFF0000.toSigned(32))));
       expect(sprites.regular.sealedColors, contains(0xFF00FF00.toSigned(32)));
+    });
+
+    test('sync restores rows when search matches are cleared', () {
+      state.updateTheme(
+        TerminalTheme.dark().copyWith(
+          search: const SearchTheme(
+            match: SelectionTheme(
+              foreground: DynamicColor.fixed(Color(0xFFFF0000)),
+            ),
+          ),
+        ),
+      );
+      writeUtf8(terminal, 'AB\r\nCD');
+      builder.sync(terminal, terminalDirty: true);
+      final normalColors = sprites.regular.sealedColors.toList();
+      final match = Selection.fromRefs(
+        start: GridRef.at(terminal, const Position(row: 0, col: 0)),
+        end: GridRef.at(terminal, const Position(row: 0, col: 1)),
+      );
+
+      builder.sync(
+        terminal,
+        terminalDirty: false,
+        searchDirty: true,
+        searchMatches: [match],
+      );
+      builder.sync(terminal, terminalDirty: false, searchDirty: true);
+
+      expect(sprites.regular.sealedColors, normalColors);
+    });
+
+    test('sync resets hidden style state at a default row', () {
+      final frame = createFrame(cols: 1, rows: 2);
+      writeUtf8(frame.terminal, '\x1b[8;31mA\x1b[0m\r\nB');
+
+      frame.builder.sync(frame.terminal, terminalDirty: true);
+
+      expect(frame.sprites.regular.sealedColors, [
+        frame.state.terminalForegroundArgb.toSigned(32),
+      ]);
+      expect(yPositions(frame.sprites.regular), [16.0]);
     });
 
     test('sync resolves block cursor glyph from cached frame state', () {
@@ -669,6 +777,68 @@ void main() {
 
       expect(state.preeditActive, isFalse);
       expect(xPositions(sprites.regular), [0.0, 8.0, 16.0, 24.0, 32.0, 40.0]);
+    });
+
+    test('sync moves unchanged preedit text with the cursor', () {
+      writeUtf8(terminal, 'A\r\nB\x1b[1;1H');
+      builder.sync(terminal, terminalDirty: true, preeditText: '日');
+      writeUtf8(terminal, '\x1b[2;1H');
+
+      builder.sync(terminal, terminalDirty: true, preeditText: '日');
+
+      expect(xPositions(sprites.regular), [0.0]);
+      expect(yPositions(sprites.regular), [0.0]);
+      expect(xPositions(sprites.wide), [0.0]);
+      expect(yPositions(sprites.wide), [16.0]);
+    });
+
+    group('incremental invalidation', () {
+      test('blink changes retain rows without blinking cells', () {
+        writeUtf8(terminal, '\x1b[5m=>\x1b[0m\r\n!=');
+        builder.sync(terminal, terminalDirty: true);
+        final retainedRun = sprites.shaped.rows[1].single;
+        state.blinkVisible = false;
+        builder.markBlinkRowsDirty();
+
+        builder.sync(terminal, terminalDirty: false);
+
+        expect(sprites.shaped.rows[1].single, same(retainedRun));
+      });
+
+      test('blink changes hide and show blinking rows', () {
+        writeUtf8(terminal, '\x1b[5mA\x1b[0m\r\nB');
+        builder.sync(terminal, terminalDirty: true);
+
+        state.blinkVisible = false;
+        builder.markBlinkRowsDirty();
+        builder.sync(terminal, terminalDirty: false);
+        expect(sprites.regular.count, 1);
+
+        state.blinkVisible = true;
+        builder.markBlinkRowsDirty();
+        builder.sync(terminal, terminalDirty: false);
+
+        expect(sprites.regular.count, 2);
+      });
+
+      test('search changes retain rows outside matches', () {
+        writeUtf8(terminal, '=>\r\n!=');
+        builder.sync(terminal, terminalDirty: true);
+        final retainedRun = sprites.shaped.rows[1].single;
+        final match = Selection.fromRefs(
+          start: GridRef.at(terminal, const Position(row: 0, col: 0)),
+          end: GridRef.at(terminal, const Position(row: 0, col: 1)),
+        );
+
+        builder.sync(
+          terminal,
+          terminalDirty: false,
+          searchDirty: true,
+          searchMatches: [match],
+        );
+
+        expect(sprites.shaped.rows[1].single, same(retainedRun));
+      });
     });
 
     test('sync ignores zero-width preedit text', () {

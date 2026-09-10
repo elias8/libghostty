@@ -23,7 +23,6 @@ typedef _TextKey = ({
   bool italic,
   int span,
   bool centerInFirstCell,
-  double sourcePadding,
 });
 typedef _SpriteKey = ({int codepoint, int span});
 
@@ -46,7 +45,8 @@ class AtlasCache {
   final DecorationLane _decorationLane;
 
   final Map<_TextKey, AtlasEntry> _text = {};
-  final Map<_TextKey, AtlasEntry> _emoji = {};
+  final Map<({String text, bool bold, bool italic, int span}), AtlasEntry>
+  _emoji = {};
   final Map<_SpriteKey, AtlasEntry> _sprites = {};
   final Map<_CodepointKey, AtlasEntry> _codepoints = {};
   final Map<UnderlineStyle, AtlasEntry> _decorations = {};
@@ -156,8 +156,6 @@ class AtlasCache {
       bold: key.bold,
       italic: key.italic,
       span: span,
-      centerInFirstCell: false,
-      sourcePadding: 0.0,
     );
     return _emoji[cacheKey] ??= _emojiLane.rasterizeEmoji(
       key.text,
@@ -180,14 +178,12 @@ class AtlasCache {
     int span = 1,
     bool centerInFirstCell = false,
   }) {
-    final sourcePadding = _textSourcePadding(key.text, span: span);
     final cacheKey = (
       text: key.text,
       bold: key.bold,
       italic: key.italic,
       span: span,
       centerInFirstCell: centerInFirstCell,
-      sourcePadding: sourcePadding,
     );
     return _text[cacheKey] ??= _textLane.rasterizeText(
       key.text,
@@ -195,7 +191,7 @@ class AtlasCache {
       italic: key.italic,
       span: span,
       centerInFirstCell: centerInFirstCell,
-      sourcePadding: sourcePadding,
+      sourcePadding: _textSourcePadding(key.text, span: span),
     );
   }
 

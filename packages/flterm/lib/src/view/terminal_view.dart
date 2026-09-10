@@ -6,16 +6,13 @@ import 'package:libghostty/libghostty.dart' show GridRef, Position, Selection;
 
 import '../controller/terminal_controller.dart';
 import '../foundation.dart';
+import '../foundation/viewport_selection.dart';
 import '../input/interaction_region.dart';
-import '../links/link_interaction.dart';
 import '../links/link_settings.dart';
 import '../rendering.dart';
-import '../rendering/atlas_pool.dart';
-import 'cursor_blink.dart';
 import 'shortcut_scope.dart';
 import 'terminal_scope.dart';
 import 'terminal_scroll_controller.dart';
-import 'view_attachment.dart';
 
 part 'terminal_view_geometry.dart';
 
@@ -65,9 +62,9 @@ class TerminalView extends StatefulWidget {
 
   /// Whether to show the soft keyboard when focus is gained.
   ///
-  /// Focus and keyboard state are owned by this view. When false, taps and
-  /// programmatic focus can still focus the terminal, but a focus gain does not
-  /// request a platform text-input connection.
+  /// When false, focus does not request that the soft keyboard be shown.
+  /// The view still attaches a platform text-input connection for text editing
+  /// and IME composition while focused.
   final bool showKeyboard;
 
   /// When to auto-hide the mouse cursor.
@@ -164,19 +161,12 @@ class TerminalView extends StatefulWidget {
 
 final class _TerminalViewState extends State<TerminalView>
     with WidgetsBindingObserver {
-  final _rendererKey = GlobalKey();
-  final _links = LinkInteraction();
-  final _cursorBlink = CursorBlink();
-  final _mouseCursorHidden = ValueNotifier(false);
-  late final _mouseInteraction = Listenable.merge([_links, _mouseCursorHidden]);
-
   late ViewAttachment _attachment;
+  late Listenable _overlayChanges;
   var _devicePixelRatio = 1.0;
   late FocusNode _focusNode;
   late ScrollPhysics _gestureScrollPhysics;
   late CellMetrics _metrics;
-  var _ownsFocusNode = false;
-  var _ownsScrollController = false;
   late bool _resizeDeferred;
   Uint8List? _resolvedFontData;
   late TerminalScrollController _scrollController;
@@ -187,14 +177,135 @@ final class _TerminalViewState extends State<TerminalView>
 
   @override
   Widget build(BuildContext context) {
-    final atlasPool = terminalScopeAtlasPoolOf(context);
-    if (atlasPool != null) return _build(atlasPool);
-
-    return TerminalScope(
-      child: Builder(
-        builder: (context) => _build(terminalScopeAtlasPoolOf(context)!),
-      ),
+    final surface = Builder(
+      builder: (context) {
+        final atlasPool = terminalScopeAtlasPoolOf(context)!;
+        final viewport = ListenableBuilder(
+          listenable: _attachment.interaction,
+          builder: (context, _) {
+            final interaction = _attachment.interaction.value;
+            final scrollPhysics = interaction.activeScreen == .alternate
+                ? const NeverScrollableScrollPhysics()
+                : widget.scrollPhysics;
+            final content = Focus(
+              focusNode: _focusNode,
+              autofocus: widget.autofocus,
+              onFocusChange: _handleFocusChange,
+              child: Scrollable(
+                controller: _scrollController,
+                physics: scrollPhysics,
+                viewportBuilder: (_, offset) => InteractionRegion(
+                  links: _attachment.links,
+                  metrics: _metrics,
+                  readVirtualMods: _attachment.readVirtualMods,
+                  onMouseInput: _attachment.onMouseInput,
+                  onScrollInput: _attachment.onScrollInput,
+                  settings: widget.gestureSettings,
+                  interaction: _attachment.interaction,
+                  scrollPhysics: _gestureScrollPhysics,
+                  selection: _attachment.selectionInput,
+                  terminalBackground: _theme.background,
+                  onLinkActivate: widget.linkSettings.onActivate,
+                  onViewportRowChanged: _attachment.handleViewportRowChanged,
+                  child: ListenableBuilder(
+                    listenable: _controller.search,
+                    builder: (context, _) {
+                      final search = _controller.search;
+                      final matches = search.viewportMatches;
+                      final selected = search.selectedMatch;
+                      return ListenableBuilder(
+                        listenable: _attachment,
+                        builder: (context, _) => TerminalRenderer(
+                          theme: _theme,
+                          offset: offset,
+                          metrics: _metrics,
+                          focused: _focusNode.hasFocus,
+                          terminal: _attachment.terminal,
+                          frameChanges: _attachment.frameChanges,
+                          searchMatches: matches,
+                          selectedSearchMatch: selected,
+                          atlasPool: atlasPool,
+                          surfacePadding: widget.padding,
+                          devicePixelRatio: _devicePixelRatio,
+                          preeditText: _attachment.preeditText,
+                          blinkVisible: _attachment.blinkVisible,
+                          resizeDeferred: _resizeDeferred,
+                          links: _attachment.links,
+                          mouseCursorHidden: _attachment.mouseCursorHidden,
+                          onTextInputGeometryChanged:
+                              _attachment.updateTextInputGeometry,
+                          onGeometryChanged: _attachment.commitGeometry,
+                          onViewportRowChanged:
+                              _attachment.handleViewportRowChanged,
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+            );
+            return ListenableBuilder(
+              listenable: _attachment,
+              child: content,
+              builder: (context, child) => MouseRegion(
+                onHover: _handleMouseHover,
+                onExit: _handleMouseExit,
+                cursor: _attachment.mouseCursor,
+                child: child,
+              ),
+            );
+          },
+        );
+        return GestureDetector(
+          behavior: .translucent,
+          onTap: _attachment.requestFocus,
+          child: ColoredBox(
+            color: _theme.background.withValues(
+              alpha: _theme.backgroundOpacity,
+            ),
+            child: Stack(
+              fit: .expand,
+              children: [
+                Padding(
+                  padding: widget.padding,
+                  child: Focus(
+                    onKeyEvent: _handleKeyEvent,
+                    child: ShortcutScope(
+                      onPaste: _handlePaste,
+                      controller: _controller,
+                      shortcuts: widget.shortcuts,
+                      enableSelectAll: widget.gestureSettings.selectAllShortcut,
+                      child: viewport,
+                    ),
+                  ),
+                ),
+                if (widget.overlayBuilder case final builder?)
+                  Positioned.fill(
+                    child: ListenableBuilder(
+                      listenable: _overlayChanges,
+                      builder: (context, _) => LayoutBuilder(
+                        builder: (context, constraints) => builder(
+                          context,
+                          TerminalViewGeometry._fromConstraints(
+                            metrics: _metrics,
+                            padding: widget.padding,
+                            constraints: constraints,
+                            committed: _attachment.committedGeometry,
+                            viewportOffset: _controller.scrollbar.offset,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
     );
+    return terminalScopeAtlasPoolOf(context) == null
+        ? TerminalScope(child: surface)
+        : surface;
   }
 
   @override
@@ -212,7 +323,6 @@ final class _TerminalViewState extends State<TerminalView>
     if (_devicePixelRatio == devicePixelRatio) return;
     _devicePixelRatio = devicePixelRatio;
     _metrics = _measureMetrics();
-    _links.cancel();
     _syncLinkInteraction();
   }
 
@@ -225,7 +335,6 @@ final class _TerminalViewState extends State<TerminalView>
       _devicePixelRatio = devicePixelRatio;
       _metrics = _measureMetrics();
     });
-    _links.cancel();
     _syncLinkInteraction();
   }
 
@@ -233,48 +342,121 @@ final class _TerminalViewState extends State<TerminalView>
   void didUpdateWidget(TerminalView oldWidget) {
     super.didUpdateWidget(oldWidget);
 
-    final controllerChanged = widget.controller != oldWidget.controller;
-    final focusNodeChanged = widget.focusNode != oldWidget.focusNode;
-    final scrollControllerChanged =
-        widget.scrollController != oldWidget.scrollController;
+    final controllerChanged = _syncViewResources(oldWidget);
+    _syncAppearance(oldWidget, controllerChanged);
+  }
 
-    if (controllerChanged) {
-      _attachment.removeListener(_onControllerChanged);
-      _attachment.dispose();
-    } else if (focusNodeChanged) {
-      _attachment.detach();
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _attachment.removeListener(_onControllerChanged);
+    _attachment.dispose();
+    if (widget.focusNode == null) _focusNode.dispose();
+    if (widget.scrollController == null) _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+
+    _attachment = ViewAttachment(_controller);
+    _focusNode = widget.focusNode ?? FocusNode();
+
+    _theme = widget.theme ?? TerminalTheme.dark();
+    _attachment.applyTheme(_theme, initial: true);
+    _attachment.mouseAutoHide = widget.mouseAutoHide;
+    _metrics = _measureMetrics();
+
+    if (widget.fontData == null) unawaited(_resolveFontData(_theme.fontFamily));
+
+    _scrollController = widget.scrollController ?? TerminalScrollController();
+    _resizeDeferred = _attachment.resizeDeferred;
+    setTerminalScrollControllerActiveScreen(
+      _scrollController,
+      _controller.activeScreen,
+    );
+    _attachment.addListener(_onControllerChanged);
+    _bindViewListenables();
+    _syncLinkInteraction();
+  }
+
+  void _bindViewListenables() {
+    _overlayChanges = Listenable.merge([
+      _controller.search,
+      _attachment.viewportChanges,
+    ]);
+  }
+
+  void _handleFocusChange(bool focused) {
+    if (focused && widget.showKeyboard) _attachment.showKeyboard();
+  }
+
+  KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) =>
+      _attachment.handleKeyEvent(event);
+
+  void _handleMouseExit(PointerExitEvent event) =>
+      _attachment.links.cancelHover();
+
+  void _handleMouseHover(PointerHoverEvent event) {
+    _attachment.handleHover(event.localPosition);
+  }
+
+  Future<void> _handlePaste() async {
+    final attachment = _attachment;
+    final controller = _controller;
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
+    if (!mounted || !identical(attachment, _attachment)) return;
+    if (data?.text == null || data!.text!.isEmpty) return;
+    controller.paste(data.text!);
+  }
+
+  CellMetrics _measureMetrics({Uint8List? fontData}) {
+    return measureCellMetrics(
+      fontSize: _theme.fontSize,
+      fontWeight: _theme.fontWeight,
+      fontFamily: _theme.fontFamily,
+      fontFamilyFallback: _theme.fontFamilyFallback,
+      fontData: fontData ?? widget.fontData ?? _resolvedFontData,
+      devicePixelRatio: _devicePixelRatio,
+    );
+  }
+
+  void _onControllerChanged() {
+    final resizeDeferred = _attachment.resizeDeferred;
+    if (_resizeDeferred != resizeDeferred) {
+      setState(() => _resizeDeferred = resizeDeferred);
+    }
+    final activeScreen = _controller.activeScreen;
+    if (_scrollController.activeScreen != activeScreen) {
+      setTerminalScrollControllerActiveScreen(_scrollController, activeScreen);
+    }
+  }
+
+  /// Asynchronously resolves font data and recomputes metrics when found.
+  Future<void> _resolveFontData(String fontFamily) async {
+    if (!mounted ||
+        widget.fontData != null ||
+        _theme.fontFamily != fontFamily) {
+      return;
+    }
+    final data = await FontDataResolver.resolve(fontFamily);
+    if (data == null ||
+        !mounted ||
+        widget.fontData != null ||
+        _theme.fontFamily != fontFamily) {
+      return;
     }
 
-    if (focusNodeChanged) {
-      if (_ownsFocusNode) _focusNode.dispose();
-      _focusNode = widget.focusNode ?? FocusNode();
-      _ownsFocusNode = widget.focusNode == null;
-    }
+    _resolvedFontData = data;
+    _metrics = _measureMetrics(fontData: data);
+    _syncLinkInteraction();
+    setState(() {});
+  }
 
-    if (scrollControllerChanged) {
-      _scrollController.removeListener(_onScrollChanged);
-      if (_ownsScrollController) _scrollController.dispose();
-      _scrollController = widget.scrollController ?? TerminalScrollController();
-      _ownsScrollController = widget.scrollController == null;
-      _scrollController.addListener(_onScrollChanged);
-    }
-
-    if (widget.scrollPhysics != oldWidget.scrollPhysics) {
-      _updateGestureScrollPhysics();
-    }
-
-    if (controllerChanged) {
-      _attachment = ViewAttachment(_controller);
-      _attachment.addListener(_onControllerChanged);
-      _resizeDeferred = _attachment.resizeDeferred;
-      _links.invalidateContent();
-    }
-
-    if (controllerChanged || focusNodeChanged || scrollControllerChanged) {
-      _scrollController.activeScreen = _controller.activeScreen;
-      _attachment.attach(_focusNode, _scrollController, viewId: _viewId!);
-    }
-
+  void _syncAppearance(TerminalView oldWidget, bool controllerChanged) {
+    _attachment.mouseAutoHide = widget.mouseAutoHide;
     final oldTheme = _theme;
     final themeChanged = widget.theme != oldWidget.theme;
     if (themeChanged) {
@@ -298,14 +480,8 @@ final class _TerminalViewState extends State<TerminalView>
         _theme.fontFamilyFallback != oldTheme.fontFamilyFallback;
     if (fontMetricsChanged) {
       _metrics = _measureMetrics();
-      _links.cancel();
     }
 
-    if (themeChanged) {
-      if (_theme.cursor.blinkInterval != oldTheme.cursor.blinkInterval) {
-        _syncBlink();
-      }
-    }
     if (widget.fontData == null &&
         (fontFamilyChanged || (fontDataChanged && _resolvedFontData == null))) {
       unawaited(_resolveFontData(_theme.fontFamily));
@@ -314,321 +490,57 @@ final class _TerminalViewState extends State<TerminalView>
     _syncLinkInteraction();
   }
 
-  @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    _cursorBlink.dispose();
-    _mouseCursorHidden.dispose();
-    _links.dispose();
-    _attachment.removeListener(_onControllerChanged);
-    _attachment.dispose();
-    if (_ownsFocusNode) _focusNode.dispose();
-    _scrollController.removeListener(_onScrollChanged);
-    if (_ownsScrollController) _scrollController.dispose();
-    super.dispose();
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addObserver(this);
-
-    _attachment = ViewAttachment(_controller);
-    _focusNode = widget.focusNode ?? FocusNode();
-    _ownsFocusNode = widget.focusNode == null;
-
-    _theme = widget.theme ?? TerminalTheme.dark();
-    _attachment.applyTheme(_theme, initial: true);
-    _metrics = _measureMetrics();
-
-    if (widget.fontData == null) unawaited(_resolveFontData(_theme.fontFamily));
-
-    _scrollController = widget.scrollController ?? TerminalScrollController();
-    _ownsScrollController = widget.scrollController == null;
-    _resizeDeferred = _attachment.resizeDeferred;
-    _scrollController.activeScreen = _controller.activeScreen;
-    _scrollController.addListener(_onScrollChanged);
-    _attachment.addListener(_onControllerChanged);
-    _syncLinkInteraction();
-  }
-
-  Widget _build(AtlasPool atlasPool) {
-    return GestureDetector(
-      behavior: .translucent,
-      onTap: _attachment.requestFocus,
-      child: ColoredBox(
-        color: _theme.background.withValues(alpha: _theme.backgroundOpacity),
-        child: Stack(
-          fit: .expand,
-          children: [
-            Padding(
-              padding: widget.padding,
-              child: Focus(
-                onKeyEvent: _handleKeyEvent,
-                child: ShortcutScope(
-                  onPaste: _handlePaste,
-                  controller: _controller,
-                  shortcuts: widget.shortcuts,
-                  enableSelectAll: widget.gestureSettings.selectAllShortcut,
-                  child: ListenableBuilder(
-                    listenable: _attachment.interaction,
-                    builder: (_, _) =>
-                        _buildInteraction(atlasPool, _gestureScrollPhysics),
-                  ),
-                ),
-              ),
-            ),
-            if (widget.overlayBuilder case final builder?)
-              Positioned.fill(
-                child: ListenableBuilder(
-                  listenable: Listenable.merge([
-                    _controller.search,
-                    _attachment.viewportChanges,
-                  ]),
-                  builder: (context, _) => LayoutBuilder(
-                    builder: (context, constraints) =>
-                        builder(context, _geometryFor(constraints)),
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildInteraction(
-    AtlasPool atlasPool,
-    ScrollPhysics gestureScrollPhysics,
-  ) {
-    final interaction = _attachment.interaction.value;
-    final scrollPhysics = interaction.activeScreen == .alternate
-        ? const NeverScrollableScrollPhysics()
-        : widget.scrollPhysics;
-    final content = Focus(
-      focusNode: _focusNode,
-      autofocus: widget.autofocus,
-      onFocusChange: _handleFocusChange,
-      child: Scrollable(
-        controller: _scrollController,
-        physics: scrollPhysics,
-        viewportBuilder: (_, offset) => InteractionRegion(
-          theme: _theme,
-          links: _links,
-          metrics: _metrics,
-          attachment: _attachment,
-          interaction: interaction,
-          settings: widget.gestureSettings,
-          scrollPhysics: gestureScrollPhysics,
-          scrollController: _scrollController,
-          onLinkActivate: widget.linkSettings.onActivate,
-          child: ListenableBuilder(
-            listenable: _controller.search,
-            builder: (context, _) {
-              final search = _controller.search;
-              final searchMatches = search.viewportMatches;
-              final selectedSearchMatch = search.selectedMatch;
-              return ListenableBuilder(
-                listenable: Listenable.merge([
-                  _focusNode,
-                  _attachment.input,
-                  _cursorBlink,
-                  _links,
-                ]),
-                builder: (context, _) => TerminalRenderer(
-                  key: _rendererKey,
-                  theme: _theme,
-                  offset: offset,
-                  metrics: _metrics,
-                  focused: _focusNode.hasFocus,
-                  frameSource: _attachment.frameSource,
-                  searchMatches: searchMatches,
-                  selectedSearchMatch: selectedSearchMatch,
-                  atlasPool: atlasPool,
-                  surfacePadding: widget.padding,
-                  devicePixelRatio: _devicePixelRatio,
-                  preeditText: _attachment.input.preeditText,
-                  blinkVisible: _cursorBlink.value,
-                  resizeDeferred: _resizeDeferred,
-                  linkSnapshot: _links.snapshot(),
-                  onGeometryChanged: _handleResize,
-                  onViewportRowChanged: _attachment.handleViewportRowChanged,
-                ),
-              );
-            },
-          ),
-        ),
-      ),
-    );
-    return ListenableBuilder(
-      listenable: _mouseInteraction,
-      child: content,
-      builder: (context, child) => MouseRegion(
-        onHover: _handleMouseHover,
-        onExit: _handleMouseExit,
-        cursor: _effectiveMouseCursor(),
-        child: child,
-      ),
-    );
-  }
-
-  MouseCursor _effectiveMouseCursor() {
-    if (_mouseCursorHidden.value) return SystemMouseCursors.none;
-    if (_links.highlighted != null) return SystemMouseCursors.click;
-    if (_controller.mouseTracking != .none) return SystemMouseCursors.basic;
-    return SystemMouseCursors.text;
-  }
-
-  TerminalViewGeometry _geometryFor(BoxConstraints constraints) {
-    final width = constraints.hasBoundedWidth ? constraints.maxWidth : 0.0;
-    final height = constraints.hasBoundedHeight ? constraints.maxHeight : 0.0;
-    final gridWidth = (width - widget.padding.horizontal).clamp(0.0, width);
-    final gridHeight = (height - widget.padding.vertical).clamp(0.0, height);
-    final (cols, rows) = _metrics.gridSize(gridWidth, gridHeight);
-    return TerminalViewGeometry._(
-      surfaceBounds: Rect.fromLTWH(0, 0, width, height),
-      gridBounds: Rect.fromLTWH(
-        widget.padding.left,
-        widget.padding.top,
-        cols * _metrics.cellWidth,
-        rows * _metrics.cellHeight,
-      ),
-      metrics: _metrics,
-      cols: cols,
-      rows: rows,
-      viewportOffset: _controller.scrollbar.offset,
-    );
-  }
-
-  void _handleFocusChange(bool focused) {
-    _syncBlink(focused: focused);
-    if (focused && widget.showKeyboard) {
-      _attachment.input.showKeyboard();
-      _updateTextInputGeometry();
-    }
-  }
-
-  KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
-    _updateTextInputGeometry();
-    final result = _attachment.input.handleKeyEvent(event);
-
-    if (result == .handled || result == .skipRemainingHandlers) {
-      _updateTextInputGeometry();
-      _syncBlink();
-      if (widget.mouseAutoHide == .onInput && !_mouseCursorHidden.value) {
-        _mouseCursorHidden.value = true;
-      }
-    }
-
-    _syncHoveredLink();
-    return result;
-  }
-
-  void _handleMouseExit(PointerExitEvent event) => _links.cancelHover();
-
-  void _handleMouseHover(PointerHoverEvent event) {
-    _links.handleHover(
-      localPosition: event.localPosition,
-      metrics: _metrics,
-      virtualMods: _attachment.virtualMods,
-    );
-    _mouseCursorHidden.value = false;
-  }
-
-  Future<void> _handlePaste() async {
-    final data = await Clipboard.getData(Clipboard.kTextPlain);
-    if (data?.text == null || data!.text!.isEmpty) return;
-    _controller.paste(data.text!);
-  }
-
-  void _handleResize(SurfaceMeasurement measurement) {
-    _attachment.handleResize(measurement);
-    _syncLinkInteraction();
-  }
-
-  CellMetrics _measureMetrics({Uint8List? fontData}) {
-    return measureCellMetrics(
-      fontSize: _theme.fontSize,
-      fontWeight: _theme.fontWeight,
-      fontFamily: _theme.fontFamily,
-      fontFamilyFallback: _theme.fontFamilyFallback,
-      fontData: fontData ?? widget.fontData ?? _resolvedFontData,
-      devicePixelRatio: _devicePixelRatio,
-    );
-  }
-
-  void _onControllerChanged() {
-    _links.invalidateContent();
-    _syncLinkInteraction();
-    final resizeDeferred = _attachment.resizeDeferred;
-    if (_resizeDeferred != resizeDeferred) {
-      setState(() => _resizeDeferred = resizeDeferred);
-    }
-    final activeScreen = _controller.activeScreen;
-    if (_scrollController.activeScreen != activeScreen) {
-      _scrollController.activeScreen = activeScreen;
-    }
-    _updateTextInputGeometry();
-    _syncBlink();
-  }
-
-  void _onScrollChanged() {
-    _syncBlink();
-    _links.invalidateContent();
-    _updateTextInputGeometry();
-  }
-
-  /// Asynchronously resolves font data and recomputes metrics when found.
-  Future<void> _resolveFontData(String fontFamily) async {
-    if (!mounted ||
-        widget.fontData != null ||
-        _theme.fontFamily != fontFamily) {
-      return;
-    }
-    final data = await FontDataResolver.resolve(fontFamily);
-    if (data == null ||
-        !mounted ||
-        widget.fontData != null ||
-        _theme.fontFamily != fontFamily) {
-      return;
-    }
-
-    _resolvedFontData = data;
-    _metrics = _measureMetrics(fontData: data);
-    _links.cancel();
-    setState(() {});
-  }
-
-  void _syncBlink({bool? focused}) {
-    _cursorBlink.sync(
-      enabled:
-          (focused ?? _focusNode.hasFocus) && _attachment.cursorBlinkEnabled,
-      interval: _theme.cursor.blinkInterval,
-    );
-  }
-
-  void _syncHoveredLink() {
-    _links.refreshHover(
-      metrics: _metrics,
-      virtualMods: _attachment.virtualMods,
-    );
-  }
-
   void _syncLinkInteraction() {
-    final cwd = _controller.pwd;
-    final geometry = _attachment.terminal.geometry;
-    final context = LinkContext(
-      terminal: _attachment.terminal,
-      rows: geometry.rows,
-      cols: geometry.cols,
-      cwd: cwd.isEmpty ? null : cwd,
-    );
-
-    _links.update(
-      context: context,
+    _attachment.configureLinks(
       settings: widget.linkSettings,
       idleStyle: _theme.hyperlink.idle,
+      metrics: _metrics,
     );
+  }
+
+  bool _syncViewResources(TerminalView oldWidget) {
+    final controllerChanged = widget.controller != oldWidget.controller;
+    final focusNodeChanged = widget.focusNode != oldWidget.focusNode;
+    final scrollControllerChanged =
+        widget.scrollController != oldWidget.scrollController;
+
+    if (controllerChanged) {
+      _attachment.removeListener(_onControllerChanged);
+      _attachment.dispose();
+    } else if (focusNodeChanged) {
+      _attachment.detach();
+    }
+
+    if (focusNodeChanged) {
+      if (oldWidget.focusNode == null) _focusNode.dispose();
+      _focusNode = widget.focusNode ?? FocusNode();
+    }
+
+    if (scrollControllerChanged) {
+      if (oldWidget.scrollController == null) _scrollController.dispose();
+      _scrollController = widget.scrollController ?? TerminalScrollController();
+    }
+
+    if (widget.scrollPhysics != oldWidget.scrollPhysics) {
+      _updateGestureScrollPhysics();
+    }
+
+    if (controllerChanged) {
+      _attachment = ViewAttachment(_controller);
+      _attachment.addListener(_onControllerChanged);
+      _resizeDeferred = _attachment.resizeDeferred;
+    }
+
+    if (controllerChanged || focusNodeChanged || scrollControllerChanged) {
+      _bindViewListenables();
+      setTerminalScrollControllerActiveScreen(
+        _scrollController,
+        _controller.activeScreen,
+      );
+      _attachment.attach(_focusNode, _scrollController, viewId: _viewId!);
+    }
+
+    return controllerChanged;
   }
 
   void _updateGestureScrollPhysics() {
@@ -636,21 +548,5 @@ final class _TerminalViewState extends State<TerminalView>
     final defaultPhysics = behavior.getScrollPhysics(context);
     _gestureScrollPhysics =
         widget.scrollPhysics?.applyTo(defaultPhysics) ?? defaultPhysics;
-  }
-
-  void _updateTextInputGeometry() {
-    final renderObject = _rendererKey.currentContext?.findRenderObject();
-    if (renderObject is! TerminalRenderBox ||
-        !renderObject.attached ||
-        !renderObject.hasSize) {
-      return;
-    }
-
-    _attachment.input.updateTextInputGeometry(
-      editableSize: renderObject.size,
-      transform: renderObject.getTransformTo(null),
-      caretRect: renderObject.textInputCaretRect,
-      composingRect: renderObject.textInputComposingRect,
-    );
   }
 }

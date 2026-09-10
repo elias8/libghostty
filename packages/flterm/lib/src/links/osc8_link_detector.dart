@@ -24,13 +24,13 @@ final class Osc8LinkDetector {
         final nextUri = line.uris[i];
         if (nextUri == uri) continue;
 
-        if (uri != null && startIndex >= 0) {
+        if (uri != null) {
           yield _matchFromCells(line, startIndex, i - 1, uri: uri);
         }
         uri = nextUri;
         startIndex = nextUri == null ? -1 : i;
       }
-      if (uri != null && startIndex >= 0) {
+      if (uri != null) {
         yield _matchFromCells(
           line,
           startIndex,

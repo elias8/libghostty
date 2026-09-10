@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart' show immutable, internal;
+import 'package:flutter/foundation.dart' show immutable;
 import 'package:libghostty/libghostty.dart' show PointTag, Position;
 
 /// Inclusive range of terminal cells in one coordinate space.
@@ -34,9 +34,6 @@ final class CellRange {
   /// Whether [start] and [end] are on the same terminal row.
   bool get isSingleRow => start.row == end.row;
 
-  @internal
-  int get sortLength => isSingleRow ? end.col - start.col + 1 : 1 << 20;
-
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -47,23 +44,22 @@ final class CellRange {
 
   /// Whether [position] is inside this inclusive range.
   bool contains(Position position) {
-    if (position.row < start.row || position.row > end.row) return false;
-    if (position.row == start.row && position.col < start.col) return false;
-    if (position.row == end.row && position.col > end.col) return false;
-    return true;
+    return start.compareTo(position) <= 0 && position.compareTo(end) <= 0;
   }
 
   /// Whether this range intersects [other].
   bool overlaps(CellRange other) {
     if (pointTag != other.pointTag) return false;
-    if (start.row > other.end.row || other.start.row > end.row) return false;
-    for (var row = start.row; row <= end.row; row++) {
-      final thisStart = row == start.row ? start.col : 0;
-      final thisEnd = row == end.row ? end.col : 1 << 30;
-      final otherStart = row == other.start.row ? other.start.col : 0;
-      final otherEnd = row == other.end.row ? other.end.col : 1 << 30;
-      if (thisStart <= otherEnd && otherStart <= thisEnd) return true;
+    if (start.compareTo(end) > 0 || other.start.compareTo(other.end) > 0) {
+      return false;
     }
-    return false;
+    return start.compareTo(other.end) <= 0 && other.start.compareTo(end) <= 0;
+  }
+}
+
+extension on Position {
+  int compareTo(Position other) {
+    final byRow = row.compareTo(other.row);
+    return byRow != 0 ? byRow : col.compareTo(other.col);
   }
 }

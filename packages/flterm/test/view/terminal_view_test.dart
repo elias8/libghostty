@@ -1,10 +1,10 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:flterm/src/controller/terminal_controller.dart';
 import 'package:flterm/src/foundation.dart';
-import 'package:flterm/src/interaction/selection_session.dart'
-    show SelectionEndpoint;
+import 'package:flterm/src/input/selection_session.dart' show SelectionEndpoint;
 import 'package:flterm/src/links/link_settings.dart';
 import 'package:flterm/src/rendering.dart';
 import 'package:flterm/src/view/terminal_scope.dart';
@@ -71,7 +71,7 @@ void main() {
     }
 
     Terminal terminal(TerminalController controller) {
-      return (controller as TerminalControllerImpl).terminal;
+      return (controller as TerminalSession).terminal;
     }
 
     Selection? activeSelection(TerminalController controller) {
@@ -1252,6 +1252,68 @@ void main() {
       expect(expected.top, greaterThan(0));
     });
 
+    group('text input geometry', () {
+      testWidgets('follows ancestor transforms without terminal changes', (
+        tester,
+      ) async {
+        final calls = recordTextInputCalls();
+        final translation = ValueNotifier(Offset.zero);
+        addTearDown(translation.dispose);
+        await tester.pumpWidget(
+          ValueListenableBuilder<Offset>(
+            valueListenable: translation,
+            child: RepaintBoundary(
+              child: wrapInApp(controller: controller, autofocus: true),
+            ),
+            builder: (context, offset, child) =>
+                Transform.translate(offset: offset, child: child),
+          ),
+        );
+        await tester.pump();
+        final before =
+            lastTextInputCall(
+                  calls,
+                  'TextInput.setEditableSizeAndTransform',
+                )['transform']!
+                as List<Object?>;
+        calls.clear();
+
+        translation.value = const Offset(21, 34);
+        await tester.pump();
+
+        final after =
+            lastTextInputCall(
+                  calls,
+                  'TextInput.setEditableSizeAndTransform',
+                )['transform']!
+                as List<Object?>;
+        expect(after[12], (before[12]! as num) + 21);
+        expect(after[13], (before[13]! as num) + 34);
+      });
+
+      testWidgets('follows cursor movement from backend output', (
+        tester,
+      ) async {
+        final calls = recordTextInputCalls();
+        await tester.pumpWidget(
+          wrapInApp(controller: controller, autofocus: true),
+        );
+        await tester.pump();
+
+        writeUtf8(controller, '\x1b[4;8H');
+        await tester.pump();
+
+        final renderBox = tester.renderObject<TerminalRenderBox>(
+          find.byType(TerminalRenderer),
+        );
+        final caret = lastTextInputCall(calls, 'TextInput.setCaretRect');
+        expect(
+          Offset(caret['x']! as double, caret['y']! as double),
+          renderBox.textInputCaretRect.topLeft,
+        );
+      });
+    });
+
     group('unmount', () {
       testWidgets('clears focus state', (tester) async {
         final focusNode = FocusNode();
@@ -1758,7 +1820,7 @@ void main() {
         await tester.pump();
 
         expect(
-          renderer(tester).linkSnapshot.highlighted,
+          renderer(tester).links!.snapshot().highlighted,
           const CellRange(
             start: Position(row: 0, col: 0),
             end: Position(row: 0, col: 19),
@@ -2010,10 +2072,7 @@ void main() {
         await tester.pump();
 
         final position = scrollController.position;
-        expect(
-          (position as ScrollbackPosition).activeScreen,
-          TerminalScreen.alternate,
-        );
+        expect(scrollController.activeScreen, TerminalScreen.alternate);
         expect(position.minScrollExtent, double.negativeInfinity);
         expect(position.maxScrollExtent, double.infinity);
       });
@@ -3192,6 +3251,35 @@ void main() {
       tearDown(() {
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
             .setMockMethodCallHandler(SystemChannels.platform, null);
+      });
+
+      testWidgets('cancels pending paste when the controller changes', (
+        tester,
+      ) async {
+        final clipboard = Completer<Object?>();
+        tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          SystemChannels.platform,
+          (call) async => call.method == 'Clipboard.getData'
+              ? await clipboard.future
+              : null,
+        );
+        final replacement = TerminalController();
+        addTearDown(replacement.dispose);
+        final output = <Uint8List>[];
+        replacement.onOutput = output.add;
+        await tester.pumpWidget(
+          wrapInApp(controller: controller, autofocus: true),
+        );
+        await tester.pump();
+        await sendPasteShortcut(tester);
+
+        await tester.pumpWidget(
+          wrapInApp(controller: replacement, autofocus: true),
+        );
+        clipboard.complete({'text': 'stale paste'});
+        await tester.pump();
+
+        expect(decodeOutput(output), isNot(contains('stale paste')));
       });
 
       testWidgets('paste shortcut sends clipboard text to onOutput', (

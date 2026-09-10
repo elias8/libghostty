@@ -5,10 +5,10 @@ import 'package:material_ui/material_ui.dart'
 import 'package:meta/meta.dart';
 
 import '../foundation/cell_metrics.dart';
-import '../interaction/selection_session.dart';
 import 'selection_cupertino_handle_controls.dart';
 import 'selection_handle_geometry.dart';
 import 'selection_handle_target.dart';
+import 'selection_session.dart';
 
 @internal
 final class SelectionHandleLayer extends StatelessWidget {

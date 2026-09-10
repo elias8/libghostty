@@ -37,14 +37,41 @@ final class TerminalViewGeometry {
   final int _rows;
   final int _viewportOffset;
 
-  const TerminalViewGeometry._({
-    required this.surfaceBounds,
-    required this.gridBounds,
+  TerminalViewGeometry._({
+    required Size surfaceSize,
+    required EdgeInsets padding,
     required this._metrics,
     required this._cols,
     required this._rows,
     required this._viewportOffset,
-  });
+  }) : surfaceBounds = Offset.zero & surfaceSize,
+       gridBounds =
+           padding.topLeft &
+           Size(_cols * _metrics.cellWidth, _rows * _metrics.cellHeight);
+
+  factory TerminalViewGeometry._fromConstraints({
+    required EdgeInsets padding,
+    required int viewportOffset,
+    required CellMetrics metrics,
+    required BoxConstraints constraints,
+    required SurfaceGeometry? committed,
+  }) {
+    final width = constraints.hasBoundedWidth ? constraints.maxWidth : 0.0;
+    final height = constraints.hasBoundedHeight ? constraints.maxHeight : 0.0;
+    final gridWidth = (width - padding.horizontal).clamp(0.0, width);
+    final gridHeight = (height - padding.vertical).clamp(0.0, height);
+    final (cols, rows) = committed == null
+        ? metrics.gridSize(gridWidth, gridHeight)
+        : (committed.cols, committed.rows);
+    return TerminalViewGeometry._(
+      surfaceSize: Size(width, height),
+      padding: padding,
+      metrics: metrics,
+      cols: cols,
+      rows: rows,
+      viewportOffset: viewportOffset,
+    );
+  }
 
   /// Returns the visible cell containing [offset], or null outside the grid.
   ///
@@ -86,7 +113,7 @@ final class TerminalViewGeometry {
   /// if (rect != null) avoidOverlayRect(rect);
   /// ```
   Rect? gridRefRect(GridRef ref) {
-    final position = _positionInViewport(ref);
+    final position = ViewportSelection.positionOf(ref, _viewportOffset);
     return position == null ? null : cellRect(position);
   }
 
@@ -107,65 +134,28 @@ final class TerminalViewGeometry {
   /// );
   /// ```
   List<Rect> selectionRects(Selection selection) {
-    var start = _positionInViewport(selection.start);
-    var end = _positionInViewport(selection.end);
-    if (start == null || end == null || _rows == 0 || _cols == 0) {
-      return const [];
-    }
-
-    if (_after(start, end)) (start, end) = (end, start);
-    final firstRow = start.row.clamp(0, _rows - 1);
-    final lastRow = end.row.clamp(0, _rows - 1);
-    if (end.row < 0 || start.row >= _rows || firstRow > lastRow) {
-      return const [];
-    }
-
-    if (selection.rectangle) {
-      final firstCol = start.col < end.col ? start.col : end.col;
-      final lastCol = start.col > end.col ? start.col : end.col;
-      return [
-        for (var row = firstRow; row <= lastRow; row++)
-          ?_clippedRect(row, firstCol, lastCol + 1),
-      ];
-    }
-
+    final range = ViewportSelection.resolve(
+      selection,
+      rows: _rows,
+      cols: _cols,
+      viewportOffset: _viewportOffset,
+    );
+    if (range == null) return const [];
     return [
-      for (var row = firstRow; row <= lastRow; row++)
-        ?_clippedRect(
-          row,
-          row == start.row ? start.col : 0,
-          row == end.row ? end.col + 1 : _cols,
-        ),
+      for (var row = range.firstRow; row <= range.lastRow; row++)
+        ?_rowRect(row, range.startColumn(row), range.endColumn(row)),
     ];
   }
 
-  bool _contains(Position position) =>
-      position.row >= 0 &&
-      position.row < _rows &&
-      position.col >= 0 &&
-      position.col < _cols;
-
-  Rect? _clippedRect(int row, int startCol, int endCol) {
-    final clippedStart = startCol.clamp(0, _cols);
-    final clippedEnd = endCol.clamp(0, _cols);
-    if (clippedStart >= clippedEnd) return null;
-    return _metrics.cellRangeRect(
-      row,
-      clippedStart,
-      clippedEnd,
-      gridBounds.topLeft,
-    );
+  bool _contains(Position position) {
+    return position.row >= 0 &&
+        position.row < _rows &&
+        position.col >= 0 &&
+        position.col < _cols;
   }
 
-  Position? _positionInViewport(GridRef ref) {
-    final viewport = ref.positionIn(.viewport);
-    if (viewport != null) return viewport;
-    final screen = ref.positionIn(.screen);
-    if (screen == null) return null;
-    return Position(row: screen.row - _viewportOffset, col: screen.col);
+  Rect? _rowRect(int row, int startCol, int endCol) {
+    if (startCol >= endCol) return null;
+    return _metrics.cellRangeRect(row, startCol, endCol, gridBounds.topLeft);
   }
-
-  static bool _after(Position first, Position second) =>
-      first.row > second.row ||
-      (first.row == second.row && first.col > second.col);
 }

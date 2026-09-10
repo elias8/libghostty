@@ -84,8 +84,13 @@ void main() {
       double? maxWidth,
       double? maxHeight,
     }) {
-      final frameSource = FrameSource(terminal);
-      addTearDown(frameSource.dispose);
+      final frameChanges = ChangeNotifier();
+      void onTerminalChanged() => frameChanges.notifyListeners();
+      terminal.addListener(onTerminalChanged);
+      addTearDown(() {
+        terminal.removeListener(onTerminalChanged);
+        frameChanges.dispose();
+      });
       final width = maxWidth ?? cols * metrics.cellWidth;
       final height = maxHeight ?? rows * metrics.cellHeight;
       return Directionality(
@@ -95,13 +100,14 @@ void main() {
           child: ConstrainedBox(
             constraints: BoxConstraints(maxWidth: width, maxHeight: height),
             child: TerminalRenderer(
-              frameSource: frameSource,
+              terminal: terminal,
+              frameChanges: frameChanges,
               theme: theme,
               metrics: metrics,
               offset: ViewportOffset.zero(),
               atlasPool: atlasPool(),
               focused: true,
-              onGeometryChanged: (_) {},
+              onGeometryChanged: SurfaceGeometry.tryFrom,
               onViewportRowChanged: (_) {},
             ),
           ),

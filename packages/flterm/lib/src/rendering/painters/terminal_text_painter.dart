@@ -4,7 +4,6 @@ import 'package:flutter/painting.dart';
 
 import '../atlas/atlas.dart';
 import '../atlas/sprite_buffer.dart';
-import 'terminal_painter.dart';
 
 /// Paints regular-width and wide text glyphs via batched [Canvas.drawRawAtlas]
 /// calls.
@@ -13,7 +12,7 @@ import 'terminal_painter.dart';
 /// The atlas stores white glyph bitmaps tinted per-sprite via
 /// [BlendMode.modulate] to produce colored text with zero per-glyph draw
 /// calls.
-class TerminalTextPainter implements TerminalPainter {
+class TerminalTextPainter {
   final Paint _paint;
   final Atlas _atlas;
   final AtlasSprites _wide;
@@ -22,7 +21,6 @@ class TerminalTextPainter implements TerminalPainter {
   TerminalTextPainter(this._atlas, this._wide, this._regular)
     : _paint = Paint();
 
-  @override
   void paint(Canvas canvas) {
     final image = _atlas.textImage;
     if (image == null) return;

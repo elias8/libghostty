@@ -4,86 +4,199 @@ import 'dart:ui';
 
 import 'package:libghostty/libghostty.dart';
 
-import '../foundation/dynamic_color.dart';
+import '../foundation/cell_metrics.dart';
 import '../foundation/terminal_theme.dart';
+import '../foundation/viewport_selection.dart';
 import '../links/link_snapshot.dart';
 import 'atlas/atlas.dart';
 import 'atlas/sprite_buffer.dart';
 import 'cell_content_resolver.dart';
 import 'paint_state.dart';
 
-const _italicOverhangFontSizeFactor = 0.15;
+part 'frame_cursor.dart';
+part 'frame_preedit.dart';
+part 'frame_rows.dart';
+part 'frame_style.dart';
 
-// Conservative context lets boundary-crossing ligatures shape correctly.
-const _operatorLigatureContextCells = 16;
+/// Builds terminal visual layers for the current frame.
+///
+/// Reads terminal cells and writes [SpriteBuffer] channels for text, emoji,
+/// built-in sprites, backgrounds, and decorations. The terminal surface owns
+/// this builder and coordinates its lifecycle with the atlas and painters.
+class FrameBuilder {
+  final Atlas _atlas;
+  final PaintState _state;
+  final RowIterator _rows;
+  final CellIterator _cells;
+  final SpriteBuffer _sprites;
+  final RenderState _renderState;
+  final RowDirtyTracker _dirtyRows;
+  var _blinkRows = Uint8List(0);
 
-// Above common wide terminal columns; caps pathological operator animations.
-const _operatorRunChunkCells = 256;
+  late final _RowBuilder _rowBuilder;
+  late final _CursorFrameBuilder _cursorBuilder;
 
-/// ASCII punctuation/operator: not digit, not uppercase, not lowercase.
-bool _isOperator(int cp) {
-  return cp < 0x30 ||
-      (cp > 0x39 && cp < 0x41) ||
-      (cp > 0x5A && cp < 0x61) ||
-      cp > 0x7A;
-}
+  FrameBuilder(this._atlas, this._sprites, this._state)
+    : _renderState = RenderState(),
+      _rows = RowIterator(),
+      _cells = CellIterator(),
+      _dirtyRows = RowDirtyTracker() {
+    final content = CellContentResolver(_atlas);
+    _rowBuilder = _RowBuilder(
+      atlas: _atlas,
+      sprites: _sprites,
+      state: _state,
+      content: content,
+    );
+    _cursorBuilder = _CursorFrameBuilder(_state, content);
+  }
 
-int _resolveColorArgb(
-  PaintState state,
-  CellColor color, {
-  required bool isForeground,
-  int? defaultForeground,
-  int? defaultBackground,
-}) {
-  return switch (color) {
-    DefaultColor() =>
-      isForeground
-          ? defaultForeground ?? state.terminalForegroundArgb
-          : defaultBackground ?? state.terminalBackgroundArgb,
-    RgbColor() => color.toArgb32,
-    PaletteColor(:final index) => state.terminalPaletteArgb[index],
-  };
-}
+  /// Reconfigures sprite storage for the current grid size.
+  void configure(int rows, int cols) {
+    _sprites.configure(rows, cols);
+    _dirtyRows.resize(rows);
+    _blinkRows = Uint8List(rows);
+  }
 
-(int foreground, int background) _resolveStyleColors(
-  PaintState state,
-  Style style, {
-  int? defaultForeground,
-  int? defaultBackground,
-}) {
-  var foreground = _resolveColorArgb(
-    state,
-    style.foreground,
-    isForeground: true,
-    defaultForeground: defaultForeground,
-    defaultBackground: defaultBackground,
-  );
-  var background = _resolveColorArgb(
-    state,
-    style.background,
-    isForeground: false,
-    defaultForeground: defaultForeground,
-    defaultBackground: defaultBackground,
-  );
+  /// Releases the owned libghostty iterators.
+  void dispose() {
+    _cells.dispose();
+    _rows.dispose();
+    _renderState.dispose();
+  }
 
-  if (style.bold) {
-    final boldColor = state.theme.boldColor;
-    if (boldColor != null) {
-      foreground = boldColor.toARGB32();
-    } else if (state.theme.boldIsBright) {
-      final raw = style.foreground;
-      if (raw is PaletteColor && raw.index < 8) {
-        foreground = state.terminalPaletteArgb[raw.index + 8];
-      }
+  /// Rebuilds every visible row on the next sync.
+  void markAllRowsDirty() => _dirtyRows.markAll();
+
+  /// Rebuilds only rows containing SGR 5 blinking cells on the next sync.
+  void markBlinkRowsDirty() {
+    for (var row = 0; row < _blinkRows.length; row++) {
+      if (_blinkRows[row] != 0) _dirtyRows.markRow(row);
     }
   }
 
-  if (style.inverse) (foreground, background) = (background, foreground);
-  if (style.faint) {
-    foreground = (state.faintAlpha << 24) | (foreground & 0x00FFFFFF);
+  /// Rebuilds rows `[from, toExclusive)` on the next sync.
+  void markRowsDirty(int from, int toExclusive) {
+    _dirtyRows.markRange(from, toExclusive);
   }
 
-  return (foreground, background);
+  /// Re-resolves the cursor glyph from the last cursor cell snapshot.
+  ///
+  /// Used when flterm-side state changes, such as focus or blink visibility,
+  /// without a new terminal render state.
+  void refreshCursorGlyph() => _cursorBuilder.refreshGlyph();
+
+  /// Syncs terminal state into paint-ready buffers.
+  void sync(
+    Terminal terminal, {
+    required bool terminalDirty,
+    bool searchDirty = false,
+    List<Selection> searchMatches = const [],
+    Selection? selectedSearchMatch,
+    String preeditText = '',
+    LinkSnapshot linkSnapshot = .empty,
+  }) {
+    var dirty = DirtyState.clean;
+
+    if (searchDirty) {
+      _rowBuilder.updateSearch(
+        searchMatches,
+        selectedSearchMatch,
+        viewportOffset: terminal.scrollbar.offset,
+        dirtyRows: _dirtyRows,
+      );
+    }
+
+    if (terminalDirty) {
+      dirty = _renderState.update(terminal);
+      final scrollbar = terminal.scrollbar;
+      final terminalColorsChanged = _state.updateTerminalColors(
+        _renderState.colors,
+      );
+
+      _state.viewportOffset = scrollbar.offset;
+      // RenderState updates colors even when its dirty result is clean.
+      // Since sprite buffers cache resolved ARGB values, color changes need
+      // the same full rebuild as other global terminal-state changes.
+      if (terminalColorsChanged) dirty = .full;
+
+      _syncCursor(terminal, scrollbar);
+    }
+
+    // Preedit text is render-only state. It can dirty rows even when the
+    // terminal render state is unchanged, such as a composing update over a
+    // stable prompt.
+    final preeditRows = _rowBuilder.updatePreedit(
+      preeditText,
+      cursor: _state.cursor,
+    );
+    if (preeditRows.previous case final row?) _dirtyRows.markRow(row);
+    if (preeditRows.current case final row?) _dirtyRows.markRow(row);
+    _state.preeditActive = preeditRows.active;
+
+    if (dirty == .clean && !_dirtyRows.anyDirty) return;
+    _build(dirty == .clean ? .partial : dirty, linkSnapshot);
+    if (terminalDirty) _renderState.clean();
+  }
+
+  void _build(DirtyState dirty, LinkSnapshot links) {
+    _rowBuilder.beginFrame(links);
+
+    final rebuildAll = dirty != DirtyState.partial;
+    final useDirtyIterator =
+        dirty == _renderState.dirty &&
+        dirty != .clean &&
+        (dirty != .partial || !_dirtyRows.anyDirty);
+    _rows.reset(_renderState);
+
+    while ((useDirtyIterator ? _rows.nextDirty() : _rows.next()) &&
+        _rows.index < _state.rows) {
+      final row = _rows.index;
+      if (useDirtyIterator ||
+          rebuildAll ||
+          _rows.dirty ||
+          _dirtyRows.isDirty(row)) {
+        _blinkRows[row] = _rowBuilder.rebuildRow(row, _rows, _cells) ? 1 : 0;
+      }
+    }
+
+    _dirtyRows._clear();
+    _atlas.ensureImage();
+    _sprites.seal();
+  }
+
+  void _syncCursor(Terminal terminal, Scrollbar scrollbar) {
+    final cursor = _renderState.cursor;
+    final scrollbackLen = scrollbar.total - scrollbar.visible;
+    final inViewport =
+        cursor.viewportHasValue &&
+        cursor.visible &&
+        (scrollbackLen <= 0 || scrollbar.offset >= scrollbackLen) &&
+        cursor.viewportY >= 0 &&
+        cursor.viewportY < _state.rows &&
+        cursor.viewportX >= 0 &&
+        cursor.viewportX < _state.cols;
+    if (!inViewport) {
+      _cursorBuilder.sync(cursor, cell: null);
+      return;
+    }
+
+    final adjustedCursor = cursor.wideTail && cursor.viewportX > 0
+        ? cursor.copyWith(viewportX: cursor.viewportX - 1)
+        : cursor;
+    final effectiveCursor = adjustedCursor.visualStyle == CursorShape.block
+        ? adjustedCursor.copyWith(visualStyle: _state.theme.cursor.shape)
+        : adjustedCursor;
+    final ref = GridRef.at(
+      terminal,
+      Position(row: effectiveCursor.viewportY, col: effectiveCursor.viewportX),
+    );
+    _cursorBuilder.sync(
+      effectiveCursor,
+      cell: (content: ref.content, style: ref.style, wide: ref.isWide),
+      color: terminal.cursorColor,
+    );
+  }
 }
 
 /// Tracks per-row dirtiness from sources outside libghostty's own row-dirty
@@ -137,1451 +250,4 @@ class RowDirtyTracker {
     _rows.fillRange(0, _rows.length, 0);
     _anyDirty = false;
   }
-}
-
-/// Builds terminal visual layers for the current frame.
-///
-/// Reads terminal cells and writes [SpriteBuffer] channels for text, emoji,
-/// built-in sprites, backgrounds, and decorations. The render object owns
-/// lifecycle/layout/paint ordering; this class owns frame state sync, dirty-row
-/// buffer generation, cursor visual resolution, and cell-content routing.
-class FrameBuilder {
-  final Atlas _atlas;
-  final PaintState _state;
-  final RowIterator _rows;
-  final CellIterator _cells;
-  final SpriteBuffer _sprites;
-  final RenderState _renderState;
-  final RowDirtyTracker _dirtyRows;
-  final CellContentResolver _content;
-
-  late final _RowBuilder _rowBuilder;
-  late final _CursorFrameBuilder _cursorBuilder;
-
-  FrameBuilder(this._atlas, this._sprites, this._state)
-    : _content = CellContentResolver(_atlas),
-      _renderState = RenderState(),
-      _rows = RowIterator(),
-      _cells = CellIterator(),
-      _dirtyRows = RowDirtyTracker() {
-    _rowBuilder = _RowBuilder(
-      atlas: _atlas,
-      sprites: _sprites,
-      state: _state,
-      content: _content,
-    );
-    _cursorBuilder = _CursorFrameBuilder(_state, _content);
-  }
-
-  /// Reconfigures sprite storage for the current grid size.
-  void configure(int rows, int cols) {
-    _sprites.configure(rows, cols);
-    _dirtyRows.resize(rows);
-  }
-
-  /// Releases the owned libghostty iterators.
-  void dispose() {
-    _cells.dispose();
-    _rows.dispose();
-    _renderState.dispose();
-  }
-
-  /// Rebuilds every visible row on the next sync.
-  void markAllRowsDirty() => _dirtyRows.markAll();
-
-  /// Rebuilds rows `[from, toExclusive)` on the next sync.
-  void markRowsDirty(int from, int toExclusive) {
-    _dirtyRows.markRange(from, toExclusive);
-  }
-
-  /// Re-resolves the cursor glyph from the last cursor cell snapshot.
-  ///
-  /// Used when flterm-side state changes, such as focus or blink visibility,
-  /// without a new terminal render state.
-  void refreshCursorGlyph() => _cursorBuilder.refreshGlyph();
-
-  /// Syncs terminal state into paint-ready buffers.
-  void sync(
-    Terminal terminal, {
-    required bool terminalDirty,
-    bool searchDirty = false,
-    List<Selection> searchMatches = const [],
-    Selection? selectedSearchMatch,
-    String preeditText = '',
-    LinkSnapshot linkSnapshot = .empty,
-  }) {
-    var dirty = DirtyState.clean;
-
-    _rowBuilder.linkSnapshot = linkSnapshot;
-
-    if (searchDirty) {
-      _rowBuilder.updateSearch(
-        searchMatches,
-        selectedSearchMatch,
-        viewportOffset: terminal.scrollbar.offset,
-      );
-      _dirtyRows.markAll();
-    }
-
-    if (terminalDirty) {
-      dirty = _renderState.update(terminal);
-      final scrollbar = terminal.scrollbar;
-      final terminalColorsChanged = _state.updateTerminalColors(
-        _renderState.colors,
-      );
-
-      _state.viewportOffset = scrollbar.offset;
-      // RenderState updates colors even when its dirty result is clean.
-      // Since sprite buffers cache resolved ARGB values, color changes need
-      // the same full rebuild as other global terminal-state changes.
-      if (terminalColorsChanged) dirty = .full;
-
-      _cursorBuilder.sync(
-        terminal: terminal,
-        renderState: _renderState,
-        scrollbar: scrollbar,
-      );
-    }
-
-    // Preedit text is render-only state. It can dirty rows even when the
-    // terminal render state is unchanged, such as a composing update over a
-    // stable prompt.
-    final preeditRows = _rowBuilder.updatePreedit(
-      preeditText,
-      cursor: _state.cursor,
-    );
-    if (preeditRows.previous case final row?) _dirtyRows.markRow(row);
-    if (preeditRows.current case final row?) _dirtyRows.markRow(row);
-    _state.preeditActive = _rowBuilder.hasPreedit;
-
-    final hasDirtyRows = _dirtyRows.anyDirty;
-    if (terminalDirty) {
-      if (dirty != .clean || hasDirtyRows) {
-        _build(dirty == .clean ? .partial : dirty);
-        _renderState.clean();
-      }
-    } else if (hasDirtyRows) {
-      _build(.partial);
-    }
-  }
-
-  void _build(DirtyState dirty) {
-    _rowBuilder.beginFrame();
-
-    final rebuildAll = dirty != DirtyState.partial;
-    final useDirtyIterator =
-        dirty == _renderState.dirty &&
-        dirty != .clean &&
-        (dirty != .partial || !_dirtyRows.anyDirty);
-    _rows.reset(_renderState);
-
-    if (useDirtyIterator) {
-      while (_rows.nextDirty()) {
-        final row = _rows.index;
-        if (row >= _state.rows) break;
-        _rowBuilder.rebuildRow(row, _rows, _cells);
-      }
-    } else {
-      while (_rows.next()) {
-        final row = _rows.index;
-        if (row >= _state.rows) break;
-        if (rebuildAll || _rows.dirty || _dirtyRows.isDirty(row)) {
-          _rowBuilder.rebuildRow(row, _rows, _cells);
-        }
-      }
-    }
-
-    _dirtyRows._clear();
-    _atlas.ensureImage();
-    _sprites.seal();
-  }
-}
-
-/// Batches consecutive ASCII operators so font ligatures can apply.
-final class _AsciiOperatorRun {
-  final _codepoints = <int>[];
-  var x = 0.0;
-
-  int get first => _codepoints.first;
-
-  bool get isEmpty => _codepoints.isEmpty;
-
-  int get length => _codepoints.length;
-
-  String get text => String.fromCharCodes(_codepoints);
-
-  void add(int codepoint, double cellX) {
-    if (_codepoints.isEmpty) x = cellX;
-    _codepoints.add(codepoint);
-  }
-
-  void clear() => _codepoints.clear();
-
-  String textSlice(int start, int end) {
-    return String.fromCharCodes(_codepoints, start, end);
-  }
-}
-
-/// Snapshot of the cell under the cursor.
-///
-/// Captured during state sync so cursor painting can render the character
-/// under a block cursor without touching terminal state during paint.
-final class _CursorCellSnapshot {
-  final String content;
-  final Style style;
-  final bool wide;
-
-  const _CursorCellSnapshot(this.content, this.style, {required this.wide});
-}
-
-/// Resolves cursor geometry, colors, and block-cursor glyph state.
-final class _CursorFrameBuilder {
-  final PaintState _state;
-  final CellContentResolver _content;
-  var _cursor = const RenderStateCursor();
-  _CursorCellSnapshot? _lastCell;
-
-  _CursorFrameBuilder(this._state, this._content);
-
-  void refreshGlyph() {
-    final cell = _lastCell;
-    final entry = _resolveGlyph();
-    _state.cursorAtlasEntry = entry;
-    if (entry == null || cell == null) return;
-
-    // The character under a block cursor paints in CursorTheme.text (or the
-    // terminal background when unset) so it contrasts with the cursor fill.
-    final (cellFg, cellBg) = _resolveCellColors(cell);
-    final glyphColor =
-        _state.theme.cursor.text?.resolve(
-          cellForeground: cellFg,
-          cellBackground: cellBg,
-        ) ??
-        Color(_state.terminalBackgroundArgb);
-    _state.cursorGlyphPaint.colorFilter = ColorFilter.mode(
-      glyphColor,
-      BlendMode.modulate,
-    );
-  }
-
-  void sync({
-    required Terminal terminal,
-    required RenderState renderState,
-    required Scrollbar scrollbar,
-  }) {
-    final cursor = renderState.cursor;
-    final scrollbackLen = scrollbar.total - scrollbar.visible;
-    final inViewport =
-        cursor.viewportHasValue &&
-        cursor.visible &&
-        (scrollbackLen <= 0 || scrollbar.offset >= scrollbackLen) &&
-        cursor.viewportY >= 0 &&
-        cursor.viewportY < _state.rows &&
-        cursor.viewportX >= 0 &&
-        cursor.viewportX < _state.cols;
-
-    if (!inViewport) {
-      _hide(cursor);
-      return;
-    }
-
-    final adjustedCursor = cursor.wideTail && cursor.viewportX > 0
-        ? cursor.copyWith(viewportX: cursor.viewportX - 1)
-        : cursor;
-    final effectiveCursor = adjustedCursor.visualStyle == CursorShape.block
-        ? adjustedCursor.copyWith(visualStyle: _state.theme.cursor.shape)
-        : adjustedCursor;
-    final ref = GridRef.at(
-      terminal,
-      Position(row: effectiveCursor.viewportY, col: effectiveCursor.viewportX),
-    );
-    final cell = _CursorCellSnapshot(ref.content, ref.style, wide: ref.isWide);
-
-    _cursor = effectiveCursor;
-    _lastCell = cell;
-    _state.cursor = effectiveCursor;
-    _state.cursorWide = cell.wide;
-    _resolveFillColor(terminal, cell);
-    refreshGlyph();
-  }
-
-  void _hide(RenderStateCursor cursor) {
-    _cursor = cursor;
-    _lastCell = null;
-    _state.cursor = cursor.copyWith(visible: false);
-    _state.cursorWide = false;
-    _state.cursorAtlasEntry = null;
-  }
-
-  (Color, Color) _resolveCellColors(_CursorCellSnapshot cell) {
-    final (fg, bg) = _resolveStyleColors(_state, cell.style);
-    return (Color(fg), Color(bg));
-  }
-
-  // An OSC 12 color reported by libghostty overrides the theme cursor color.
-  void _resolveFillColor(Terminal terminal, _CursorCellSnapshot cell) {
-    final osc = terminal.cursorColor;
-    if (osc != null) {
-      _state.cursorColorArgb = osc.toArgb32;
-      return;
-    }
-    final themeCursor = _state.theme.cursor.color;
-    if (themeCursor == null) {
-      _state.cursorColorArgb = _state.terminalForegroundArgb;
-      return;
-    }
-    final (cellFg, cellBg) = _resolveCellColors(cell);
-    _state.cursorColorArgb = themeCursor
-        .resolve(cellForeground: cellFg, cellBackground: cellBg)
-        .toARGB32();
-  }
-
-  AtlasEntry? _resolveGlyph() {
-    final cell = _lastCell;
-    if (cell == null ||
-        !_state.cursorFocused ||
-        _cursor.visualStyle != CursorShape.block) {
-      return null;
-    }
-    final style = cell.style;
-    if (cell.content.isEmpty ||
-        style.invisible ||
-        (style.blink && !_state.blinkVisible)) {
-      return null;
-    }
-
-    final runes = cell.content.runes;
-    return _content.resolve(
-      content: cell.content,
-      codepoint: runes.first,
-      graphemeLength: runes.length,
-      style: style,
-      span: cell.wide ? 2 : 1,
-    );
-  }
-}
-
-/// Emits text, emoji, and built-in sprite foreground channels.
-final class _ForegroundEmitter {
-  final PaintState _state;
-  final SpriteBuffer _sprites;
-  final _FrameSnapshot _frame;
-  final CellContentResolver _content;
-  final _AsciiOperatorRun _operators;
-  TerminalTheme? _lastTextStyleTheme;
-  TextStyle? _lastTextStyle;
-  var _lastTextStyleForeground = 0;
-  var _lastTextStyleBold = false;
-  var _lastTextStyleItalic = false;
-
-  _ForegroundEmitter(this._sprites, this._content, this._frame, this._state)
-    : _operators = _AsciiOperatorRun();
-
-  void emit(
-    CellIterator cell,
-    _RowBuildState row, {
-    required int span,
-    required int glyphSpan,
-  }) {
-    if (!cell.hasText) {
-      flush(row);
-      return;
-    }
-
-    final codepoint = cell.codepoint;
-    final style = row.style;
-
-    if (span == 1 && codepoint > 0x20 && codepoint < 0x7F) {
-      if (_isOperator(codepoint)) {
-        _operators.add(codepoint, row.spriteX);
-        return;
-      }
-
-      flush(row);
-      _emitCodepoint(codepoint, row, style: style, x: row.spriteX);
-      return;
-    }
-
-    flush(row);
-    final entry = _content.resolveCell(
-      cell,
-      style: style,
-      span: glyphSpan,
-      borrowedCell: glyphSpan != span,
-    );
-    if (entry == null) return;
-    _emitEntry(entry, row, x: row.spriteX, wideText: glyphSpan == 2);
-  }
-
-  void emitPreedit(
-    _PreeditCluster cluster,
-    _RowBuildState row, {
-    required double x,
-  }) {
-    final entry = _content.resolve(
-      content: cluster.text,
-      codepoint: cluster.firstCodepoint,
-      graphemeLength: cluster.graphemeLength,
-      style: const Style(),
-      span: cluster.span,
-    );
-    if (entry == null) return;
-    _emitEntry(
-      entry,
-      row,
-      x: x,
-      wideText: cluster.span == 2,
-      foreground: _state.terminalForegroundArgb,
-    );
-  }
-
-  void flush(_RowBuildState row) {
-    if (_operators.isEmpty) return;
-
-    final style = row.style;
-    if (_operators.length == 1) {
-      _emitCodepoint(_operators.first, row, style: style, x: _operators.x);
-    } else {
-      _emitShapedRun(_operators, row, style: style);
-    }
-    _operators.clear();
-  }
-
-  void _emitCodepoint(
-    int codepoint,
-    _RowBuildState row, {
-    required Style style,
-    required double x,
-  }) {
-    final entry = _content.resolveCodepoint(codepoint, style: style);
-    _emitEntry(entry, row, x: x, wideText: false);
-  }
-
-  void _emitEntry(
-    AtlasEntry entry,
-    _RowBuildState row, {
-    required double x,
-    required bool wideText,
-    int? foreground,
-  }) {
-    final color = foreground ?? row.foreground;
-    switch (entry.lane) {
-      case .emoji:
-        _sprites.emoji.add(x, row.rowY, entry, _frame.inverseDpr);
-      case .sprite:
-        _sprites.sprite.add(
-          x + entry.bearingX * _frame.inverseDpr,
-          row.rowY + entry.bearingY * _frame.inverseDpr,
-          entry,
-          _frame.inverseDpr,
-          color,
-        );
-      case .text:
-        final sprites = wideText ? _sprites.wide : _sprites.regular;
-        sprites.add(
-          x + entry.bearingX * _frame.inverseDpr,
-          row.rowY + entry.bearingY * _frame.inverseDpr,
-          entry,
-          _frame.inverseDpr,
-          color,
-        );
-      case .decoration:
-        throw StateError('Decoration atlas entries cannot paint cell content.');
-    }
-  }
-
-  void _emitShapedChunk(
-    String text,
-    _RowBuildState row, {
-    required Style style,
-    required double runX,
-    required int textStart,
-    required int coreStart,
-    required int coreEnd,
-  }) {
-    final theme = _state.theme;
-    final textX = runX + _frame.cellWidth * textStart;
-    final coreX = runX + _frame.cellWidth * coreStart;
-    final coreWidth = _frame.cellWidth * (coreEnd - coreStart);
-    final overhang = style.italic
-        ? math.max(
-            1.0,
-            (theme.fontSize * _italicOverhangFontSizeFactor).ceilToDouble(),
-          )
-        : 0.0;
-    final paragraph =
-        (ParagraphBuilder(_frame.paragraphStyle)
-              ..pushStyle(_textStyle(row.foreground, style))
-              ..addText(text)
-              ..pop())
-            .build()
-          ..layout(const ParagraphConstraints(width: .infinity));
-    _sprites.shaped.add(
-      ShapedRun(
-        paragraph: paragraph,
-        offset: Offset(
-          textX,
-          row.rowY + _state.metrics.baseline - paragraph.alphabeticBaseline,
-        ),
-        clip: Rect.fromLTWH(
-          coreX,
-          row.rowY,
-          coreWidth + overhang,
-          _frame.cellHeight,
-        ),
-      ),
-    );
-  }
-
-  void _emitShapedRun(
-    _AsciiOperatorRun run,
-    _RowBuildState row, {
-    required Style style,
-  }) {
-    final length = run.length;
-    if (length <= _operatorRunChunkCells) {
-      _emitShapedChunk(
-        run.text,
-        row,
-        style: style,
-        runX: run.x,
-        textStart: 0,
-        coreStart: 0,
-        coreEnd: length,
-      );
-      return;
-    }
-
-    var coreStart = 0;
-    while (coreStart < length) {
-      final coreEnd = math.min(coreStart + _operatorRunChunkCells, length);
-      final textStart = math.max(0, coreStart - _operatorLigatureContextCells);
-      final textEnd = math.min(length, coreEnd + _operatorLigatureContextCells);
-      _emitShapedChunk(
-        run.textSlice(textStart, textEnd),
-        row,
-        style: style,
-        runX: run.x,
-        textStart: textStart,
-        coreStart: coreStart,
-        coreEnd: coreEnd,
-      );
-      coreStart = coreEnd;
-    }
-  }
-
-  TextStyle _textStyle(int foreground, Style style) {
-    final theme = _state.theme;
-    final bold = style.bold;
-    final italic = style.italic;
-    final cached = _lastTextStyle;
-    if (cached != null &&
-        identical(theme, _lastTextStyleTheme) &&
-        foreground == _lastTextStyleForeground &&
-        bold == _lastTextStyleBold &&
-        italic == _lastTextStyleItalic) {
-      return cached;
-    }
-
-    final textStyle = TextStyle(
-      color: Color(foreground),
-      fontSize: theme.fontSize,
-      fontFamily: theme.fontFamily,
-      decoration: TextDecoration.none,
-      fontWeight: bold ? .bold : theme.fontWeight,
-      fontStyle: italic ? .italic : .normal,
-      fontFamilyFallback: theme.fontFamilyFallback,
-      fontFeatures: const [FontFeature.enable('liga')],
-    );
-    _lastTextStyleTheme = theme;
-    _lastTextStyleForeground = foreground;
-    _lastTextStyleBold = bold;
-    _lastTextStyleItalic = italic;
-    return _lastTextStyle = textStyle;
-  }
-}
-
-/// Frame-scoped metrics and theme values read by row emitters.
-final class _FrameSnapshot {
-  late ParagraphStyle paragraphStyle;
-  TerminalTheme? _paragraphStyleTheme;
-  var cellWidth = 0.0;
-  var cellHeight = 0.0;
-  var underlinePosition = 0.0;
-  var underlineThickness = 0.0;
-  var strikethroughPosition = 0.0;
-  var strikethroughThickness = 0.0;
-  var overlinePosition = 0.0;
-  var inverseDpr = 1.0;
-  var defaultBackgroundArgb = 0;
-  var cols = 0;
-  var applyCellOpacity = false;
-  var cellOpacityAlpha = 255;
-  int resolveBgArgb(int argb, {required bool inverse}) {
-    if (!applyCellOpacity || inverse) return argb;
-    final currentAlpha = (argb >>> 24) & 0xFF;
-    final newAlpha = (currentAlpha * cellOpacityAlpha + 127) ~/ 255;
-    return (newAlpha << 24) | (argb & 0x00FFFFFF);
-  }
-
-  void update(PaintState state, {required Atlas atlas}) {
-    final metrics = state.metrics;
-    cellWidth = metrics.cellWidth;
-    cellHeight = metrics.cellHeight;
-    underlinePosition = metrics.underlinePosition;
-    underlineThickness = metrics.underlineThickness;
-    strikethroughPosition = metrics.strikethroughPosition;
-    strikethroughThickness = metrics.strikethroughThickness;
-    overlinePosition = metrics.overlinePosition;
-    inverseDpr = 1.0 / atlas.devicePixelRatio;
-    defaultBackgroundArgb = state.terminalBackgroundArgb;
-    cols = state.cols;
-
-    final theme = state.theme;
-    if (!identical(theme, _paragraphStyleTheme)) {
-      paragraphStyle = ParagraphStyle(
-        fontSize: theme.fontSize,
-        fontFamily: theme.fontFamily,
-        textAlign: .start,
-        textDirection: TextDirection.ltr,
-      );
-      _paragraphStyleTheme = theme;
-    }
-    applyCellOpacity =
-        theme.backgroundOpacityCells && theme.backgroundOpacity < 1.0;
-    cellOpacityAlpha = theme.backgroundOpacityAlpha;
-  }
-}
-
-final class _PreeditCluster {
-  final String text;
-  final int firstCodepoint;
-  final int graphemeLength;
-  final int span;
-
-  const _PreeditCluster({
-    required this.text,
-    required this.firstCodepoint,
-    required this.graphemeLength,
-    required this.span,
-  });
-}
-
-enum _CellHighlight { none, searchMatch, selection, selectedSearchMatch }
-
-/// Cell coverage precomputed when a search snapshot changes.
-final class _SearchHighlights {
-  var _cells = Uint8List(0);
-  var _active = false;
-  var _cols = 0;
-  var _rows = 0;
-  var _viewportOffset = 0;
-
-  void update(
-    List<Selection> matches,
-    Selection? selected, {
-    required int rows,
-    required int cols,
-    required int viewportOffset,
-  }) {
-    _rows = rows;
-    _cols = cols;
-    _viewportOffset = viewportOffset;
-    _active = matches.isNotEmpty || selected != null;
-    if (!_active) return;
-
-    final length = rows * cols;
-    if (_cells.length != length) {
-      _cells = Uint8List(length);
-    } else {
-      _cells.fillRange(0, length, 0);
-    }
-
-    for (final match in matches) {
-      _mark(match, 1);
-    }
-    if (selected != null) _mark(selected, 2);
-  }
-
-  _CellHighlight at(int row, int col, {required bool selected}) {
-    if (!_active) return selected ? .selection : .none;
-    if (row < 0 || row >= _rows || col < 0 || col >= _cols) {
-      return selected ? .selection : .none;
-    }
-    return switch (_cells[row * _cols + col]) {
-      2 => .selectedSearchMatch,
-      1 when !selected => .searchMatch,
-      _ when selected => .selection,
-      _ => .none,
-    };
-  }
-
-  void _mark(Selection selection, int value) {
-    var start = _positionInViewport(selection.start);
-    var end = _positionInViewport(selection.end);
-    if (start == null || end == null || _rows == 0 || _cols == 0) return;
-    if (_after(start, end)) (start, end) = (end, start);
-
-    final firstRow = start.row.clamp(0, _rows - 1);
-    final lastRow = end.row.clamp(0, _rows - 1);
-    if (end.row < 0 || start.row >= _rows || firstRow > lastRow) return;
-
-    if (selection.rectangle) {
-      final firstCol = start.col < end.col ? start.col : end.col;
-      final lastCol = start.col > end.col ? start.col : end.col;
-      for (var row = firstRow; row <= lastRow; row++) {
-        _markRow(row, firstCol, lastCol + 1, value);
-      }
-      return;
-    }
-
-    for (var row = firstRow; row <= lastRow; row++) {
-      _markRow(
-        row,
-        row == start.row ? start.col : 0,
-        row == end.row ? end.col + 1 : _cols,
-        value,
-      );
-    }
-  }
-
-  Position? _positionInViewport(GridRef ref) {
-    final viewport = ref.positionIn(.viewport);
-    if (viewport != null) return viewport;
-    final screen = ref.positionIn(.screen);
-    if (screen == null) return null;
-    return Position(row: screen.row - _viewportOffset, col: screen.col);
-  }
-
-  void _markRow(int row, int startCol, int endCol, int value) {
-    final start = startCol.clamp(0, _cols);
-    final end = endCol.clamp(0, _cols);
-    if (start >= end) return;
-    final offset = row * _cols;
-    for (var col = start; col < end; col++) {
-      final index = offset + col;
-      if (_cells[index] < value) _cells[index] = value;
-    }
-  }
-
-  static bool _after(Position first, Position second) =>
-      first.row > second.row ||
-      (first.row == second.row && first.col > second.col);
-}
-
-/// Cell-based terminal range temporarily replaced by visible preedit text.
-///
-/// [startCol] and [endCol] are terminal columns. [clusterOffset] points at
-/// the first visible grapheme cluster when overflow clips the preedit from
-/// the left.
-final class _PreeditRange {
-  final int row;
-  final int startCol;
-  final int endCol;
-  final int clusterOffset;
-  final List<_PreeditCluster> clusters;
-
-  const _PreeditRange({
-    required this.row,
-    required this.startCol,
-    required this.endCol,
-    required this.clusterOffset,
-    required this.clusters,
-  });
-
-  bool overlaps(int row, int col, int span) {
-    final cellEndCol = col + span;
-    return row == this.row && col < endCol && cellEndCol > startCol;
-  }
-
-  bool sameGeometry(_PreeditRange? other) {
-    return other != null &&
-        row == other.row &&
-        startCol == other.startCol &&
-        endCol == other.endCol &&
-        clusterOffset == other.clusterOffset;
-  }
-
-  static _PreeditRange? resolve({
-    required String text,
-    required RenderStateCursor cursor,
-    required int rows,
-    required int cols,
-  }) {
-    if (!cursor.viewportHasValue ||
-        !cursor.visible ||
-        cursor.viewportY < 0 ||
-        cursor.viewportY >= rows ||
-        cursor.viewportX < 0 ||
-        cursor.viewportX >= cols ||
-        rows <= 0 ||
-        cols <= 0) {
-      return null;
-    }
-
-    final preedit = _PreeditText.parse(text);
-    if (preedit.isEmpty) return null;
-
-    final startCol = preedit.startCol(cursor.viewportX, cols);
-    final visible = preedit.visibleSuffix(cols - startCol);
-    final visibleWidth = visible.width;
-    final endCol = startCol + visibleWidth;
-    if (startCol >= endCol) return null;
-
-    return _PreeditRange(
-      row: cursor.viewportY,
-      startCol: startCol,
-      endCol: endCol,
-      clusterOffset: visible.clusterOffset,
-      clusters: preedit.clusters,
-    );
-  }
-}
-
-/// Preedit text split into terminal-cell spans.
-///
-/// Rendering uses libghostty's grapheme-cluster spans instead of paragraph
-/// widths so preedit text replaces exactly the terminal cells it occupies.
-final class _PreeditText {
-  final List<_PreeditCluster> clusters;
-  final int cellWidth;
-
-  const _PreeditText(this.clusters, this.cellWidth);
-
-  factory _PreeditText.parse(String text) {
-    if (text.isEmpty) return const _PreeditText([], 0);
-
-    final codepoints = text.runes.toList(growable: false);
-    final clusters = <_PreeditCluster>[];
-    var cellWidth = 0;
-    var index = 0;
-    while (index < codepoints.length) {
-      final result = unicodeGraphemeWidth(codepoints.sublist(index));
-      final end = math.min(index + result.consumed, codepoints.length);
-      if (end <= index) break;
-
-      final span = result.width;
-      if (span > 0) {
-        cellWidth += span;
-        clusters.add(
-          _PreeditCluster(
-            text: String.fromCharCodes(codepoints, index, end),
-            firstCodepoint: codepoints[index],
-            graphemeLength: end - index,
-            span: span,
-          ),
-        );
-      }
-      index = end;
-    }
-
-    return _PreeditText(clusters, cellWidth);
-  }
-
-  bool get isEmpty => clusters.isEmpty;
-
-  int startCol(int cursorCol, int cols) {
-    final rightWidth = cols - cursorCol;
-    return cellWidth <= rightWidth
-        ? cursorCol
-        : math.max(0, cursorCol - (cellWidth - rightWidth));
-  }
-
-  ({int clusterOffset, int width}) visibleSuffix(int maxWidth) {
-    var clusterOffset = clusters.length;
-    var width = 0;
-    for (var i = clusters.length - 1; i >= 0; i--) {
-      final nextWidth = width + clusters[i].span;
-      if (nextWidth > maxWidth) break;
-      width = nextWidth;
-      clusterOffset = i;
-    }
-    return (clusterOffset: clusterOffset, width: width);
-  }
-}
-
-/// Mutable visual state for the row currently being rebuilt.
-final class _RowBuildState {
-  var row = 0;
-  var col = 0;
-  var spriteX = 0.0;
-  var rowY = 0.0;
-  var rowBottom = 0.0;
-
-  var prevStyleId = -1;
-  int? prevBackgroundArgb;
-  var prevHighlight = _CellHighlight.none;
-  HyperlinkStyle? prevLinkStyle;
-
-  var baseForeground = 0xFFFFFFFF;
-  var baseBackground = 0;
-  var baseBackgroundExplicit = false;
-  var foreground = 0xFFFFFFFF;
-  var background = 0;
-  var backgroundInverse = false;
-  var backgroundExplicit = false;
-  var hidden = false;
-  var hasDecoration = false;
-  var style = const Style();
-
-  var bgRunStart = 0;
-  var bgRunArgb = 0;
-  var bgRunInverse = false;
-  var bgRunExplicit = false;
-  var preeditEmitted = false;
-  var previousSymbol = false;
-
-  void advance(int span, double cellWidth) {
-    col += span;
-    spriteX += cellWidth * span;
-  }
-
-  void reset(int row, _FrameSnapshot frame) {
-    this.row = row;
-    rowY = row * frame.cellHeight;
-    rowBottom = rowY + frame.cellHeight;
-    col = 0;
-    spriteX = 0.0;
-    prevStyleId = -1;
-    prevBackgroundArgb = null;
-    prevHighlight = .none;
-    prevLinkStyle = null;
-    baseForeground = 0xFFFFFFFF;
-    baseBackground = frame.defaultBackgroundArgb;
-    baseBackgroundExplicit = false;
-    foreground = 0xFFFFFFFF;
-    background = frame.defaultBackgroundArgb;
-    backgroundInverse = false;
-    backgroundExplicit = false;
-    hidden = false;
-    hasDecoration = false;
-    style = const Style();
-    bgRunStart = 0;
-    bgRunArgb = frame.defaultBackgroundArgb;
-    bgRunInverse = false;
-    bgRunExplicit = false;
-    preeditEmitted = false;
-    previousSymbol = false;
-  }
-}
-
-/// Resolves and caches style-derived colors for the current frame.
-final class _StyleResolver {
-  // Covers common 256-color fg/bg animation palettes within one frame.
-  static const _maxEntries = 1024;
-
-  final PaintState _state;
-  final Int32List _gen;
-  final Int32List _foreground;
-  final Int32List _background;
-  final Uint8List _explicitBg;
-  final List<Style?> _styles;
-  var _generation = 0;
-
-  var _defaultFg = 0;
-  var _defaultBg = 0;
-
-  _StyleResolver(this._state)
-    : _gen = Int32List(_maxEntries),
-      _foreground = Int32List(_maxEntries),
-      _background = Int32List(_maxEntries),
-      _explicitBg = Uint8List(_maxEntries),
-      _styles = List<Style?>.filled(_maxEntries, null);
-
-  void beginFrame() {
-    _generation++;
-    _defaultFg = _state.terminalForegroundArgb;
-    _defaultBg = _state.terminalBackgroundArgb;
-  }
-
-  void update(
-    CellIterator cell, {
-    required int? backgroundArgb,
-    required _CellHighlight highlight,
-    required HyperlinkStyle? linkStyle,
-    required _RowBuildState row,
-  }) {
-    if (cell.styleId != row.prevStyleId ||
-        backgroundArgb != row.prevBackgroundArgb ||
-        linkStyle != row.prevLinkStyle) {
-      final (fg, bg, style, explicitBg) = _resolveBase(
-        cell,
-        backgroundArgb: backgroundArgb,
-      );
-      row.prevStyleId = cell.styleId;
-      row.prevBackgroundArgb = backgroundArgb;
-      row.baseForeground = fg;
-      row.baseBackground = bg;
-      row.baseBackgroundExplicit = explicitBg;
-      row.backgroundInverse = style.inverse;
-      row.style = style;
-      row.hidden = style.invisible || (!_state.blinkVisible && style.blink);
-      row.hasDecoration =
-          style.underline != .none || style.strikethrough || style.overline;
-    }
-
-    if (highlight != .none) {
-      final selection = switch (highlight) {
-        .searchMatch => _state.theme.search.match,
-        .selection => _state.theme.selection,
-        .selectedSearchMatch => _state.theme.search.selectedMatch,
-        .none => throw StateError(
-          'No highlight style for an unhighlighted cell.',
-        ),
-      };
-      final searchHighlight = highlight != .selection;
-      row.foreground = _resolveSelectionColor(
-        row,
-        selection.foreground,
-        searchHighlight ? row.baseForeground : _state.terminalBackgroundArgb,
-      );
-      row.background = _resolveSelectionColor(
-        row,
-        selection.background,
-        searchHighlight ? row.baseBackground : _state.terminalForegroundArgb,
-      );
-      row.backgroundExplicit = true;
-    } else {
-      row.foreground = row.baseForeground;
-      row.background = row.baseBackground;
-      row.backgroundExplicit = row.baseBackgroundExplicit;
-    }
-
-    if (linkStyle != null) {
-      final textColor = linkStyle.textColor;
-      if (textColor != null) row.foreground = textColor.toARGB32();
-      if (linkStyle.underline != .none) {
-        final style = row.style;
-        row.style = Style(
-          bold: style.bold,
-          italic: style.italic,
-          faint: style.faint,
-          blink: style.blink,
-          inverse: style.inverse,
-          invisible: style.invisible,
-          overline: style.overline,
-          strikethrough: style.strikethrough,
-          foreground: style.foreground,
-          background: style.background,
-          underline: style.underline == .none ? linkStyle.underline : .double,
-          underlineColor: _rgbColor(linkStyle.underlineColor),
-        );
-        row.hasDecoration = true;
-      }
-    }
-
-    row.prevHighlight = highlight;
-    row.prevLinkStyle = linkStyle;
-  }
-
-  (int foreground, int background, Style style, bool explicitBg) _resolveBase(
-    CellIterator cell, {
-    required int? backgroundArgb,
-  }) {
-    final id = cell.styleId;
-    if (!cell.hasStyling && backgroundArgb == null) {
-      return (_defaultFg, _defaultBg, const Style(), false);
-    }
-
-    final style = cell.style;
-    final contentBackground = style.background is DefaultColor
-        ? backgroundArgb
-        : null;
-    if (contentBackground != null) {
-      final (foreground, background) = _resolveStyleColors(
-        _state,
-        style,
-        defaultForeground: _defaultFg,
-        defaultBackground: _defaultBg,
-      );
-      return (
-        foreground,
-        style.inverse ? background : contentBackground,
-        style,
-        true,
-      );
-    }
-
-    if (id < _maxEntries && _gen[id] == _generation) {
-      return (
-        _foreground[id],
-        _background[id],
-        _styles[id]!,
-        _explicitBg[id] != 0,
-      );
-    }
-
-    final (foreground, background) = _resolveStyleColors(
-      _state,
-      style,
-      defaultForeground: _defaultFg,
-      defaultBackground: _defaultBg,
-    );
-    var explicitBg = style.background is! DefaultColor;
-
-    if (style.inverse) explicitBg = true;
-
-    if (id < _maxEntries) {
-      _gen[id] = _generation;
-      _foreground[id] = foreground;
-      _background[id] = background;
-      _explicitBg[id] = explicitBg ? 1 : 0;
-      _styles[id] = style;
-    }
-
-    return (foreground, background, style, explicitBg);
-  }
-
-  int _resolveSelectionColor(
-    _RowBuildState row,
-    DynamicColor? override,
-    int fallbackArgb,
-  ) {
-    if (override == null) return fallbackArgb;
-    return override
-        .resolve(
-          cellForeground: Color(row.baseForeground),
-          cellBackground: Color(row.baseBackground),
-        )
-        .toARGB32();
-  }
-}
-
-RgbColor? _rgbColor(Color? color) {
-  if (color == null) return null;
-  return RgbColor(
-    (color.r * 255.0).round().clamp(0, 255),
-    (color.g * 255.0).round().clamp(0, 255),
-    (color.b * 255.0).round().clamp(0, 255),
-  );
-}
-
-/// Rebuilds dirty rows into background, foreground, and decoration channels.
-final class _RowBuilder {
-  final Atlas _atlas;
-  final PaintState _state;
-  final SpriteBuffer _sprites;
-  final _FrameSnapshot _frame;
-  final _RowBuildState _row;
-  final _StyleResolver _styles;
-  final _SearchHighlights _searchHighlights;
-  late final _ForegroundEmitter _foreground;
-  var _preeditText = '';
-  _PreeditRange? _preeditRange;
-  LinkSnapshot linkSnapshot = .empty;
-  var _hasLinks = false;
-
-  _RowBuilder({
-    required this._atlas,
-    required this._sprites,
-    required this._state,
-    required CellContentResolver content,
-  }) : _frame = _FrameSnapshot(),
-       _row = _RowBuildState(),
-       _styles = _StyleResolver(_state),
-       _searchHighlights = _SearchHighlights() {
-    _foreground = _ForegroundEmitter(_sprites, content, _frame, _state);
-  }
-
-  bool get hasPreedit => _preeditRange != null;
-
-  void updateSearch(
-    List<Selection> matches,
-    Selection? selected, {
-    required int viewportOffset,
-  }) {
-    _searchHighlights.update(
-      matches,
-      selected,
-      rows: _state.rows,
-      cols: _state.cols,
-      viewportOffset: viewportOffset,
-    );
-  }
-
-  void beginFrame() {
-    _frame.update(_state, atlas: _atlas);
-    _styles.beginFrame();
-    _hasLinks = !linkSnapshot.isEmpty;
-  }
-
-  void rebuildRow(int rowIndex, RowIterator rows, CellIterator cells) {
-    _sprites.beginRow(rowIndex);
-    _row.reset(rowIndex, _frame);
-    cells.reset(rows);
-
-    while (cells.next() && _row.col < _frame.cols) {
-      _writeCell(cells);
-    }
-
-    _foreground.flush(_row);
-    _finishBackgroundRun(_row);
-    _sprites.endRow();
-  }
-
-  ({int? previous, int? current}) updatePreedit(
-    String text, {
-    required RenderStateCursor cursor,
-  }) {
-    final previous = _preeditRange;
-    final previousText = _preeditText;
-    final next = _PreeditRange.resolve(
-      text: text,
-      cursor: cursor,
-      rows: _state.rows,
-      cols: _state.cols,
-    );
-
-    _preeditText = text;
-    _preeditRange = next;
-
-    if (previousText == text &&
-        (next?.sameGeometry(previous) ?? previous == null)) {
-      return (previous: null, current: null);
-    }
-
-    return (previous: previous?.row, current: next?.row);
-  }
-
-  void _closeBackgroundSpan(_RowBuildState row, int span) {
-    final endCol = row.col + span > _frame.cols ? _frame.cols : row.col + span;
-    _flushBackgroundRun(row, endCol);
-    row.bgRunStart = endCol;
-    row.bgRunArgb = _frame.defaultBackgroundArgb;
-    row.bgRunInverse = false;
-    row.bgRunExplicit = false;
-  }
-
-  void _emitDecorations(
-    _RowBuildState row, {
-    required double x,
-    required int span,
-  }) {
-    final style = row.style;
-    final right = x + _frame.cellWidth * span;
-
-    final underlineColor = style.underlineColor;
-    final color = underlineColor != null
-        ? _resolveColorArgb(_state, underlineColor, isForeground: true)
-        : row.foreground;
-
-    if (style.underline != UnderlineStyle.none) {
-      final entry = _atlas.addDecoration(style.underline);
-      for (var i = 0; i < span; i++) {
-        _sprites.underline.add(
-          x + _frame.cellWidth * i,
-          row.rowY,
-          entry,
-          _frame.inverseDpr,
-          color,
-        );
-      }
-    }
-
-    if (style.strikethrough) {
-      final strikeY = row.rowY + _frame.strikethroughPosition;
-      _sprites.decoration.add(
-        x,
-        strikeY,
-        right,
-        strikeY + _frame.strikethroughThickness,
-        row.foreground,
-      );
-    }
-
-    if (style.overline) {
-      final overY = row.rowY + _frame.overlinePosition;
-      _sprites.decoration.add(
-        x,
-        overY,
-        right,
-        overY + _frame.underlineThickness,
-        row.foreground,
-      );
-    }
-  }
-
-  void _emitPreedit(_PreeditRange range) {
-    final row = _row;
-    final underlineY = row.rowY + _frame.underlinePosition;
-    _sprites.decoration.add(
-      range.startCol * _frame.cellWidth,
-      underlineY,
-      range.endCol * _frame.cellWidth,
-      underlineY + _frame.underlineThickness,
-      _state.terminalForegroundArgb,
-    );
-
-    var col = range.startCol;
-    for (var i = range.clusterOffset; i < range.clusters.length; i++) {
-      final cluster = range.clusters[i];
-      final nextCol = col + cluster.span;
-      if (nextCol > range.endCol) break;
-      final x = col * _frame.cellWidth;
-      _foreground.emitPreedit(cluster, row, x: x);
-      col = nextCol;
-    }
-  }
-
-  void _finishBackgroundRun(_RowBuildState row) {
-    _flushBackgroundRun(row, _frame.cols);
-  }
-
-  void _flushBackgroundRun(_RowBuildState row, int endCol) {
-    if (!row.bgRunExplicit || row.bgRunStart >= endCol) return;
-    _sprites.background.add(
-      row.bgRunStart * _frame.cellWidth,
-      row.rowY,
-      endCol * _frame.cellWidth,
-      row.rowBottom,
-      _frame.resolveBgArgb(row.bgRunArgb, inverse: row.bgRunInverse),
-    );
-  }
-
-  void _skipPreeditCell(CellIterator cell, _PreeditRange range, int span) {
-    final row = _row;
-    if (!row.preeditEmitted) {
-      // Emit the overlay once at the first covered terminal cell, after
-      // closing real background/text runs up to the overlay boundary.
-      _foreground.flush(row);
-      _flushBackgroundRun(row, range.startCol);
-      row.bgRunStart = range.endCol;
-      row.bgRunArgb = _frame.defaultBackgroundArgb;
-      row.bgRunInverse = false;
-      row.bgRunExplicit = false;
-      _emitPreedit(range);
-      row.preeditEmitted = true;
-    }
-
-    if (span == 2) cell.next();
-    row.advance(span, _frame.cellWidth);
-  }
-
-  void _syncBackgroundRun(_RowBuildState row) {
-    final sameRun =
-        row.background == row.bgRunArgb &&
-        row.backgroundExplicit == row.bgRunExplicit &&
-        row.backgroundInverse == row.bgRunInverse;
-    if (sameRun) return;
-
-    _flushBackgroundRun(row, row.col);
-
-    row.bgRunArgb = row.background;
-    row.bgRunStart = row.col;
-    row.bgRunInverse = row.backgroundInverse;
-    row.bgRunExplicit = row.backgroundExplicit;
-  }
-
-  void _writeCell(CellIterator cell) {
-    final row = _row;
-    final span = cell.wide == .wide ? 2 : 1;
-    final glyphSpan = _glyphSpan(cell, span);
-    final preedit = _preeditRange;
-    if (preedit != null && preedit.overlaps(row.row, row.col, span)) {
-      row.previousSymbol = false;
-      _skipPreeditCell(cell, preedit, span);
-      return;
-    }
-
-    final highlight = _searchHighlights.at(
-      row.row,
-      row.col,
-      selected: cell.isSelected,
-    );
-    final HyperlinkStyle? linkStyle;
-    if (!_hasLinks) {
-      linkStyle = null;
-    } else {
-      final position = Position(row: row.row, col: row.col);
-      linkStyle = linkSnapshot.isHighlighted(position)
-          ? _state.theme.hyperlink.highlighted
-          : linkSnapshot.contains(position)
-          ? _state.theme.hyperlink.idle
-          : null;
-    }
-    final backgroundArgb = cell.hasText ? null : cell.backgroundArgb;
-    if (cell.styleId != row.prevStyleId ||
-        backgroundArgb != row.prevBackgroundArgb ||
-        highlight != row.prevHighlight ||
-        linkStyle != row.prevLinkStyle) {
-      _foreground.flush(row);
-      _styles.update(
-        cell,
-        backgroundArgb: backgroundArgb,
-        highlight: highlight,
-        linkStyle: linkStyle,
-        row: row,
-      );
-    }
-    _syncBackgroundRun(row);
-
-    if (!row.hidden) {
-      final x = row.spriteX;
-      _foreground.emit(cell, row, span: span, glyphSpan: glyphSpan);
-      if (row.hasDecoration) {
-        _emitDecorations(row, x: x, span: span);
-      }
-    } else {
-      _foreground.flush(row);
-      row.previousSymbol = false;
-    }
-
-    if (span == 2) {
-      _closeBackgroundSpan(row, span);
-      cell.next();
-    }
-    row.advance(span, _frame.cellWidth);
-  }
-
-  int _glyphSpan(CellIterator cell, int span) {
-    if (span > 1) {
-      _row.previousSymbol = false;
-      return span;
-    }
-
-    final codepoint = cell.codepoint;
-    final symbol = _isSymbolCodepoint(codepoint);
-    final graphicsElement = _isGraphicsElement(codepoint);
-    final previousSymbol = _row.previousSymbol;
-    _row.previousSymbol = symbol && !graphicsElement;
-    if (!symbol ||
-        graphicsElement ||
-        previousSymbol ||
-        _row.col + 1 >= _frame.cols) {
-      return 1;
-    }
-
-    // Symbol glyphs may borrow a following blank cell without changing the
-    // terminal's logical cursor or decoration span.
-    final currentCol = cell.col;
-    cell.select(currentCol + 1);
-    final nextCodepoint = cell.codepoint;
-    cell.select(currentCol);
-    return nextCodepoint == 0 ||
-            nextCodepoint == 0x20 ||
-            nextCodepoint == 0x2002
-        ? 2
-        : 1;
-  }
-}
-
-bool _isSymbolCodepoint(int codepoint) {
-  // Matches the symbol blocks Ghostty considers for glyph constraints.
-  if (codepoint < 0x2190) return false;
-  return (codepoint >= 0xE000 && codepoint <= 0xF8FF) ||
-      (codepoint >= 0xF0000 && codepoint <= 0xFFFFD) ||
-      (codepoint >= 0x100000 && codepoint <= 0x10FFFD) ||
-      (codepoint >= 0x2190 && codepoint <= 0x21FF) ||
-      (codepoint >= 0x2460 && codepoint <= 0x24FF) ||
-      (codepoint >= 0x2600 && codepoint <= 0x26FF) ||
-      (codepoint >= 0x2700 && codepoint <= 0x27BF) ||
-      (codepoint >= 0x1F100 && codepoint <= 0x1F1FF) ||
-      (codepoint >= 0x1F300 && codepoint <= 0x1F6FF);
-}
-
-bool _isGraphicsElement(int codepoint) {
-  return (codepoint >= 0x2500 && codepoint <= 0x259F) ||
-      (codepoint >= 0xE0B0 && codepoint <= 0xE0D7) ||
-      (codepoint >= 0x1CC00 && codepoint <= 0x1CEBF) ||
-      (codepoint >= 0x1FB00 && codepoint <= 0x1FBFF);
 }

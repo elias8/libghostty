@@ -6,7 +6,6 @@ import 'dart:typed_data';
 
 import 'package:flterm/src/controller/terminal_controller.dart';
 import 'package:flterm/src/foundation.dart';
-import 'package:flterm/src/view/view_attachment.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:libghostty/libghostty.dart'
@@ -16,11 +15,11 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   group('ViewAttachment', () {
-    late TerminalControllerImpl controller;
+    late TerminalController controller;
     late ViewAttachment attachment;
 
     setUp(() {
-      controller = TerminalControllerImpl();
+      controller = TerminalController();
       attachment = ViewAttachment(controller);
     });
 
@@ -54,7 +53,7 @@ void main() {
 
     group('interaction state', () {
       test('starts without virtual modifiers', () {
-        expect(attachment.virtualMods, const Mods.none());
+        expect(attachment.readVirtualMods(), const Mods.none());
       });
 
       test('projects only interaction changes', () {
@@ -73,48 +72,6 @@ void main() {
           TerminalScreen.alternate,
         );
       });
-
-      test('compares terminal modes by value', () {
-        const first = ViewInteractionState(
-          activeScreen: .primary,
-          mouseTracking: .none,
-          alternateScroll: false,
-        );
-        const second = ViewInteractionState(
-          activeScreen: .primary,
-          mouseTracking: .none,
-          alternateScroll: false,
-        );
-
-        expect(first, second);
-      });
-
-      test('produces equal hashes for equal terminal modes', () {
-        const first = ViewInteractionState(
-          activeScreen: .primary,
-          mouseTracking: .none,
-          alternateScroll: false,
-        );
-        const second = ViewInteractionState(
-          activeScreen: .primary,
-          mouseTracking: .none,
-          alternateScroll: false,
-        );
-
-        expect(first.hashCode, second.hashCode);
-      });
-
-      test('publishes broad changes without interaction notifications', () {
-        var attachmentNotifications = 0;
-        var interactionNotifications = 0;
-        attachment.addListener(() => attachmentNotifications++);
-        attachment.interaction.addListener(() => interactionNotifications++);
-
-        controller.toggleMod(const Mods.ctrl());
-
-        expect(attachmentNotifications, 1);
-        expect(interactionNotifications, 0);
-      });
     });
 
     group('applyTheme', () {
@@ -125,13 +82,11 @@ void main() {
         addTearDown(source.dispose);
         attachment.dispose();
         controller.dispose();
-        controller =
-            TerminalController.fromSnapshot(
-                  source.encodeSnapshot(),
-                  progressive: false,
-                  preserveSnapshotColors: preserveSnapshotColors,
-                )
-                as TerminalControllerImpl;
+        controller = TerminalController.fromSnapshot(
+          source.encodeSnapshot(),
+          progressive: false,
+          preserveSnapshotColors: preserveSnapshotColors,
+        );
         attachment = ViewAttachment(controller);
       }
 
@@ -140,9 +95,11 @@ void main() {
 
         attachment.applyTheme(theme);
 
-        expect(attachment.terminal.foreground, rgb(theme.foreground));
-        expect(attachment.terminal.background, rgb(theme.background));
-        expect(attachment.terminal.palette[1], rgb(theme.palette[1]));
+        final terminal = (controller as TerminalSession).terminal;
+
+        expect(terminal.foreground, rgb(theme.foreground));
+        expect(terminal.background, rgb(theme.background));
+        expect(terminal.palette[1], rgb(theme.palette[1]));
       });
 
       test('preserves snapshot colors on initial attachment', () {
@@ -151,7 +108,10 @@ void main() {
         attachment.applyTheme(TerminalTheme.dark(), initial: true);
 
         expect(
-          (attachment.terminal.foreground, attachment.terminal.background),
+          (
+            (controller as TerminalSession).terminal.foreground,
+            (controller as TerminalSession).terminal.background,
+          ),
           (const RgbColor(12, 34, 56), const RgbColor(65, 43, 21)),
         );
       });
@@ -163,8 +123,9 @@ void main() {
 
         attachment.applyTheme(theme);
 
+        final terminal = (controller as TerminalSession).terminal;
         expect(
-          (attachment.terminal.foreground, attachment.terminal.background),
+          (terminal.foreground, terminal.background),
           (rgb(theme.foreground), rgb(theme.background)),
         );
       });
@@ -175,8 +136,9 @@ void main() {
 
         attachment.applyTheme(theme, initial: true);
 
+        final terminal = (controller as TerminalSession).terminal;
         expect(
-          (attachment.terminal.foreground, attachment.terminal.background),
+          (terminal.foreground, terminal.background),
           (rgb(theme.foreground), rgb(theme.background)),
         );
       });
@@ -192,7 +154,7 @@ void main() {
 
         attachment.handleViewportRowChanged(0);
 
-        expect(attachment.terminal.scrollbar.offset, 0);
+        expect(controller.scrollbar.offset, 0);
       });
     });
 
@@ -215,7 +177,7 @@ void main() {
 
         attachment.detach();
 
-        expect(attachment.input.preeditText, isEmpty);
+        expect(attachment.preeditText, isEmpty);
       });
 
       testWidgets('does not duplicate a focus listener when reattached', (
@@ -253,12 +215,12 @@ void main() {
         expect(utf8.decode(output.single), 'ready');
       });
 
-      test('stops publishing controller changes', () {
+      test('stops publishing interaction changes', () {
         var notifications = 0;
-        attachment.addListener(() => notifications++);
+        attachment.interaction.addListener(() => notifications++);
 
         attachment.dispose();
-        controller.toggleMod(const Mods.ctrl());
+        controller.write(Uint8List.fromList(utf8.encode('\x1b[?1049h')));
 
         expect(notifications, 0);
       });

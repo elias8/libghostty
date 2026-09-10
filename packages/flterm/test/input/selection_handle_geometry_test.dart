@@ -4,8 +4,7 @@ library;
 import 'package:flterm/src/foundation/cell_metrics.dart' show CellMetrics;
 import 'package:flterm/src/input/selection_handle_geometry.dart'
     show SelectionHandleGeometry, SelectionHandleLayout;
-import 'package:flterm/src/interaction/selection_session.dart'
-    show SelectionEndpoint;
+import 'package:flterm/src/input/selection_session.dart' show SelectionEndpoint;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:libghostty/libghostty.dart'
     show GridRef, Position, Selection, Terminal;

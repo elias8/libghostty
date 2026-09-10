@@ -2,16 +2,15 @@
 library;
 
 import 'package:flterm/src/controller/terminal_controller.dart'
-    show TerminalController;
+    show TerminalController, ViewAttachment;
 import 'package:flterm/src/foundation.dart'
     show CellMetrics, SurfaceMeasurement, TerminalConfig;
 import 'package:flterm/src/input/selection_handle_target.dart'
     show SelectionHandleTarget;
 import 'package:flterm/src/input/selection_handles.dart'
     show TerminalSelectionHandles;
-import 'package:flterm/src/interaction/selection_session.dart'
-    show SelectionEndpoint;
-import 'package:flterm/src/view/view_attachment.dart' show ViewAttachment;
+import 'package:flterm/src/input/selection_session.dart'
+    show SelectionAutoscrollPolicy, SelectionEndpoint, SelectionInteraction;
 import 'package:flutter/foundation.dart'
     show ChangeNotifier, Listenable, ValueListenable;
 import 'package:flutter/services.dart';
@@ -94,7 +93,7 @@ void main() {
         await drag.end();
         await tester.pump();
 
-        final selection = subject.attachment.terminal.selection!;
+        final selection = subject.selection.selection!;
         expect(
           selection.start.positionIn(.viewport),
           const Position(row: 0, col: 0),
@@ -123,7 +122,7 @@ void main() {
         await end.end();
         await tester.pump();
 
-        final selection = subject.attachment.terminal.selection!;
+        final selection = subject.selection.selection!;
         expect(
           selection.start.positionIn(.viewport),
           const Position(row: 1, col: 1),
@@ -144,7 +143,7 @@ void main() {
 
         await drag.moveBy(const Offset(8, 0));
 
-        expect(subject.attachment.terminal.selection!.rectangle, isTrue);
+        expect(subject.selection.selection!.rectangle, isTrue);
       });
 
       testWidgets('tracks virtual Alt throughout a drag', (tester) async {
@@ -154,11 +153,11 @@ void main() {
 
         subject.controller.toggleMod(const Mods.alt());
         await drag.moveBy(const Offset(8, 0));
-        expect(subject.attachment.terminal.selection!.rectangle, isTrue);
+        expect(subject.selection.selection!.rectangle, isTrue);
 
         subject.controller.toggleMod(const Mods.alt());
         await drag.moveBy(const Offset(8, 0));
-        expect(subject.attachment.terminal.selection!.rectangle, isFalse);
+        expect(subject.selection.selection!.rectangle, isFalse);
       });
 
       testWidgets('tracks physical Alt throughout a drag', (tester) async {
@@ -169,10 +168,10 @@ void main() {
 
         await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
         addTearDown(HardwareKeyboard.instance.clearState);
-        expect(subject.attachment.terminal.selection!.rectangle, isTrue);
+        expect(subject.selection.selection!.rectangle, isTrue);
 
         await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
-        expect(subject.attachment.terminal.selection!.rectangle, isFalse);
+        expect(subject.selection.selection!.rectangle, isFalse);
       });
     });
 
@@ -341,15 +340,12 @@ void main() {
             find.byType(TerminalSelectionHandles),
           );
           final drag = await subject.startDrag(tester, _Fixture.endHandle);
-          final before = subject.attachment.terminal.scrollbar.offset;
+          final before = subject.selection.scrollbar.offset;
 
           await drag.moveTo(origin + const Offset(56, 80));
           await tester.pump(const Duration(milliseconds: 60));
 
-          expect(
-            subject.attachment.terminal.scrollbar.offset,
-            greaterThan(before),
-          );
+          expect(subject.selection.scrollbar.offset, greaterThan(before));
           await drag.end();
           await tester.pump(const Duration(milliseconds: 250));
         },
@@ -366,19 +362,60 @@ void main() {
             find.byType(TerminalSelectionHandles),
           );
           final drag = await subject.startDrag(tester, _Fixture.startHandle);
-          final before = subject.attachment.terminal.scrollbar.offset;
+          final before = subject.selection.scrollbar.offset;
 
           await drag.moveTo(origin + const Offset(8, -16));
           await tester.pump(const Duration(milliseconds: 60));
 
-          expect(
-            subject.attachment.terminal.scrollbar.offset,
-            lessThan(before),
-          );
+          expect(subject.selection.scrollbar.offset, lessThan(before));
           await drag.end();
           await tester.pump(const Duration(milliseconds: 250));
         },
       );
+
+      testWidgets('replaces stale owners and stops on geometry invalidation', (
+        tester,
+      ) async {
+        var pointerTicks = 0;
+        var handleTicks = 0;
+        subject.selection.startAutoscroll(
+          SelectionAutoscrollPolicy.pointer,
+          () => pointerTicks++,
+        );
+        await tester.pump(const Duration(milliseconds: 60));
+        expect(pointerTicks, greaterThan(0));
+
+        subject.selection.startAutoscroll(
+          SelectionAutoscrollPolicy.handle,
+          () => handleTicks++,
+        );
+        final pointerTicksAtReplacement = pointerTicks;
+        await tester.pump(const Duration(milliseconds: 60));
+        expect(pointerTicks, pointerTicksAtReplacement);
+        expect(handleTicks, greaterThan(0));
+
+        subject.selection.stopAutoscroll(SelectionAutoscrollPolicy.pointer);
+        final handleTicksBeforeGeometry = handleTicks;
+        await tester.pump(const Duration(milliseconds: 60));
+        expect(handleTicks, greaterThan(handleTicksBeforeGeometry));
+
+        subject.attachment.commitGeometry(
+          const SurfaceMeasurement(
+            cols: 8,
+            rows: 3,
+            cellWidth: 9,
+            cellHeight: 16,
+            paddingLeft: 0,
+            paddingRight: 0,
+            paddingTop: 0,
+            paddingBottom: 0,
+            devicePixelRatio: 1,
+          ),
+        );
+        final handleTicksAtGeometryChange = handleTicks;
+        await tester.pump(const Duration(milliseconds: 60));
+        expect(handleTicks, handleTicksAtGeometryChange);
+      });
     });
   });
 }
@@ -395,12 +432,14 @@ final class _Fixture {
   late final ViewAttachment attachment;
   final TerminalController controller;
 
+  SelectionInteraction get selection => attachment.selectionInput;
+
   _Fixture()
     : controller = TerminalController(
         config: const TerminalConfig(cols: 8, rows: 3),
       ) {
     attachment = ViewAttachment(controller)
-      ..handleResize(
+      ..commitGeometry(
         const SurfaceMeasurement(
           cols: 8,
           rows: 3,
@@ -421,7 +460,7 @@ final class _Fixture {
   }
 
   void addScrollback() {
-    attachment.terminal.write(
+    controller.write(
       Uint8List.fromList(
         '0\r\n1\r\n2\r\n3\r\n4\r\n5\r\n6\r\n7\r\n8\r\n9'.codeUnits,
       ),
@@ -462,7 +501,10 @@ final class _Fixture {
                       ),
                       Positioned.fill(
                         child: TerminalSelectionHandles(
-                          attachment: attachment,
+                          selection: attachment.selectionInput,
+                          readVirtualMods: () => attachment.readVirtualMods(),
+                          onViewportRowChanged:
+                              attachment.handleViewportRowChanged,
                           metrics: metrics,
                           visible: visible,
                           magnifierConfiguration: magnifierConfiguration,

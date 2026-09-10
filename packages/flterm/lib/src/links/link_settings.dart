@@ -191,6 +191,8 @@ final class LinkSettings {
   /// All link categories are enabled by default. Use an empty set to disable
   /// link detection.
   ///
+  /// Treat the supplied set as immutable; replace the settings to change it.
+  ///
   /// ```dart
   /// const links = LinkSettings(types: {.osc8, .text});
   /// ```
@@ -204,6 +206,8 @@ final class LinkSettings {
   /// Rules that use [LinkHighlightMode.always] can be expensive with
   /// high-throughput output because visible lines must be scanned after
   /// content changes.
+  ///
+  /// Treat the supplied list as immutable; replace the settings to change it.
   final List<LinkRule> rules;
 
   /// Called when the user activates a detected link.

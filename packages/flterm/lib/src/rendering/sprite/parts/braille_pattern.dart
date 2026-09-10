@@ -54,14 +54,6 @@ final class BraillePattern extends SpriteGlyph {
       dotW += 1;
     }
 
-    final xPos = [xMargin, xMargin + dotW + xSpacing];
-    final yPos = [
-      yMargin,
-      yMargin + dotW + ySpacing,
-      yMargin + 2 * (dotW + ySpacing),
-      yMargin + 3 * (dotW + ySpacing),
-    ];
-
     const dotCol = [0, 0, 0, 1, 1, 1, 0, 1];
     const dotRow = [0, 1, 2, 0, 1, 2, 3, 3];
 
@@ -70,8 +62,8 @@ final class BraillePattern extends SpriteGlyph {
     final dw = dotW.toDouble();
     for (var i = 0; i < 8; i++) {
       if (pattern & (1 << i) == 0) continue;
-      final dx = ox + xPos[dotCol[i]];
-      final dy = oy + yPos[dotRow[i]];
+      final dx = ox + (xMargin + dotCol[i] * (dotW + xSpacing));
+      final dy = oy + (yMargin + dotRow[i] * (dotW + ySpacing));
       drawBox(canvas, ctx.fill, dx, dy, dx + dw, dy + dw);
     }
   }

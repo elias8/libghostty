@@ -1,15 +1,13 @@
 import 'dart:ui';
 
 import '../atlas/sprite_buffer.dart';
-import 'terminal_painter.dart';
 
 /// Paints paragraph-shaped text runs that need ligature shaping.
-final class ShapedRunPainter implements TerminalPainter {
+final class ShapedRunPainter {
   final ShapedRunBuffer _runs;
 
-  ShapedRunPainter(this._runs);
+  const ShapedRunPainter(this._runs);
 
-  @override
   void paint(Canvas canvas) {
     if (_runs.count == 0) return;
 

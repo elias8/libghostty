@@ -1011,6 +1011,19 @@ void main() {
         expect(textInputSetClientCalls(calls), hasLength(1));
       });
 
+      test('preserves keyboard appearance when omitted', () {
+        final calls = recordTextInputCalls();
+        handler.ensureAttached(keyboardAppearance: Brightness.light);
+        calls.clear();
+
+        handler.ensureAttached();
+
+        expect(
+          textInputUpdateConfig(calls)['keyboardAppearance'],
+          Brightness.light.toString(),
+        );
+      });
+
       test('reopens a connection orphaned by another client', () {
         final calls = recordTextInputCalls();
         handler.ensureAttached();

@@ -127,15 +127,15 @@ void main() {
       );
 
       final picture = recorder.endRecording();
+      addTearDown(picture.dispose);
       final image = await picture.toImage(
         (cols * metrics.cellWidth * devicePixelRatio).toInt(),
         (rows * metrics.cellHeight * devicePixelRatio).toInt(),
       );
-      picture.dispose();
+      addTearDown(image.dispose);
       final bytes = await image.toByteData();
       final width = image.width;
-      image.dispose();
-      return (bytes!.buffer.asUint8List(), width);
+      return (Uint8List.sublistView(bytes!), width);
     }
 
     test('rasterizeSprite includes sprite overflow padding', () {

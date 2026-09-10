@@ -7,7 +7,7 @@ import 'package:fake_async/fake_async.dart';
 import 'package:flterm/src/controller/terminal_controller.dart';
 import 'package:flterm/src/foundation.dart';
 import 'package:flterm/src/input/input_message.dart';
-import 'package:flterm/src/interaction/selection_session.dart';
+import 'package:flterm/src/input/selection_session.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:libghostty/libghostty.dart' hide KeyEvent;
@@ -16,20 +16,38 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   group('TerminalController', () {
-    late TerminalControllerImpl controller;
+    late TerminalSession binding;
+    late TerminalController controller;
 
     setUp(() {
-      controller = TerminalControllerImpl();
+      controller = TerminalController();
+      binding = controller as TerminalSession;
     });
 
     tearDown(() => controller.dispose());
 
+    final inputs = <TerminalController, ViewAttachment>{};
+
+    ViewAttachment inputFor(TerminalController target) =>
+        inputs.putIfAbsent(target, () {
+          final attachment = ViewAttachment(target);
+          addTearDown(() {
+            attachment.dispose();
+            inputs.remove(target);
+          });
+          return attachment;
+        });
+
     void replaceController(TerminalConfig config) {
       controller.dispose();
-      controller = TerminalControllerImpl(config: config);
+      controller = TerminalController(config: config);
+      binding = controller as TerminalSession;
     }
 
-    void writeControllerUtf8(TerminalControllerImpl controller, String text) {
+    TerminalSession access(TerminalController target) =>
+        target as TerminalSession;
+
+    void writeControllerUtf8(TerminalController controller, String text) {
       controller.write(Uint8List.fromList(utf8.encode(text)));
     }
 
@@ -38,12 +56,12 @@ void main() {
     }
 
     void enableMouseTracking(
-      TerminalControllerImpl target, {
+      TerminalController target, {
       String sequence = '\x1b[?1002h\x1b[?1006h',
       double devicePixelRatio = 1.0,
     }) {
       writeControllerUtf8(target, sequence);
-      target.handleResize(
+      access(target).handleResize(
         SurfaceMeasurement(
           cols: 80,
           rows: 24,
@@ -72,18 +90,16 @@ void main() {
         return terminal;
       }
 
-      TerminalControllerImpl restore(
+      TerminalController restore(
         Terminal source, {
         bool progressive = true,
         bool deferResize = true,
       }) {
-        final restored =
-            TerminalController.fromSnapshot(
-                  source.encodeSnapshot(),
-                  progressive: progressive,
-                  deferResize: deferResize,
-                )
-                as TerminalControllerImpl;
+        final restored = TerminalController.fromSnapshot(
+          source.encodeSnapshot(),
+          progressive: progressive,
+          deferResize: deferResize,
+        );
         addTearDown(restored.dispose);
         return restored;
       }
@@ -278,11 +294,10 @@ void main() {
       });
 
       group('failure', () {
-        TerminalControllerImpl restoreDamaged() {
+        TerminalController restoreDamaged() {
           final source = terminalWithHistory();
           final bytes = source.encodeSnapshot()..last ^= 0xff;
-          final restored =
-              TerminalController.fromSnapshot(bytes) as TerminalControllerImpl;
+          final restored = TerminalController.fromSnapshot(bytes);
           addTearDown(restored.dispose);
           return restored;
         }
@@ -353,6 +368,30 @@ void main() {
                 .ignore();
 
             restored.dispose();
+            async.flushMicrotasks();
+
+            expect(failure, isA<StateError>());
+          });
+        });
+
+        test('reports a deferred resize callback error through restored', () {
+          fakeAsync((async) {
+            final source = terminalWithHistory()
+              ..modeSet(const .inBandResize(), value: true);
+            final restored = restore(source);
+            access(restored).handleResize(measurement(80, 24));
+            restored.onOutput = (_) {
+              throw StateError('resize callback failed');
+            };
+            Object? failure;
+            restored.restored
+                .then<void>(
+                  (_) {},
+                  onError: (Object error, StackTrace _) => failure = error,
+                )
+                .ignore();
+
+            async.elapse(const Duration(seconds: 1));
             async.flushMicrotasks();
 
             expect(failure, isA<StateError>());
@@ -465,7 +504,7 @@ void main() {
           final sizes = <(int, int)>[];
           restored.onResize = (cols, rows) => sizes.add((cols, rows));
 
-          restored.handleResize(measurement(80, 24));
+          access(restored).handleResize(measurement(80, 24));
 
           expect(sizes, isEmpty);
         });
@@ -475,8 +514,8 @@ void main() {
             final restored = restore(terminalWithHistory());
             final sizes = <(int, int)>[];
             restored.onResize = (cols, rows) => sizes.add((cols, rows));
-            restored.handleResize(measurement(80, 24));
-            restored.handleResize(measurement(100, 30));
+            access(restored).handleResize(measurement(80, 24));
+            access(restored).handleResize(measurement(100, 30));
 
             async.elapse(const Duration(seconds: 1));
 
@@ -489,7 +528,7 @@ void main() {
             final source = terminalWithHistory();
             final restored = restore(source, deferResize: false);
 
-            restored.handleResize(measurement(80, 24));
+            access(restored).handleResize(measurement(80, 24));
             async.elapse(const Duration(seconds: 1));
 
             expect(restored.scrollbackRows, lessThan(source.scrollbackRows));
@@ -501,7 +540,7 @@ void main() {
             final restored = restore(terminalWithHistory());
             var completed = false;
             restored.onResize = (cols, rows) => restored.dispose();
-            restored.handleResize(measurement(80, 24));
+            access(restored).handleResize(measurement(80, 24));
             restored.restored.then<void>((_) => completed = true).ignore();
 
             async.elapse(const Duration(seconds: 1));
@@ -566,7 +605,7 @@ void main() {
       });
 
       test('exposes terminal state without a view attachment', () {
-        expect(controller.terminal, isA<Terminal>());
+        expect(binding.terminal, isA<Terminal>());
       });
 
       test('starts without selection or selected text', () {
@@ -576,6 +615,18 @@ void main() {
     });
 
     group('geometry', () {
+      SurfaceMeasurement measurement(int cols, int rows) => SurfaceMeasurement(
+        cols: cols,
+        rows: rows,
+        cellWidth: 8,
+        cellHeight: 16,
+        paddingLeft: 0,
+        paddingRight: 0,
+        paddingTop: 0,
+        paddingBottom: 0,
+        devicePixelRatio: 1,
+      );
+
       test('does not notify a resize observer before view geometry exists', () {
         final sizes = <({int cols, int rows})>[];
 
@@ -592,7 +643,7 @@ void main() {
           sizes.add((cols: cols, rows: rows));
         };
 
-        controller.handleResize(
+        binding.handleResize(
           const SurfaceMeasurement(
             cols: 80,
             rows: 24,
@@ -612,7 +663,7 @@ void main() {
       test(
         'reports committed grid when observer is assigned after measurement',
         () {
-          controller.handleResize(
+          binding.handleResize(
             const SurfaceMeasurement(
               cols: 100,
               rows: 40,
@@ -636,7 +687,7 @@ void main() {
       );
 
       test('resize callback observes committed physical geometry', () {
-        final binding = controller;
+        final binding = access(controller);
         final output = <Uint8List>[];
         controller.onOutput = output.add;
         controller.onResize = (_, _) {
@@ -667,13 +718,13 @@ void main() {
         controller.write(Uint8List.fromList(utf8.encode('hello')));
         controller.write(Uint8List.fromList(utf8.encode('\x1b[18t')));
 
-        renderState.update(controller.terminal);
+        renderState.update(binding.terminal);
 
         expect(renderState.dirty, isNot(DirtyState.clean));
       });
 
       test('reports configured dimensions before the first view layout', () {
-        final custom = TerminalControllerImpl(
+        final custom = TerminalController(
           config: const TerminalConfig(cols: 120, rows: 40),
         );
         addTearDown(custom.dispose);
@@ -686,7 +737,7 @@ void main() {
       });
 
       test('applies physical geometry through the resize event', () {
-        controller.handleResize(
+        binding.handleResize(
           const SurfaceMeasurement(
             cols: 80,
             rows: 24,
@@ -701,7 +752,7 @@ void main() {
         );
 
         expect(
-          controller.terminal.geometry,
+          binding.terminal.geometry,
           const TerminalGeometry(
             cols: 80,
             rows: 24,
@@ -712,7 +763,7 @@ void main() {
       });
 
       test('updates physical geometry when the grid is unchanged', () {
-        final binding = controller;
+        final binding = access(controller);
         binding.handleResize(
           const SurfaceMeasurement(
             cols: 80,
@@ -752,7 +803,7 @@ void main() {
       });
 
       test('ignores resize events with invalid physical geometry', () {
-        final binding = controller;
+        final binding = access(controller);
         binding.handleResize(
           const SurfaceMeasurement(
             cols: 80,
@@ -793,7 +844,7 @@ void main() {
       });
 
       test('ignores resize events beyond the native grid limit', () {
-        final binding = controller;
+        final binding = access(controller);
 
         binding.handleResize(
           const SurfaceMeasurement(
@@ -835,7 +886,7 @@ void main() {
       });
 
       test('emits the measured in-band resize report', () {
-        final binding = controller;
+        final binding = access(controller);
         final output = <Uint8List>[];
         controller.onOutput = output.add;
         binding.terminal.modeSet(
@@ -865,7 +916,7 @@ void main() {
         final output = <Uint8List>[];
         controller.onOutput = output.add;
         controller.onResize = (_, _) {
-          controller.handleMouseEvent(
+          inputFor(binding).onMouseInput(
             const MouseInput(
               action: .press,
               anyButtonPressed: true,
@@ -877,7 +928,7 @@ void main() {
           );
         };
 
-        controller.handleResize(
+        binding.handleResize(
           const SurfaceMeasurement(
             cols: 80,
             rows: 24,
@@ -896,11 +947,14 @@ void main() {
 
       test('resize callback observes committed selection geometry', () {
         controller.write(Uint8List.fromList(utf8.encode('hello')));
+        final viewToken = binding.attachView();
+        addTearDown(() => binding.detachView(viewToken));
+        final selectionInput = binding.createSelectionInteraction();
+        addTearDown(selectionInput.dispose);
         var selected = false;
         controller.onResize = (_, _) {
-          controller.handleSelectionPress(
+          selectionInput.handlePress(
             const SelectionPressInput(
-              cell: Position(row: 0, col: 1),
               pixelX: 8,
               pixelY: 0,
               behaviors: SelectionGestureBehaviors.standard,
@@ -911,19 +965,18 @@ void main() {
               fullWidthLine: false,
             ),
           );
-          controller.updateSelectionDrag(
-            const SelectionDragInput(
-              cell: Position(row: 0, col: 2),
+          selectionInput.handleDrag(
+            const SelectionPointerInput(
               pixelX: 16,
               pixelY: 0,
               rectangle: false,
             ),
           );
-          controller.handleSelectionRelease(const Position(row: 0, col: 1));
+          selectionInput.handleRelease(const Position(row: 0, col: 1));
           selected = controller.hasSelection;
         };
 
-        controller.handleResize(
+        binding.handleResize(
           const SurfaceMeasurement(
             cols: 80,
             rows: 24,
@@ -941,7 +994,7 @@ void main() {
       });
 
       test('emits terminal resize output before the backend callback', () {
-        final binding = controller;
+        final binding = access(controller);
         final events = <String>[];
         controller.onResize = (_, _) => events.add('resize');
         events.clear();
@@ -968,12 +1021,39 @@ void main() {
         expect(events, ['output', 'resize']);
       });
 
+      test('publishes reentrant changes after geometry is committed', () {
+        binding.handleResize(measurement(80, 24));
+        controller.modeSet(const TerminalMode.inBandResize(), value: true);
+        int? observedColumns;
+        controller.addListener(() {
+          observedColumns = binding.committedGeometry?.cols;
+        });
+        controller.onOutput = (_) => controller.toggleMod(const Mods.ctrl());
+
+        binding.handleResize(measurement(81, 25));
+
+        expect(observedColumns, 81);
+      });
+
+      test('retains the latest reentrant geometry transaction', () {
+        binding.handleResize(measurement(80, 24));
+        controller.modeSet(const TerminalMode.inBandResize(), value: true);
+        controller.onOutput = (_) {
+          controller.onOutput = null;
+          binding.handleResize(measurement(100, 30));
+        };
+
+        binding.handleResize(measurement(81, 25));
+
+        expect(binding.committedGeometry?.cols, 100);
+      });
+
       test('allows backend output during an in-band resize report', () {
-        final binding = controller;
+        final binding = access(controller);
         var replied = false;
         controller.onOutput = (_) {
           replied = true;
-          binding.write(Uint8List.fromList(utf8.encode('nested')));
+          controller.write(Uint8List.fromList(utf8.encode('nested')));
         };
         binding.terminal.modeSet(
           const TerminalMode.inBandResize(),
@@ -1004,7 +1084,7 @@ void main() {
         final output = <Uint8List>[];
         controller.onOutput = output.add;
 
-        controller.handleMouseEvent(
+        inputFor(binding).onMouseInput(
           const MouseInput(
             action: .press,
             anyButtonPressed: true,
@@ -1014,7 +1094,7 @@ void main() {
             pixelY: 8,
           ),
         );
-        controller.handleMouseEvent(
+        inputFor(binding).onMouseInput(
           const MouseInput(
             action: .motion,
             anyButtonPressed: false,
@@ -1034,7 +1114,7 @@ void main() {
         final output = <Uint8List>[];
         controller.onOutput = output.add;
 
-        controller.handleMouseEvent(
+        inputFor(binding).onMouseInput(
           const MouseInput(
             action: .motion,
             anyButtonPressed: false,
@@ -1045,7 +1125,7 @@ void main() {
           ),
         );
 
-        controller.handleMouseEvent(
+        inputFor(binding).onMouseInput(
           const MouseInput(
             action: .motion,
             anyButtonPressed: true,
@@ -1068,7 +1148,7 @@ void main() {
         final output = <Uint8List>[];
         controller.onOutput = output.add;
 
-        controller.handleMouseEvent(
+        inputFor(binding).onMouseInput(
           const MouseInput(
             action: .press,
             anyButtonPressed: true,
@@ -1086,7 +1166,7 @@ void main() {
         'maps terminal-local pointer coordinates through surface padding',
         () {
           enableMouseTracking(controller, sequence: '\x1b[?1000h\x1b[?1016h');
-          controller.handleResize(
+          binding.handleResize(
             const SurfaceMeasurement(
               cols: 80,
               rows: 24,
@@ -1102,7 +1182,7 @@ void main() {
           final output = <Uint8List>[];
           controller.onOutput = output.add;
 
-          controller.handleMouseEvent(
+          inputFor(binding).onMouseInput(
             const MouseInput(
               action: .press,
               anyButtonPressed: true,
@@ -1121,13 +1201,11 @@ void main() {
     group('handleTerminalScroll', () {
       test('uses the last pointer position for tracked scroll', () {
         enableMouseTracking(controller);
-        controller.terminal.write(
-          Uint8List.fromList(utf8.encode('\x1b[?1049h')),
-        );
+        binding.terminal.write(Uint8List.fromList(utf8.encode('\x1b[?1049h')));
         final output = <Uint8List>[];
         controller.onOutput = output.add;
 
-        controller.handleTerminalScroll(
+        inputFor(binding).onScrollInput(
           const ScrollInput(
             horizontal: 0,
             mods: Mods.none(),
@@ -1146,7 +1224,7 @@ void main() {
         final output = <Uint8List>[];
         controller.onOutput = output.add;
 
-        controller.handleTerminalScroll(
+        inputFor(binding).onScrollInput(
           const ScrollInput(
             horizontal: 0,
             mods: Mods.none(),
@@ -1163,13 +1241,13 @@ void main() {
       test(
         'does not simulate cursor keys when alternate scroll is disabled',
         () {
-          controller.terminal.write(
+          binding.terminal.write(
             Uint8List.fromList(utf8.encode('\x1b[?1049h\x1b[?1007l')),
           );
           final output = <Uint8List>[];
           controller.onOutput = output.add;
 
-          controller.handleTerminalScroll(
+          inputFor(binding).onScrollInput(
             const ScrollInput(
               horizontal: 0,
               mods: Mods.none(),
@@ -1185,14 +1263,12 @@ void main() {
       );
 
       test('does not simulate cursor keys while mouse tracking is active', () {
-        controller.terminal.write(
-          Uint8List.fromList(utf8.encode('\x1b[?1049h')),
-        );
+        binding.terminal.write(Uint8List.fromList(utf8.encode('\x1b[?1049h')));
         enableMouseTracking(controller);
         final output = <Uint8List>[];
         controller.onOutput = output.add;
 
-        controller.handleTerminalScroll(
+        inputFor(binding).onScrollInput(
           const ScrollInput(
             horizontal: 0,
             mods: Mods.none(),
@@ -1406,6 +1482,29 @@ void main() {
         expect(controller.hasSelection, isTrue);
       });
 
+      test('selection interaction observes per-screen selection changes', () {
+        final viewToken = binding.attachView();
+        addTearDown(() => binding.detachView(viewToken));
+        final selectionInput = binding.createSelectionInteraction();
+        addTearDown(selectionInput.dispose);
+        controller.selectRange(
+          start: const Position(row: 0, col: 0),
+          end: const Position(row: 0, col: 4),
+        );
+        var notified = false;
+        TerminalScreen? observedScreen;
+        selectionInput.addListener(() {
+          notified = true;
+          observedScreen = binding.activeScreen;
+        });
+
+        writeTerminalUtf8(binding.terminal, '\x1b[?1049h');
+
+        expect(notified, isTrue);
+        expect(observedScreen, TerminalScreen.alternate);
+        expect(selectionInput.selection, isNull);
+      });
+
       test('selectRange skips notification when value is unchanged', () {
         controller.selectRange(
           start: const Position(row: 0, col: 0),
@@ -1440,11 +1539,54 @@ void main() {
         expect(notifyCount, 1);
         expect(controller.hasSelection, isFalse);
       });
+
+      test('clearSelection ends an active selection gesture', () {
+        controller.write(Uint8List.fromList(utf8.encode('hello')));
+        final viewToken = binding.attachView();
+        addTearDown(() => binding.detachView(viewToken));
+        final selectionInput = binding.createSelectionInteraction();
+        addTearDown(selectionInput.dispose);
+        binding.handleResize(
+          const SurfaceMeasurement(
+            cols: 80,
+            rows: 24,
+            cellWidth: 8,
+            cellHeight: 16,
+            paddingLeft: 0,
+            paddingRight: 0,
+            paddingTop: 0,
+            paddingBottom: 0,
+            devicePixelRatio: 1,
+          ),
+        );
+        selectionInput.handlePress(
+          const SelectionPressInput(
+            pixelX: 0,
+            pixelY: 0,
+            behaviors: SelectionGestureBehaviors.standard,
+            wordBoundaries: null,
+            repeatDistance: 18,
+            repeatInterval: Duration(milliseconds: 300),
+            timeStamp: Duration.zero,
+            fullWidthLine: false,
+          ),
+        );
+        selectionInput.handleDrag(
+          const SelectionPointerInput(pixelX: 16, pixelY: 0, rectangle: false),
+        );
+
+        controller.clearSelection();
+        selectionInput.handleDrag(
+          const SelectionPointerInput(pixelX: 32, pixelY: 0, rectangle: false),
+        );
+
+        expect(controller.hasSelection, isFalse);
+      });
     });
 
     group('scrollToBottom policy', () {
-      TerminalControllerImpl outputFollowController() {
-        final target = TerminalControllerImpl(
+      TerminalController outputFollowController() {
+        final target = TerminalController(
           config: const TerminalConfig(
             cols: 20,
             rows: 3,
@@ -1455,16 +1597,16 @@ void main() {
         return target;
       }
 
-      void writeNumberedLines(TerminalControllerImpl target) {
+      void writeNumberedLines(TerminalController target) {
         for (var i = 0; i < 10; i++) {
           writeControllerUtf8(target, 'line $i\r\n');
         }
       }
 
-      int scrollBack(TerminalControllerImpl target) {
+      int scrollBack(TerminalController target) {
         writeNumberedLines(target);
-        target.terminal.scrollViewport(-5);
-        return target.terminal.scrollbar.offset;
+        access(target).terminal.scrollViewport(-5);
+        return access(target).terminal.scrollbar.offset;
       }
 
       test('scrolls to bottom on output when output follow is enabled', () {
@@ -1474,7 +1616,7 @@ void main() {
 
         writeControllerUtf8(custom, 'tail\r\n');
 
-        expect(custom.terminal.scrollbar.offset, custom.scrollbackRows);
+        expect(access(custom).terminal.scrollbar.offset, custom.scrollbackRows);
       });
 
       test(
@@ -1489,7 +1631,7 @@ void main() {
             end: const Position(row: 0, col: 4),
           );
 
-          expect(custom.terminal.scrollbar.offset, offset);
+          expect(access(custom).terminal.scrollbar.offset, offset);
         },
       );
 
@@ -1502,13 +1644,13 @@ void main() {
             start: const Position(row: 0, col: 0),
             end: const Position(row: 0, col: 4),
           );
-          custom.terminal.scrollViewport(-5);
-          final offset = custom.terminal.scrollbar.offset;
+          access(custom).terminal.scrollViewport(-5);
+          final offset = access(custom).terminal.scrollbar.offset;
           expect(offset, lessThan(custom.scrollbackRows));
 
           custom.clearSelection();
 
-          expect(custom.terminal.scrollbar.offset, offset);
+          expect(access(custom).terminal.scrollbar.offset, offset);
         },
       );
 
@@ -1517,7 +1659,7 @@ void main() {
         final offset = scrollBack(custom);
         expect(offset, lessThan(custom.scrollbackRows));
 
-        custom.handleResize(
+        access(custom).handleResize(
           const SurfaceMeasurement(
             cols: 20,
             rows: 3,
@@ -1531,7 +1673,7 @@ void main() {
           ),
         );
 
-        expect(custom.terminal.scrollbar.offset, offset);
+        expect(access(custom).terminal.scrollbar.offset, offset);
       });
 
       test('preserves viewport when a terminal mode changes', () {
@@ -1541,7 +1683,7 @@ void main() {
 
         custom.modeSet(const .bracketedPaste(), value: true);
 
-        expect(custom.terminal.scrollbar.offset, offset);
+        expect(access(custom).terminal.scrollbar.offset, offset);
       });
     });
 
@@ -1624,10 +1766,10 @@ void main() {
     });
 
     group('scrollback selection', () {
-      late TerminalControllerImpl smallController;
+      late TerminalController smallController;
 
       setUp(() {
-        smallController = TerminalControllerImpl(
+        smallController = TerminalController(
           config: const TerminalConfig(cols: 20, rows: 3),
         );
       });
@@ -1687,7 +1829,7 @@ void main() {
       });
 
       test('selectedText joins wrapped lines without newline', () {
-        final wrapController = TerminalControllerImpl(
+        final wrapController = TerminalController(
           config: const TerminalConfig(cols: 5, rows: 3),
         );
         addTearDown(wrapController.dispose);
@@ -1701,7 +1843,7 @@ void main() {
       });
 
       test('selectedText with wrapped wide characters', () {
-        final wrapController = TerminalControllerImpl(
+        final wrapController = TerminalController(
           config: const TerminalConfig(cols: 5, rows: 3),
         );
         addTearDown(wrapController.dispose);
@@ -1797,7 +1939,7 @@ void main() {
       });
 
       test('wraps with bracketed paste escape when mode is active', () {
-        controller.terminal.modeSet(
+        binding.terminal.modeSet(
           const TerminalMode.bracketedPaste(),
           value: true,
         );
@@ -1829,7 +1971,7 @@ void main() {
       }
 
       test('getter returns initial config', () {
-        final custom = TerminalControllerImpl(
+        final custom = TerminalController(
           config: const TerminalConfig(cols: 120, rows: 40),
         );
         addTearDown(custom.dispose);
@@ -1844,7 +1986,7 @@ void main() {
       });
 
       test('initial config applies terminal options', () {
-        final custom = TerminalControllerImpl(
+        final custom = TerminalController(
           config: const TerminalConfig(
             scrollbackMaxBytes: 1024,
             scrollbackMaxLines: 10,
@@ -1859,16 +2001,16 @@ void main() {
         addTearDown(custom.dispose);
         addTearDown(renderState.dispose);
 
-        expect(custom.terminal.scrollbackMaxBytes, 1024);
-        expect(custom.terminal.scrollbackMaxLines, 10);
-        expect(custom.terminal.clipboardWriteMaxBytes, 1024);
+        expect(access(custom).terminal.scrollbackMaxBytes, 1024);
+        expect(access(custom).terminal.scrollbackMaxLines, 10);
+        expect(access(custom).terminal.clipboardWriteMaxBytes, 1024);
 
         custom.write(transmitRedPixel(id: 91));
 
-        expect(KittyGraphics.of(custom.terminal)!.image(91), isNull);
+        expect(KittyGraphics.of(access(custom).terminal)!.image(91), isNull);
 
-        writeTerminalUtf8(custom.terminal, '\x1b[0 q');
-        renderState.update(custom.terminal);
+        writeTerminalUtf8(access(custom).terminal, '\x1b[0 q');
+        renderState.update(access(custom).terminal);
 
         expect(renderState.cursor.visualStyle, CursorShape.underline);
         expect(renderState.cursor.blinking, isTrue);
@@ -1880,8 +2022,8 @@ void main() {
           scrollbackMaxLines: 20,
         );
 
-        expect(controller.terminal.scrollbackMaxBytes, 2048);
-        expect(controller.terminal.scrollbackMaxLines, 20);
+        expect(binding.terminal.scrollbackMaxBytes, 2048);
+        expect(binding.terminal.scrollbackMaxLines, 20);
       });
 
       test('setter applies APC buffer limits', () {
@@ -1889,7 +2031,7 @@ void main() {
 
         controller.write(transmitRedPixel(id: 92));
 
-        expect(KittyGraphics.of(controller.terminal)!.image(92), isNull);
+        expect(KittyGraphics.of(binding.terminal)!.image(92), isNull);
       });
 
       test('setter applies cursor reset defaults', () {
@@ -1900,8 +2042,8 @@ void main() {
           cursorStyle: CursorShape.bar,
           cursorBlink: false,
         );
-        writeTerminalUtf8(controller.terminal, '\x1b[0 q');
-        renderState.update(controller.terminal);
+        writeTerminalUtf8(binding.terminal, '\x1b[0 q');
+        renderState.update(binding.terminal);
 
         expect(renderState.cursor.visualStyle, CursorShape.bar);
         expect(renderState.cursor.blinking, isFalse);
@@ -1916,6 +2058,15 @@ void main() {
         controller.modeSet(const TerminalMode.autoWrap(), value: true);
         expect(controller.modeGet(const TerminalMode.autoWrap()), isTrue);
       });
+
+      test('modeSet notifies listeners for observed mode changes', () {
+        var notifyCount = 0;
+        controller.addListener(() => notifyCount++);
+
+        controller.modeSet(const TerminalMode.alternateScroll(), value: false);
+
+        expect(notifyCount, 1);
+      });
     });
 
     group('activeScreen', () {
@@ -1924,7 +2075,7 @@ void main() {
       });
 
       test('switches to alternate via escape sequence', () {
-        writeTerminalUtf8(controller.terminal, '\x1b[?1049h');
+        writeTerminalUtf8(binding.terminal, '\x1b[?1049h');
         expect(controller.activeScreen, TerminalScreen.alternate);
       });
     });
@@ -1935,7 +2086,7 @@ void main() {
       });
 
       test('updates via OSC 0 escape sequence', () {
-        writeTerminalUtf8(controller.terminal, '\x1b]0;my title\x1b\\');
+        writeTerminalUtf8(binding.terminal, '\x1b]0;my title\x1b\\');
         expect(controller.title, 'my title');
       });
 
@@ -1943,7 +2094,7 @@ void main() {
         var fired = false;
         controller.onTitleChanged = () => fired = true;
 
-        writeTerminalUtf8(controller.terminal, '\x1b]0;new title\x1b\\');
+        writeTerminalUtf8(binding.terminal, '\x1b]0;new title\x1b\\');
 
         expect(fired, isTrue);
       });
@@ -1951,7 +2102,7 @@ void main() {
 
     group('pwd', () {
       test('updates via OSC 7 escape sequence', () {
-        writeTerminalUtf8(controller.terminal, '\x1b]7;file:///tmp\x07');
+        writeTerminalUtf8(binding.terminal, '\x1b]7;file:///tmp\x07');
 
         expect(controller.pwd, 'file:///tmp');
       });
@@ -1960,7 +2111,7 @@ void main() {
         var notifyCount = 0;
         controller.addListener(() => notifyCount++);
 
-        writeTerminalUtf8(controller.terminal, '\x1b]7;file:///tmp\x07');
+        writeTerminalUtf8(binding.terminal, '\x1b]7;file:///tmp\x07');
 
         expect(notifyCount, greaterThan(0));
       });
@@ -1970,7 +2121,7 @@ void main() {
         controller.onPwdChanged = () {};
         controller.addListener(() => notifyCount++);
 
-        writeTerminalUtf8(controller.terminal, '\x1b]7;file:///tmp\x07');
+        writeTerminalUtf8(binding.terminal, '\x1b]7;file:///tmp\x07');
 
         expect(notifyCount, 1);
       });
@@ -1981,7 +2132,7 @@ void main() {
         controller.onPwdChanged = null;
         controller.addListener(() => notifyCount++);
 
-        writeTerminalUtf8(controller.terminal, '\x1b]7;file:///tmp\x07');
+        writeTerminalUtf8(binding.terminal, '\x1b]7;file:///tmp\x07');
 
         expect(notifyCount, 1);
       });
@@ -1990,7 +2141,7 @@ void main() {
         var fired = false;
         controller.onPwdChanged = () => fired = true;
 
-        writeTerminalUtf8(controller.terminal, '\x1b]7;file:///tmp\x07');
+        writeTerminalUtf8(binding.terminal, '\x1b]7;file:///tmp\x07');
 
         expect(fired, isTrue);
       });
@@ -1999,7 +2150,7 @@ void main() {
         var pwd = '';
         controller.onPwdChanged = () => pwd = controller.pwd;
 
-        writeTerminalUtf8(controller.terminal, '\x1b]7;file:///tmp\x07');
+        writeTerminalUtf8(binding.terminal, '\x1b]7;file:///tmp\x07');
 
         expect(pwd, 'file:///tmp');
       });
@@ -2007,7 +2158,7 @@ void main() {
 
     group('dispose', () {
       test('releases resources', () {
-        final disposable = TerminalControllerImpl();
+        final disposable = TerminalController();
 
         expect(disposable.dispose, returnsNormally);
       });

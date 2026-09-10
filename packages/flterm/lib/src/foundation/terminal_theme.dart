@@ -372,6 +372,8 @@ final class TerminalTheme {
   /// Defaults to common monospace fonts followed by platform emoji fonts. Emoji
   /// fonts are kept last so text-like glyphs, including digits and symbols,
   /// stay grid-aligned when a monospace fallback can render them.
+  /// Treat the supplied list as immutable; use [copyWith] with a new list to
+  /// change fallback families.
   final List<String> fontFamilyFallback;
 
   /// Font size in logical pixels.

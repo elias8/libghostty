@@ -1,16 +1,5 @@
+import 'package:flutter/foundation.dart' hide Key;
 import 'package:libghostty/libghostty.dart';
-
-/// The outcome of routing normalized keyboard input.
-enum KeyDisposition {
-  /// The terminal did not consume the input.
-  ignored,
-
-  /// The terminal consumed the input.
-  handled,
-
-  /// The terminal consumed the input and remaining handlers must be skipped.
-  skipRemainingHandlers,
-}
 
 /// Keyboard input normalized independently of Flutter key event types.
 final class KeyInput {
@@ -104,4 +93,30 @@ final class ScrollInput {
     required this.horizontal,
     required this.reportMouse,
   });
+}
+
+/// Terminal state used to route pointer and scroll input.
+@immutable
+@internal
+final class TerminalInteractionState {
+  final TerminalScreen activeScreen;
+  final MouseTracking mouseTracking;
+  final bool alternateScroll;
+
+  const TerminalInteractionState({
+    required this.activeScreen,
+    required this.mouseTracking,
+    required this.alternateScroll,
+  });
+
+  @override
+  int get hashCode => Object.hash(activeScreen, mouseTracking, alternateScroll);
+
+  @override
+  bool operator ==(Object other) {
+    return other is TerminalInteractionState &&
+        other.activeScreen == activeScreen &&
+        other.mouseTracking == mouseTracking &&
+        other.alternateScroll == alternateScroll;
+  }
 }

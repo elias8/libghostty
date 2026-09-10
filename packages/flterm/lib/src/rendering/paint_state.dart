@@ -7,15 +7,14 @@ import 'package:libghostty/libghostty.dart'
 import '../foundation.dart' show CellMetrics, TerminalTheme;
 import 'atlas/atlas.dart';
 
-/// Mutable state shared between [TerminalRenderBox] and all painters.
+/// Mutable state shared by frame preparation and painters for one surface.
 ///
-/// Written by the render box during state sync (start of paint). Read by
-/// painters during the paint phase. Each painter holds a final reference
-/// and never mutates this object.
+/// The terminal surface owns and mutates this object. Frame builders write
+/// paint-ready values during synchronization, while painters only read them.
 ///
 /// Contains grid dimensions, device pixel ratio, resolved terminal
 /// colors, cursor state, IME preedit state, and faint text opacity.
-class PaintState {
+final class PaintState {
   TerminalTheme theme;
   CellMetrics metrics;
 

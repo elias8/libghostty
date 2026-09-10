@@ -55,6 +55,9 @@ final class LinkInteraction extends ChangeNotifier {
   CellRange? _highlighted;
   var _idleStyle = const HyperlinkStyle();
   LinkSnapshot? _idleSnapshot;
+  CellMetrics? _lastHoverMetrics;
+  Mods? _lastHoverMods;
+  var _hoverDirty = false;
   Position? _lastHoverCell;
   Offset? _lastHoverPosition;
   _LinkPressCandidate? _pressCandidate;
@@ -64,7 +67,10 @@ final class LinkInteraction extends ChangeNotifier {
   LinkInteraction({LinkResolver? resolver})
     : _resolver = resolver ?? LinkResolver();
 
-  CellRange? get highlighted => _highlighted;
+  CellRange? get highlighted {
+    _refreshHoverIfNeeded();
+    return _highlighted;
+  }
 
   /// Clears hover and press state without invalidating detected links.
   void cancel() {
@@ -76,6 +82,8 @@ final class LinkInteraction extends ChangeNotifier {
   void cancelHover() {
     final previous = _highlighted;
     _lastHoverPosition = null;
+    _lastHoverMetrics = null;
+    _lastHoverMods = null;
     _clearHoverHit();
     if (previous != _highlighted) notifyListeners();
   }
@@ -87,11 +95,14 @@ final class LinkInteraction extends ChangeNotifier {
   }) {
     final previous = _highlighted;
     _lastHoverPosition = localPosition;
+    _lastHoverMetrics = metrics;
+    _lastHoverMods = virtualMods;
     final next = _hoverAt(
       localPosition,
       metrics: metrics,
       virtualMods: virtualMods,
     );
+    _hoverDirty = false;
     if (previous != next) notifyListeners();
     return next;
   }
@@ -128,8 +139,16 @@ final class LinkInteraction extends ChangeNotifier {
   void invalidateContent() {
     _idleSnapshot = null;
     _snapshot = null;
-    _lastHoverPosition = null;
-    _clearHoverHit();
+    _cancelPress();
+    _lastHoverCell = null;
+    if (_lastHoverPosition == null ||
+        _lastHoverMetrics == null ||
+        _lastHoverMods == null) {
+      _clearHoverHit();
+      _hoverDirty = false;
+    } else {
+      _hoverDirty = true;
+    }
   }
 
   CellRange? refreshHover({
@@ -138,14 +157,18 @@ final class LinkInteraction extends ChangeNotifier {
   }) {
     final position = _lastHoverPosition;
     if (position == null) return _highlighted;
+    _lastHoverMetrics = metrics;
+    _lastHoverMods = virtualMods;
     final previous = _highlighted;
     final next = _hoverAt(position, metrics: metrics, virtualMods: virtualMods);
+    _hoverDirty = false;
     if (previous != next) notifyListeners();
     return next;
   }
 
   /// Returns the current renderer snapshot, rebuilding it when needed.
   LinkSnapshot snapshot() {
+    _refreshHoverIfNeeded();
     final cached = _snapshot;
     if (cached != null) return cached;
 
@@ -181,9 +204,7 @@ final class LinkInteraction extends ChangeNotifier {
     if (contextChanged || matchSettingsChanged) {
       _idleSnapshot = null;
       _snapshot = null;
-      _cancelPress();
-      _lastHoverPosition = null;
-      _clearHoverHit();
+      _clearInteraction();
       return;
     }
 
@@ -192,9 +213,7 @@ final class LinkInteraction extends ChangeNotifier {
       _snapshot = null;
     }
     if (gestureSettingsChanged) {
-      _cancelPress();
-      _lastHoverPosition = null;
-      _clearHoverHit();
+      _clearInteraction();
     }
   }
 
@@ -227,6 +246,9 @@ final class LinkInteraction extends ChangeNotifier {
   void _clearInteraction() {
     _cancelPress();
     _lastHoverPosition = null;
+    _lastHoverMetrics = null;
+    _lastHoverMods = null;
+    _hoverDirty = false;
     _clearHoverHit();
   }
 
@@ -300,6 +322,20 @@ final class LinkInteraction extends ChangeNotifier {
     }
     if (!types.contains(LinkType.custom)) return false;
     return _settings.rules.any((rule) => rule.highlightMode == .always);
+  }
+
+  void _refreshHoverIfNeeded() {
+    if (!_hoverDirty) return;
+    final position = _lastHoverPosition;
+    final metrics = _lastHoverMetrics;
+    final virtualMods = _lastHoverMods;
+    if (position == null || metrics == null || virtualMods == null) {
+      _hoverDirty = false;
+      _clearHoverHit();
+      return;
+    }
+    _hoverAt(position, metrics: metrics, virtualMods: virtualMods);
+    _hoverDirty = false;
   }
 
   bool _sameGestureSettings(LinkSettings a, LinkSettings b) {

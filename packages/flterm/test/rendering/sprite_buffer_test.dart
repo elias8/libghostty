@@ -181,18 +181,18 @@ void main() {
       expect(sprites.count, 3);
     });
 
-    test('buildVertices returns null when no row is active', () {
+    test('buildVertices returns no batches when no row is active', () {
       final sprites = RectSprites()..configure(2, 3);
-      expect(sprites.buildVertices(Uint16List(0)), isNull);
+      expect(sprites.buildVertices(Uint16List(0)), isEmpty);
     });
 
-    test('buildVertices returns non-null once any row is active', () {
+    test('buildVertices returns a batch once any row is active', () {
       final sprites = RectSprites()..configure(2, 3);
       sprites.beginRow(0);
       sprites.add(10, 20, 30, 40, 0xFFFF0000);
       sprites.endRow();
       final indices = Uint16List.fromList([0, 1, 2, 0, 2, 3]);
-      expect(sprites.buildVertices(indices), isNotNull);
+      expect(sprites.buildVertices(indices), isNotEmpty);
     });
 
     test('shrinking a row decreases the active count', () {
@@ -239,13 +239,13 @@ void main() {
         sprites.endRow();
         sprites.beginRow(5);
         sprites.endRow();
-        expect(sprites.buildVertices(indices), isNull);
+        expect(sprites.buildVertices(indices), isEmpty);
 
         sprites.beginRow(7);
         sprites.add(0, 0, 10, 10, 0xFF000000);
         sprites.add(0, 0, 10, 10, 0xFF000000);
         sprites.endRow();
-        expect(sprites.buildVertices(indices), isNotNull);
+        expect(sprites.buildVertices(indices), isNotEmpty);
         expect(sprites.count, 2);
       },
     );
@@ -277,6 +277,15 @@ void main() {
   });
 
   group('SpriteBuffer', () {
+    void addBackgrounds(SpriteBuffer buffer, int count) {
+      buffer.beginRow(0);
+      for (var index = 0; index < count; index++) {
+        final left = index.toDouble();
+        buffer.background.add(left, 0, left + 1, 1, 0xFFAABBCC);
+      }
+      buffer.endRow();
+    }
+
     test('configure resets active count across every channel', () {
       final buffer = SpriteBuffer()..configure(4, 10);
       buffer.seal();
@@ -297,8 +306,19 @@ void main() {
       buffer.endRow();
       buffer.seal();
 
-      expect(buffer.backgroundVertices, isNotNull);
-      expect(buffer.decorationVertices, isNull);
+      expect(buffer.backgroundVertices, isNotEmpty);
+      expect(buffer.decorationVertices, isEmpty);
+    });
+
+    test('seal splits rectangle vertices before indices overflow', () {
+      const rectangleCount = 16385;
+      final buffer = SpriteBuffer()..configure(1, rectangleCount - 1);
+      addTearDown(buffer.dispose);
+      addBackgrounds(buffer, rectangleCount);
+
+      buffer.seal();
+
+      expect(buffer.backgroundVertices, hasLength(2));
     });
 
     test('clean rows keep sprites across a partial rebuild', () {
@@ -397,7 +417,7 @@ void main() {
       expect(buffer.regular.count, 0);
       expect(buffer.background.count, 0);
       expect(buffer.shaped.count, 0);
-      expect(buffer.backgroundVertices, isNull);
+      expect(buffer.backgroundVertices, isEmpty);
     });
   });
 }

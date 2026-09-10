@@ -21,59 +21,22 @@ void drawArc(
   final ox = cell.left;
   final oy = cell.top;
 
-  switch (corner) {
-    case 0:
-      // top-left: connects down and right (╭)
-      path.moveTo(ox + cx, oy);
-      path.lineTo(ox + cx, oy + cy - r);
-      path.cubicTo(
-        ox + cx,
-        oy + cy - s * r,
-        ox + cx - s * r,
-        oy + cy,
-        ox + cx - r,
-        oy + cy,
-      );
-      path.lineTo(ox, oy + cy);
-    case 1:
-      // top-right: connects down and left (╮)
-      path.moveTo(ox + cx, oy);
-      path.lineTo(ox + cx, oy + cy - r);
-      path.cubicTo(
-        ox + cx,
-        oy + cy - s * r,
-        ox + cx + s * r,
-        oy + cy,
-        ox + cx + r,
-        oy + cy,
-      );
-      path.lineTo(ox + cell.width, oy + cy);
-    case 2:
-      // bottom-left: connects up and right (╰)
-      path.moveTo(ox + cx, oy + cell.height);
-      path.lineTo(ox + cx, oy + cy + r);
-      path.cubicTo(
-        ox + cx,
-        oy + cy + s * r,
-        ox + cx - s * r,
-        oy + cy,
-        ox + cx - r,
-        oy + cy,
-      );
-      path.lineTo(ox, oy + cy);
-    case 3:
-      // bottom-right: connects up and left (╯)
-      path.moveTo(ox + cx, oy + cell.height);
-      path.lineTo(ox + cx, oy + cy + r);
-      path.cubicTo(
-        ox + cx,
-        oy + cy + s * r,
-        ox + cx + s * r,
-        oy + cy,
-        ox + cx + r,
-        oy + cy,
-      );
-      path.lineTo(ox + cell.width, oy + cy);
+  if (corner >= 0 && corner <= 3) {
+    final right = corner.isOdd;
+    final bottom = corner >= 2;
+    final rx = right ? r : -r;
+    final ry = bottom ? r : -r;
+    path.moveTo(ox + cx, bottom ? oy + cell.height : oy);
+    path.lineTo(ox + cx, oy + cy + ry);
+    path.cubicTo(
+      ox + cx,
+      oy + cy + s * ry,
+      ox + cx + s * rx,
+      oy + cy,
+      ox + cx + rx,
+      oy + cy,
+    );
+    path.lineTo(right ? ox + cell.width : ox, oy + cy);
   }
 
   stroke

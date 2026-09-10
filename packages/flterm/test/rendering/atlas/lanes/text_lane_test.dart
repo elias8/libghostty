@@ -286,9 +286,67 @@ void main() {
       expect(lane.image, isNull);
     });
 
-    test('throws when a single slot exceeds the max atlas size', () {
-      final lane = TextLane(initialSize: 16, maxSize: 32)
-        ..configure(
+    group('atlas capacity', () {
+      const maxAtlasSize = 32;
+      late TextLane capacityLane;
+
+      setUp(() {
+        capacityLane = TextLane(initialSize: 16, maxSize: maxAtlasSize)
+          ..configure(
+            config(
+              metrics: const CellMetrics(
+                cellWidth: 8,
+                cellHeight: 8,
+                baseline: 6,
+              ),
+            ),
+          );
+      });
+
+      tearDown(() {
+        capacityLane.dispose();
+      });
+
+      ({List<AtlasEntry> entries, AtlasFullException? error}) fillUntilFull() {
+        final entries = <AtlasEntry>[];
+        for (var index = 0; index < 64; index++) {
+          try {
+            entries.add(
+              capacityLane.rasterizeText(
+                String.fromCharCode(0x41 + index),
+                bold: false,
+                italic: false,
+              ),
+            );
+          } on AtlasFullException catch (error) {
+            return (entries: entries, error: error);
+          }
+        }
+        return (entries: entries, error: null);
+      }
+
+      test('keeps allocated entries within the maximum atlas bounds', () {
+        final result = fillUntilFull();
+
+        expect(result.entries, isNotEmpty);
+        expect(
+          result.entries.map((entry) => entry.srcRight),
+          everyElement(lessThanOrEqualTo(maxAtlasSize.toDouble())),
+        );
+        expect(
+          result.entries.map((entry) => entry.srcBottom),
+          everyElement(lessThanOrEqualTo(maxAtlasSize.toDouble())),
+        );
+      });
+
+      test('throws when the next entry exceeds the maximum atlas size', () {
+        final result = fillUntilFull();
+
+        expect(result.error, isA<AtlasFullException>());
+      });
+
+      test('throws when a single entry exceeds the maximum atlas size', () {
+        capacityLane.configure(
           config(
             metrics: const CellMetrics(
               cellWidth: 32,
@@ -297,47 +355,12 @@ void main() {
             ),
           ),
         );
-      addTearDown(lane.dispose);
 
-      expect(
-        () => lane.rasterizeText('A', bold: false, italic: false),
-        throwsA(isA<AtlasFullException>()),
-      );
-    });
-
-    test('throws before returning out-of-bounds entries when full', () {
-      final lane = TextLane(initialSize: 16, maxSize: 32)
-        ..configure(
-          config(
-            metrics: const CellMetrics(
-              cellWidth: 8,
-              cellHeight: 8,
-              baseline: 6,
-            ),
-          ),
+        expect(
+          () => capacityLane.rasterizeText('A', bold: false, italic: false),
+          throwsA(isA<AtlasFullException>()),
         );
-      addTearDown(lane.dispose);
-
-      var added = 0;
-      AtlasFullException? full;
-      for (var i = 0; i < 64; i++) {
-        try {
-          final entry = lane.rasterizeText(
-            String.fromCharCode(0x41 + i),
-            bold: false,
-            italic: false,
-          );
-          expect(entry.srcRight, lessThanOrEqualTo(32));
-          expect(entry.srcBottom, lessThanOrEqualTo(32));
-          added++;
-        } on AtlasFullException catch (error) {
-          full = error;
-          break;
-        }
-      }
-
-      expect(added, greaterThan(0));
-      expect(full, isNotNull);
+      });
     });
   });
 }

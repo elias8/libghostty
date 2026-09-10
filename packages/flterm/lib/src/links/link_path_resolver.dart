@@ -86,6 +86,13 @@ abstract final class LinkPathResolver {
     return _trimTrailingPathProse(text);
   }
 
+  static String? _cwdPath(String? cwd) {
+    if (cwd == null || cwd.isEmpty) return null;
+    final filePath = _fileUriPath(cwd);
+    if (filePath != null) return filePath;
+    return cwd.startsWith('/') ? cwd : null;
+  }
+
   static String? _fileUriPath(String text) {
     final uri = Uri.tryParse(text);
     if (uri == null || uri.scheme != 'file') return null;
@@ -134,8 +141,13 @@ abstract final class LinkPathResolver {
   }
 
   static String _normalizePosixPath(String path) {
+    final normalized = _normalizeSegments(path, '/');
+    return path.startsWith('/') ? '/$normalized' : normalized;
+  }
+
+  static String _normalizeSegments(String path, String separator) {
     final segments = <String>[];
-    for (final segment in path.split('/')) {
+    for (final segment in path.split(separator)) {
       if (segment.isEmpty || segment == '.') continue;
       if (segment == '..') {
         if (segments.isNotEmpty) segments.removeLast();
@@ -143,11 +155,7 @@ abstract final class LinkPathResolver {
       }
       segments.add(segment);
     }
-
-    if (path.startsWith('/')) {
-      return segments.isEmpty ? '/' : '/${segments.join('/')}';
-    }
-    return segments.join('/');
+    return segments.join(separator);
   }
 
   static String _normalizeWindowsPath(String path) {
@@ -167,19 +175,8 @@ abstract final class LinkPathResolver {
       }
     }
 
-    final segments = <String>[];
-    for (final segment in rest.split(separator)) {
-      if (segment.isEmpty || segment == '.') continue;
-      if (segment == '..') {
-        if (segments.isNotEmpty) segments.removeLast();
-        continue;
-      }
-      segments.add(segment);
-    }
-
-    if (prefix.isEmpty) return segments.join(separator);
-    if (segments.isEmpty) return '$prefix$separator';
-    return '$prefix$separator${segments.join(separator)}';
+    final normalized = _normalizeSegments(rest, separator);
+    return prefix.isEmpty ? normalized : '$prefix$separator$normalized';
   }
 
   static Uri? _parseUri(String text) {
@@ -221,12 +218,5 @@ abstract final class LinkPathResolver {
       if (closes > opens) end--;
     }
     return text.substring(0, end);
-  }
-
-  static String? _cwdPath(String? cwd) {
-    if (cwd == null || cwd.isEmpty) return null;
-    final filePath = _fileUriPath(cwd);
-    if (filePath != null) return filePath;
-    return cwd.startsWith('/') ? cwd : null;
   }
 }

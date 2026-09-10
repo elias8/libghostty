@@ -24,22 +24,30 @@ Uint8List? trySystemFonts(
       if (file.existsSync()) return file.readAsBytesSync();
     }
 
-    // Fonts are often in family-named subfolders
-    // (e.g., /usr/share/fonts/truetype/jetbrains-mono/).
-    try {
-      for (final entity in dir.listSync(recursive: true)) {
-        if (entity is! File) continue;
-        final name = entity.uri.pathSegments.last.toLowerCase();
-        if (!name.endsWith('.ttf') && !name.endsWith('.otf')) continue;
-        final nameNoExt = name.substring(0, name.length - 4);
-        if (nameNoExt.contains(normalizedLower) &&
-            !excludedWeights.any(nameNoExt.contains)) {
-          return entity.readAsBytesSync();
-        }
+    final bytes = _findRecursiveFont(dir, normalizedLower, excludedWeights);
+    if (bytes != null) return bytes;
+  }
+  return null;
+}
+
+Uint8List? _findRecursiveFont(
+  Directory dir,
+  String normalizedLower,
+  Set<String> excludedWeights,
+) {
+  try {
+    for (final entity in dir.listSync(recursive: true)) {
+      if (entity is! File) continue;
+      final name = entity.uri.pathSegments.last.toLowerCase();
+      if (!name.endsWith('.ttf') && !name.endsWith('.otf')) continue;
+      final nameNoExt = name.substring(0, name.length - 4);
+      if (nameNoExt.contains(normalizedLower) &&
+          !excludedWeights.any(nameNoExt.contains)) {
+        return entity.readAsBytesSync();
       }
-    } on FileSystemException {
-      // Directory not readable.
     }
+  } on FileSystemException {
+    // Directory not readable.
   }
   return null;
 }
