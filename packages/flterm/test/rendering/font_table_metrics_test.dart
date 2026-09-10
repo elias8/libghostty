@@ -113,6 +113,20 @@ void main() {
       expect(parseFontTableMetrics(data), isNull);
     });
 
+    test('returns null when a table offset is outside the data', () {
+      final data = buildMinimalFont(includeTables: ['head', 'hhea']);
+      ByteData.sublistView(data).setUint32(20, data.length + 1);
+
+      expect(parseFontTableMetrics(data), isNull);
+    });
+
+    test('returns null when a table extends past the data', () {
+      final data = buildMinimalFont(includeTables: ['head', 'hhea']);
+      ByteData.sublistView(data).setUint32(24, data.length);
+
+      expect(parseFontTableMetrics(data), isNull);
+    });
+
     test('returns null when head table is missing', () {
       final data = buildMinimalFont(includeTables: ['hhea']);
       expect(parseFontTableMetrics(data), isNull);

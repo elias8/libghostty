@@ -27,98 +27,118 @@ FontTableMetrics? parseFontTableMetrics(Uint8List data) {
   final numTables = byteData.getUint16(4);
   if (data.length < 12 + numTables * 16) return null;
 
-  int? headOffset;
-  int? hheaOffset;
-  int? postOffset;
-  int? os2Offset;
-  int? headLength;
-  int? hheaLength;
-  int? postLength;
-  int? os2Length;
+  final tables = _readTableDirectory(data, byteData, numTables);
+  if (tables == null) return null;
 
-  for (var i = 0; i < numTables; i++) {
-    final entryOffset = 12 + i * 16;
-    final tag = String.fromCharCodes(data, entryOffset, entryOffset + 4);
-    final offset = byteData.getUint32(entryOffset + 8);
-    final length = byteData.getUint32(entryOffset + 12);
+  final head = tables.head;
+  final hhea = tables.hhea;
 
-    switch (tag) {
-      case 'head':
-        headOffset = offset;
-        headLength = length;
-      case 'hhea':
-        hheaOffset = offset;
-        hheaLength = length;
-      case 'post':
-        postOffset = offset;
-        postLength = length;
-      case 'OS/2':
-        os2Offset = offset;
-        os2Length = length;
-    }
-  }
-
-  if (headOffset == null || hheaOffset == null) return null;
-  if (headLength! < 20 || hheaLength! < 10) return null;
+  if (head == null || hhea == null) return null;
+  if (head.length < 20 || hhea.length < 10) return null;
 
   // head: unitsPerEm (uint16 @ +18).
-  final unitsPerEm = byteData.getUint16(headOffset + 18);
+  final unitsPerEm = byteData.getUint16(head.offset + 18);
   if (unitsPerEm == 0) return null;
 
   // hhea: ascent (int16 @ +4), descent (int16 @ +6), lineGap (int16 @ +8).
-  final ascent = byteData.getInt16(hheaOffset + 4);
-  final descent = byteData.getInt16(hheaOffset + 6);
-  final lineGap = byteData.getInt16(hheaOffset + 8);
+  final ascent = byteData.getInt16(hhea.offset + 4);
+  final descent = byteData.getInt16(hhea.offset + 6);
+  final lineGap = byteData.getInt16(hhea.offset + 8);
 
-  // post: underlinePosition (int16 @ +8), underlineThickness (int16 @ +10).
-  int? underlinePosition;
-  int? underlineThickness;
-  if (postOffset != null && postLength! >= 12) {
-    final rawPos = byteData.getInt16(postOffset + 8);
-    final rawThick = byteData.getInt16(postOffset + 10);
-
-    // Thickness of 0 is treated as broken; position is still used if
-    // the thickness is broken but the position is non-zero.
-    if (rawThick != 0 || rawPos != 0) underlinePosition = rawPos;
-    if (rawThick != 0) underlineThickness = rawThick;
-  }
-
-  // OS/2: yStrikeoutSize (int16 @ +26), yStrikeoutPosition (int16 @ +28).
-  int? strikethroughPosition;
-  int? strikethroughThickness;
-  int? capHeight;
-  int? exHeight;
-  if (os2Offset != null && os2Length! >= 30) {
-    final os2Version = byteData.getUint16(os2Offset);
-    final rawStSize = byteData.getInt16(os2Offset + 26);
-    final rawStPos = byteData.getInt16(os2Offset + 28);
-
-    if (rawStSize != 0 || rawStPos != 0) strikethroughPosition = rawStPos;
-    if (rawStSize != 0) strikethroughThickness = rawStSize;
-
-    // sxHeight (int16 @ +86) and sCapHeight (int16 @ +88) require
-    // OS/2 version ≥ 2.
-    if (os2Version >= 2 && os2Length >= 90) {
-      final rawExHeight = byteData.getInt16(os2Offset + 86);
-      final rawCapHeight = byteData.getInt16(os2Offset + 88);
-      if (rawExHeight > 0) exHeight = rawExHeight;
-      if (rawCapHeight > 0) capHeight = rawCapHeight;
-    }
-  }
+  final underline = _readUnderlineMetrics(byteData, tables.post);
+  final strike = _readOs2Metrics(byteData, tables.os2);
 
   return FontTableMetrics(
     unitsPerEm: unitsPerEm,
     ascent: ascent,
     descent: descent,
     lineGap: lineGap,
-    underlinePosition: underlinePosition,
-    underlineThickness: underlineThickness,
-    strikethroughPosition: strikethroughPosition,
-    strikethroughThickness: strikethroughThickness,
+    underlinePosition: underline.position,
+    underlineThickness: underline.thickness,
+    strikethroughPosition: strike.position,
+    strikethroughThickness: strike.thickness,
+    capHeight: strike.capHeight,
+    exHeight: strike.exHeight,
+  );
+}
+
+({int? position, int? thickness, int? capHeight, int? exHeight})
+_readOs2Metrics(ByteData byteData, _FontTableSlice? table) {
+  if (table == null || table.length < 30) {
+    return (position: null, thickness: null, capHeight: null, exHeight: null);
+  }
+
+  final os2Version = byteData.getUint16(table.offset);
+  final rawThickness = byteData.getInt16(table.offset + 26);
+  final rawPosition = byteData.getInt16(table.offset + 28);
+  int? capHeight;
+  int? exHeight;
+  if (os2Version >= 2 && table.length >= 90) {
+    final rawExHeight = byteData.getInt16(table.offset + 86);
+    final rawCapHeight = byteData.getInt16(table.offset + 88);
+    if (rawExHeight > 0) exHeight = rawExHeight;
+    if (rawCapHeight > 0) capHeight = rawCapHeight;
+  }
+
+  return (
+    position: rawThickness != 0 || rawPosition != 0 ? rawPosition : null,
+    thickness: rawThickness != 0 ? rawThickness : null,
     capHeight: capHeight,
     exHeight: exHeight,
   );
 }
+
+({
+  _FontTableSlice? head,
+  _FontTableSlice? hhea,
+  _FontTableSlice? post,
+  _FontTableSlice? os2,
+})?
+_readTableDirectory(Uint8List data, ByteData byteData, int numTables) {
+  _FontTableSlice? head;
+  _FontTableSlice? hhea;
+  _FontTableSlice? post;
+  _FontTableSlice? os2;
+
+  for (var i = 0; i < numTables; i++) {
+    final entryOffset = 12 + i * 16;
+    final tag = String.fromCharCodes(data, entryOffset, entryOffset + 4);
+    final offset = byteData.getUint32(entryOffset + 8);
+    final length = byteData.getUint32(entryOffset + 12);
+    if (offset > data.length || length > data.length - offset) return null;
+
+    switch (tag) {
+      case 'head':
+        head = (offset: offset, length: length);
+      case 'hhea':
+        hhea = (offset: offset, length: length);
+      case 'post':
+        post = (offset: offset, length: length);
+      case 'OS/2':
+        os2 = (offset: offset, length: length);
+    }
+  }
+
+  return (head: head, hhea: hhea, post: post, os2: os2);
+}
+
+({int? position, int? thickness}) _readUnderlineMetrics(
+  ByteData byteData,
+  _FontTableSlice? table,
+) {
+  if (table == null || table.length < 12) {
+    return (position: null, thickness: null);
+  }
+
+  final rawPosition = byteData.getInt16(table.offset + 8);
+  final rawThickness = byteData.getInt16(table.offset + 10);
+  return (
+    position: rawThickness != 0 || rawPosition != 0 ? rawPosition : null,
+    thickness: rawThickness != 0 ? rawThickness : null,
+  );
+}
+
+typedef _FontTableSlice = ({int offset, int length});
 
 /// Metrics extracted from a TrueType/OpenType font's binary tables.
 ///
