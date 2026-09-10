@@ -115,8 +115,7 @@ class AtlasTexture {
   /// Doubles one atlas dimension so the texture stays roughly square as it
   /// grows toward [_maxSize]. Returns false when both dimensions are maxed.
   bool _grow() {
-    if ((_width <= _height && _width < _maxSize) ||
-        (_height >= _maxSize && _width < _maxSize)) {
+    if (_width <= _height && _width < _maxSize) {
       _width = min(_width * 2, _maxSize);
       return true;
     } else if (_height < _maxSize) {
@@ -131,24 +130,12 @@ class AtlasTexture {
   /// atlas if vertical space is exhausted.
   void _pack(double width, double height) {
     if (width + padding > _maxSize || height + padding > _maxSize) {
-      throw AtlasFullException(
-        requestedWidth: width,
-        requestedHeight: height,
-        atlasWidth: _width,
-        atlasHeight: _height,
-        maxSize: _maxSize,
-      );
+      throw _fullException(width, height);
     }
 
     while (width + padding > _width || height + padding > _height) {
       if (!_grow()) {
-        throw AtlasFullException(
-          requestedWidth: width,
-          requestedHeight: height,
-          atlasWidth: _width,
-          atlasHeight: _height,
-          maxSize: _maxSize,
-        );
+        throw _fullException(width, height);
       }
     }
 
@@ -160,14 +147,17 @@ class AtlasTexture {
 
     while (_packY + height + padding > _height) {
       if (!_grow()) {
-        throw AtlasFullException(
-          requestedWidth: width,
-          requestedHeight: height,
-          atlasWidth: _width,
-          atlasHeight: _height,
-          maxSize: _maxSize,
-        );
+        throw _fullException(width, height);
       }
     }
   }
+
+  AtlasFullException _fullException(double width, double height) =>
+      AtlasFullException(
+        requestedWidth: width,
+        requestedHeight: height,
+        atlasWidth: _width,
+        atlasHeight: _height,
+        maxSize: _maxSize,
+      );
 }

@@ -3,6 +3,7 @@ library;
 import 'dart:math' as math;
 import 'dart:ui';
 
+part 'drawing.dart';
 part 'parts/box_arc.dart';
 part 'parts/box_lines.dart';
 part 'parts/box_spur.dart';
@@ -26,16 +27,17 @@ part 'parts/powerline_flame.dart';
 part 'parts/powerline_semicircle.dart';
 part 'parts/stripe_fill.dart';
 part 'parts/stroked_polygon.dart';
-part 'drawing.dart';
 part 'registry.dart';
 part 'sprite_context.dart';
 part 'sprite_glyph.dart';
 
 final class SpriteFace {
+  static final _builtinRegistry = buildBuiltinSpriteRegistry();
+
   final Map<int, SpriteGlyph> _registry;
 
   SpriteFace({Map<int, SpriteGlyph>? registry})
-    : _registry = registry ?? buildBuiltinSpriteRegistry();
+    : _registry = registry ?? _builtinRegistry;
 
   Iterable<int> get supportedCodepoints => _registry.keys;
 

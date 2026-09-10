@@ -237,7 +237,7 @@ List<(double, double)> _decodeSmoothVertices(int mask) {
       vertices.add((_vx[bit], _vy[bit]));
     }
   }
-  return vertices;
+  return List.unmodifiable(vertices);
 }
 
 Map<int, SpriteGlyph> _legacyComputing() {

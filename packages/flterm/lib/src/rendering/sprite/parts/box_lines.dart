@@ -75,22 +75,15 @@ final class BoxLines extends SpriteGlyph {
     final paint = ctx.fill..isAntiAlias = false;
 
     switch (up) {
-      case 1:
+      case 1 || 2:
+        final stroke = lt * up;
+        final left = (w - stroke) / 2;
         drawBox(
           canvas,
           paint,
-          ox + vLightLeft,
+          ox + left,
           oy,
-          ox + vLightRight,
-          oy + upBottom,
-        );
-      case 2:
-        drawBox(
-          canvas,
-          paint,
-          ox + vHeavyLeft,
-          oy,
-          ox + vHeavyRight,
+          ox + (left + stroke),
           oy + upBottom,
         );
       case 3:
@@ -108,23 +101,16 @@ final class BoxLines extends SpriteGlyph {
     }
 
     switch (right) {
-      case 1:
+      case 1 || 2:
+        final stroke = lt * right;
+        final top = (h - stroke) / 2;
         drawBox(
           canvas,
           paint,
           ox + rightLeft,
-          oy + hLightTop,
+          oy + top,
           ox + w,
-          oy + hLightBot,
-        );
-      case 2:
-        drawBox(
-          canvas,
-          paint,
-          ox + rightLeft,
-          oy + hHeavyTop,
-          ox + w,
-          oy + hHeavyBot,
+          oy + (top + stroke),
         );
       case 3:
         final tl = up == 3 ? vLightRight : rightLeft;
@@ -148,22 +134,15 @@ final class BoxLines extends SpriteGlyph {
     }
 
     switch (down) {
-      case 1:
+      case 1 || 2:
+        final stroke = lt * down;
+        final left = (w - stroke) / 2;
         drawBox(
           canvas,
           paint,
-          ox + vLightLeft,
+          ox + left,
           oy + downTop,
-          ox + vLightRight,
-          oy + h,
-        );
-      case 2:
-        drawBox(
-          canvas,
-          paint,
-          ox + vHeavyLeft,
-          oy + downTop,
-          ox + vHeavyRight,
+          ox + (left + stroke),
           oy + h,
         );
       case 3:
@@ -188,23 +167,16 @@ final class BoxLines extends SpriteGlyph {
     }
 
     switch (left) {
-      case 1:
+      case 1 || 2:
+        final stroke = lt * left;
+        final top = (h - stroke) / 2;
         drawBox(
           canvas,
           paint,
           ox,
-          oy + hLightTop,
+          oy + top,
           ox + leftRight,
-          oy + hLightBot,
-        );
-      case 2:
-        drawBox(
-          canvas,
-          paint,
-          ox,
-          oy + hHeavyTop,
-          ox + leftRight,
-          oy + hHeavyBot,
+          oy + (top + stroke),
         );
       case 3:
         final tr = up == 3 ? vLightLeft : leftRight;
@@ -225,10 +197,7 @@ final class BoxLines extends SpriteGlyph {
     double alt,
   ) {
     if (perp1 == 2 || perp2 == 2) return heavy;
-    if (perp1 != perp2 || parallel == self) {
-      return (perp1 == 3 || perp2 == 3) ? dbl : light;
-    }
-    if (perp1 == 0 && perp2 == 0) return light;
-    return alt;
+    if (perp1 == perp2 && parallel != self) return perp1 == 0 ? light : alt;
+    return (perp1 == 3 || perp2 == 3) ? dbl : light;
   }
 }

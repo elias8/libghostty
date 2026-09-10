@@ -1,5 +1,6 @@
 import 'dart:ui' show FontWeight;
 
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:meta/meta.dart';
 
 import '../../foundation.dart';
@@ -53,7 +54,7 @@ class AtlasConfig {
       other.fontSize == fontSize &&
       other.fontWeight == fontWeight &&
       other.fontFamily == fontFamily &&
-      _listEquals(other.fontFamilyFallback, fontFamilyFallback) &&
+      listEquals(other.fontFamilyFallback, fontFamilyFallback) &&
       other.metrics == metrics &&
       other.devicePixelRatio == devicePixelRatio;
 
@@ -73,14 +74,5 @@ class AtlasConfig {
       metrics: metrics ?? this.metrics,
       devicePixelRatio: devicePixelRatio ?? this.devicePixelRatio,
     );
-  }
-
-  static bool _listEquals(List<String> a, List<String> b) {
-    if (identical(a, b)) return true;
-    if (a.length != b.length) return false;
-    for (var i = 0; i < a.length; i++) {
-      if (a[i] != b[i]) return false;
-    }
-    return true;
   }
 }

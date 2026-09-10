@@ -6,7 +6,6 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   final face = SpriteFace();
-  final context = SpriteContext();
 
   group('SpriteFace', () {
     // 8-bit octant patterns for U+1CD00..U+1CDDD, in codepoint order.
@@ -87,9 +86,13 @@ void main() {
       Rect cell,
     ) {
       final glyph = face.glyphFor(codepoint);
-      if (glyph == null) return;
+      expect(
+        glyph,
+        isNotNull,
+        reason: 'missing codepoint ${codepoint.toRadixString(16)}',
+      );
       context.reset();
-      glyph.paint(canvas, cell, context);
+      glyph!.paint(canvas, cell, context);
     }
 
     Future<Uint8List> rasterize(
@@ -108,11 +111,11 @@ void main() {
         const Rect.fromLTWH(0, 0, width, height),
       );
       final picture = recorder.endRecording();
+      addTearDown(picture.dispose);
       final image = picture.toImageSync(width.toInt(), height.toInt());
-      picture.dispose();
+      addTearDown(image.dispose);
       final bytes = await image.toByteData();
-      image.dispose();
-      return bytes!.buffer.asUint8List();
+      return Uint8List.sublistView(bytes!);
     }
 
     void expectArcGlyph(Uint8List rgba, int width, int height, int corner) {
@@ -275,11 +278,13 @@ void main() {
     group('painting', () {
       late PictureRecorder recorder;
       late Canvas canvas;
+      late SpriteContext context;
       const cell = Rect.fromLTWH(0, 0, 8, 16);
 
       setUp(() {
         recorder = PictureRecorder();
         canvas = Canvas(recorder);
+        context = SpriteContext();
       });
 
       tearDown(() {

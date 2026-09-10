@@ -8,28 +8,6 @@ import 'paragraph_lane.dart';
 class TextLane extends ParagraphLane {
   TextLane({super.initialSize, super.maxSize}) : super(entryLane: .text);
 
-  @override
-  void paintPendingParagraph(
-    Canvas canvas,
-    Paragraph paragraph,
-    AtlasEntry entry,
-    double widthScale,
-    double heightScale,
-    Offset paintOffset,
-  ) {
-    final offset = Offset(
-      entry.srcLeft + paintOffset.dx,
-      entry.srcTop + paintOffset.dy,
-    );
-    if (widthScale == 1.0 && heightScale == 1.0) {
-      canvas.drawParagraph(paragraph, offset);
-    } else {
-      canvas.translate(offset.dx, offset.dy);
-      canvas.scale(widthScale, heightScale);
-      canvas.drawParagraph(paragraph, Offset.zero);
-    }
-  }
-
   /// Builds a paragraph for [text], packs it into the atlas, and returns
   /// an [AtlasEntry] with its source coordinates.
   ///
