@@ -29,7 +29,10 @@ final class LinkMatch {
   @override
   int get hashCode => Object.hash(priority, hoverOnly, sourceOrder, link);
 
-  int get length => link.range.sortLength;
+  int get length {
+    final range = link.range;
+    return range.isSingleRow ? range.end.col - range.start.col + 1 : 1 << 20;
+  }
 
   @override
   bool operator ==(Object other) =>
