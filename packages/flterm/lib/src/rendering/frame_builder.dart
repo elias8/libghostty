@@ -4,7 +4,6 @@ import 'dart:ui';
 
 import 'package:libghostty/libghostty.dart';
 
-import '../foundation/dynamic_color.dart';
 import '../foundation/terminal_theme.dart';
 import '../links/link_snapshot.dart';
 import 'atlas/atlas.dart';
@@ -284,15 +283,13 @@ class FrameBuilder {
     _rows.reset(_renderState);
 
     if (useDirtyIterator) {
-      while (_rows.nextDirty()) {
+      while (_rows.nextDirty() && _rows.index < _state.rows) {
         final row = _rows.index;
-        if (row >= _state.rows) break;
         _blinkRows[row] = _rowBuilder.rebuildRow(row, _rows, _cells) ? 1 : 0;
       }
     } else {
-      while (_rows.next()) {
+      while (_rows.next() && _rows.index < _state.rows) {
         final row = _rows.index;
-        if (row >= _state.rows) break;
         if (rebuildAll || _rows.dirty || _dirtyRows.isDirty(row)) {
           _blinkRows[row] = _rowBuilder.rebuildRow(row, _rows, _cells) ? 1 : 0;
         }
@@ -346,7 +343,6 @@ final class _CursorCellSnapshot {
 final class _CursorFrameBuilder {
   final PaintState _state;
   final CellContentResolver _content;
-  var _cursor = const RenderStateCursor();
   _CursorCellSnapshot? _lastCell;
 
   _CursorFrameBuilder(this._state, this._content);
@@ -405,7 +401,6 @@ final class _CursorFrameBuilder {
     );
     final cell = _CursorCellSnapshot(ref.content, ref.style, wide: ref.isWide);
 
-    _cursor = effectiveCursor;
     _lastCell = cell;
     _state.cursor = effectiveCursor;
     _state.cursorWide = cell.wide;
@@ -414,7 +409,6 @@ final class _CursorFrameBuilder {
   }
 
   void _hide(RenderStateCursor cursor) {
-    _cursor = cursor;
     _lastCell = null;
     _state.cursor = cursor.copyWith(visible: false);
     _state.cursorWide = false;
@@ -448,7 +442,7 @@ final class _CursorFrameBuilder {
     final cell = _lastCell;
     if (cell == null ||
         !_state.cursorFocused ||
-        _cursor.visualStyle != CursorShape.block) {
+        _state.cursor.visualStyle != CursorShape.block) {
       return null;
     }
     final style = cell.style;
@@ -1029,9 +1023,6 @@ final class _RowBuildState {
   var prevHighlight = _CellHighlight.none;
   HyperlinkStyle? prevLinkStyle;
 
-  var baseForeground = 0xFFFFFFFF;
-  var baseBackground = 0;
-  var baseBackgroundExplicit = false;
   var foreground = 0xFFFFFFFF;
   var background = 0;
   var backgroundInverse = false;
@@ -1063,9 +1054,6 @@ final class _RowBuildState {
     prevBackgroundArgb = null;
     prevHighlight = .none;
     prevLinkStyle = null;
-    baseForeground = 0xFFFFFFFF;
-    baseBackground = frame.defaultBackgroundArgb;
-    baseBackgroundExplicit = false;
     foreground = 0xFFFFFFFF;
     background = frame.defaultBackgroundArgb;
     backgroundInverse = false;
@@ -1119,25 +1107,18 @@ final class _StyleResolver {
     required HyperlinkStyle? linkStyle,
     required _RowBuildState row,
   }) {
-    if (cell.styleId != row.prevStyleId ||
-        backgroundArgb != row.prevBackgroundArgb ||
-        linkStyle != row.prevLinkStyle) {
-      final (fg, bg, style, explicitBg) = _resolveBase(
-        cell,
-        backgroundArgb: backgroundArgb,
-      );
-      row.prevStyleId = cell.styleId;
-      row.prevBackgroundArgb = backgroundArgb;
-      row.baseForeground = fg;
-      row.baseBackground = bg;
-      row.baseBackgroundExplicit = explicitBg;
-      row.backgroundInverse = style.inverse;
-      row.style = style;
-      row.hidden = style.invisible || (!_state.blinkVisible && style.blink);
-      row.hasBlink = row.hasBlink || style.blink;
-      row.hasDecoration =
-          style.underline != .none || style.strikethrough || style.overline;
-    }
+    final (fg, bg, style, explicitBg) = _resolveBase(
+      cell,
+      backgroundArgb: backgroundArgb,
+    );
+    row.prevStyleId = cell.styleId;
+    row.prevBackgroundArgb = backgroundArgb;
+    row.backgroundInverse = style.inverse;
+    row.style = style;
+    row.hidden = style.invisible || (!_state.blinkVisible && style.blink);
+    row.hasBlink = row.hasBlink || style.blink;
+    row.hasDecoration =
+        style.underline != .none || style.strikethrough || style.overline;
 
     if (highlight != .none) {
       final selection = switch (highlight) {
@@ -1149,28 +1130,27 @@ final class _StyleResolver {
         ),
       };
       final searchHighlight = highlight != .selection;
-      row.foreground = _resolveSelectionColor(
-        row,
-        selection.foreground,
-        searchHighlight ? row.baseForeground : _state.terminalBackgroundArgb,
-      );
-      row.background = _resolveSelectionColor(
-        row,
-        selection.background,
-        searchHighlight ? row.baseBackground : _state.terminalForegroundArgb,
-      );
+      row.foreground =
+          selection.foreground
+              ?.resolve(cellForeground: Color(fg), cellBackground: Color(bg))
+              .toARGB32() ??
+          (searchHighlight ? fg : _state.terminalBackgroundArgb);
+      row.background =
+          selection.background
+              ?.resolve(cellForeground: Color(fg), cellBackground: Color(bg))
+              .toARGB32() ??
+          (searchHighlight ? bg : _state.terminalForegroundArgb);
       row.backgroundExplicit = true;
     } else {
-      row.foreground = row.baseForeground;
-      row.background = row.baseBackground;
-      row.backgroundExplicit = row.baseBackgroundExplicit;
+      row.foreground = fg;
+      row.background = bg;
+      row.backgroundExplicit = explicitBg;
     }
 
     if (linkStyle != null) {
       final textColor = linkStyle.textColor;
       if (textColor != null) row.foreground = textColor.toARGB32();
       if (linkStyle.underline != .none) {
-        final style = row.style;
         row.style = Style(
           bold: style.bold,
           italic: style.italic,
@@ -1249,20 +1229,6 @@ final class _StyleResolver {
     }
 
     return (foreground, background, style, explicitBg);
-  }
-
-  int _resolveSelectionColor(
-    _RowBuildState row,
-    DynamicColor? override,
-    int fallbackArgb,
-  ) {
-    if (override == null) return fallbackArgb;
-    return override
-        .resolve(
-          cellForeground: Color(row.baseForeground),
-          cellBackground: Color(row.baseBackground),
-        )
-        .toARGB32();
   }
 }
 

@@ -5,13 +5,12 @@ import 'package:flutter/painting.dart';
 import '../kitty_image_cache.dart';
 import '../kitty_placement_cache.dart';
 import '../paint_state.dart';
-import 'terminal_painter.dart';
 
 /// Paints one ordered Kitty graphics placement list.
 ///
 /// The caller chooses where the list belongs in the surrounding paint order;
 /// this painter only clips and draws the snapshots it receives.
-class KittyGraphicsPainter implements TerminalPainter {
+class KittyGraphicsPainter {
   final Paint _paint;
   final PaintState _state;
   final KittyImageCache _cache;
@@ -23,7 +22,6 @@ class KittyGraphicsPainter implements TerminalPainter {
     required this._snapshots,
   }) : _paint = Paint()..filterQuality = .low;
 
-  @override
   void paint(Canvas canvas) {
     if (_snapshots.isEmpty) return;
     final width = _state.cols * _state.metrics.cellWidth;

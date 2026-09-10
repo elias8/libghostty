@@ -5,7 +5,6 @@ import 'package:libghostty/libghostty.dart';
 
 import '../atlas/atlas.dart';
 import '../paint_state.dart';
-import 'terminal_painter.dart';
 
 /// Renders the terminal cursor in block, hollow, underline, and bar shapes.
 ///
@@ -22,14 +21,13 @@ import 'terminal_painter.dart';
 ///
 /// Cursor opacity from [CursorTheme.opacity] is applied when focused.
 /// Unfocused cursors draw at full opacity.
-class CursorPainter implements TerminalPainter {
+class CursorPainter {
   final Paint _paint;
   final Atlas _atlas;
   final PaintState _state;
 
   CursorPainter(this._state, this._atlas) : _paint = Paint();
 
-  @override
   void paint(Canvas canvas) {
     final cursor = _state.cursor;
     if (_state.preeditActive) return;
@@ -60,58 +58,56 @@ class CursorPainter implements TerminalPainter {
       endCol,
       .zero,
     );
-    final CursorShape shape = switch (cursor.passwordInput && focused) {
-      true => .block,
-      false =>
-        !focused && cursor.visualStyle == .block
-            ? .blockHollow
-            : cursor.visualStyle,
+    final CursorShape shape = switch ((
+      focused,
+      cursor.passwordInput,
+      cursor.visualStyle,
+    )) {
+      (true, true, _) => .block,
+      (false, _, .block) => .blockHollow,
+      _ => cursor.visualStyle,
     };
 
     _paint.style = PaintingStyle.fill;
     switch (shape) {
+      case .block when cursor.passwordInput:
+        canvas.drawRect(rect, _paint);
+        _paint.color = const Color(0xFF000000);
+        canvas.drawCircle(
+          rect.center,
+          (metrics.cellHeight * 0.15).clamp(1.5, 4.0),
+          _paint,
+        );
       case .block:
         canvas.drawRect(rect, _paint);
-        if (cursor.passwordInput) {
-          _paint.color = const Color(0xFF000000);
-          canvas.drawCircle(
-            rect.center,
-            (metrics.cellHeight * 0.15).clamp(1.5, 4.0),
-            _paint,
-          );
-        } else {
-          final entry = _state.cursorAtlasEntry;
-          if (entry != null) {
-            final atlasImage = _atlas.imageFor(entry);
-            if (atlasImage == null) return;
+        final entry = _state.cursorAtlasEntry;
+        if (entry == null) return;
+        final atlasImage = _atlas.imageFor(entry);
+        if (atlasImage == null) return;
 
-            final inverseDpr = 1.0 / _atlas.devicePixelRatio;
-            final (sourceBearingX, sourceBearingY) = switch (entry.lane) {
-              .sprite || .text => (
-                entry.bearingX * inverseDpr,
-                entry.bearingY * inverseDpr,
-              ),
-              _ => (0.0, 0.0),
-            };
+        final inverseDpr = 1.0 / _atlas.devicePixelRatio;
+        final (sourceBearingX, sourceBearingY) = switch (entry.lane) {
+          .sprite ||
+          .text => (entry.bearingX * inverseDpr, entry.bearingY * inverseDpr),
+          _ => (0.0, 0.0),
+        };
 
-            canvas.drawImageRect(
-              atlasImage,
-              Rect.fromLTRB(
-                entry.srcLeft,
-                entry.srcTop,
-                entry.srcRight,
-                entry.srcBottom,
-              ),
-              Rect.fromLTWH(
-                cursor.viewportX * metrics.cellWidth + sourceBearingX,
-                cursor.viewportY * metrics.cellHeight + sourceBearingY,
-                (entry.srcRight - entry.srcLeft) * inverseDpr,
-                (entry.srcBottom - entry.srcTop) * inverseDpr,
-              ),
-              _state.cursorGlyphPaint,
-            );
-          }
-        }
+        canvas.drawImageRect(
+          atlasImage,
+          Rect.fromLTRB(
+            entry.srcLeft,
+            entry.srcTop,
+            entry.srcRight,
+            entry.srcBottom,
+          ),
+          Rect.fromLTWH(
+            cursor.viewportX * metrics.cellWidth + sourceBearingX,
+            cursor.viewportY * metrics.cellHeight + sourceBearingY,
+            (entry.srcRight - entry.srcLeft) * inverseDpr,
+            (entry.srcBottom - entry.srcTop) * inverseDpr,
+          ),
+          _state.cursorGlyphPaint,
+        );
 
       case .blockHollow:
         _paint

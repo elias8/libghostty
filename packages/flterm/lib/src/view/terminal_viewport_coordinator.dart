@@ -112,6 +112,19 @@ final class TerminalViewportCoordinator extends ViewportOffset {
   @override
   void correctBy(double correction) => _source.correctBy(correction);
 
+  void handlePixelsChanged() {
+    if (_applyingLayout || _screen == .alternate || _cellHeight <= 0) return;
+    if (_scrollbackRows <= 0) return;
+
+    final maxExtent = _scrollbackRows * _cellHeight;
+    final pixels = _source.pixels.clamp(0.0, maxExtent);
+    _stickToBottom = maxExtent <= 0 || pixels >= maxExtent - _cellHeight;
+
+    final targetRow = (pixels / _cellHeight).floor();
+    if (targetRow == _engineViewportRow) return;
+    _requestViewportRow(targetRow);
+  }
+
   @override
   void jumpTo(double pixels) => _source.jumpTo(pixels);
 
@@ -197,26 +210,6 @@ final class TerminalViewportCoordinator extends ViewportOffset {
         _pendingViewportRow != null;
   }
 
-  bool wraps(ViewportOffset source) => identical(_source, source);
-
-  void _handleSourceChanged() {
-    notifyListeners();
-    handlePixelsChanged();
-  }
-
-  void handlePixelsChanged() {
-    if (_applyingLayout || _screen == .alternate || _cellHeight <= 0) return;
-    if (_scrollbackRows <= 0) return;
-
-    final maxExtent = _scrollbackRows * _cellHeight;
-    final pixels = _source.pixels.clamp(0.0, maxExtent);
-    _stickToBottom = maxExtent <= 0 || pixels >= maxExtent - _cellHeight;
-
-    final targetRow = (pixels / _cellHeight).floor();
-    if (targetRow == _engineViewportRow) return;
-    _requestViewportRow(targetRow);
-  }
-
   void submitLayout({
     required TerminalScreen screen,
     required int viewportRow,
@@ -231,7 +224,6 @@ final class TerminalViewportCoordinator extends ViewportOffset {
     _cellHeight = cellHeight;
     _applyingLayout = true;
     try {
-      var effectiveViewportRow = viewportRow;
       _source.applyViewportDimension(viewportDimension);
 
       if (screen == .alternate) {
@@ -240,50 +232,19 @@ final class TerminalViewportCoordinator extends ViewportOffset {
         return;
       }
 
-      final primarySnapshot = _primarySnapshot;
-      if (primarySnapshot != null) {
-        final targetPixels = primarySnapshot.logicalRow * cellHeight;
-        final correction = targetPixels - _source.pixels;
-        if (correction.abs() > 0.01) _source.correctBy(correction);
-        _stickToBottom = primarySnapshot.stickToBottom;
-        _primarySnapshot = null;
-        effectiveViewportRow = primarySnapshot.logicalRow.floor().clamp(
-          0,
-          scrollbackRows,
-        );
-        if (!_stickToBottom && effectiveViewportRow != viewportRow) {
-          _requestViewportRow(effectiveViewportRow);
-        }
-      }
+      final effectiveViewportRow = _restorePrimarySnapshot(
+        viewportRow,
+        scrollbackRows,
+        cellHeight,
+      );
 
       final maxExtent = scrollbackRows * cellHeight;
-      final pendingPixelCorrection = _pendingPixelCorrection;
-      _pendingPixelCorrection = null;
-      if (pendingPixelCorrection != null) {
-        _source.correctBy(pendingPixelCorrection);
-      }
-
-      final pendingViewportRow = _pendingViewportRow;
-      _pendingViewportRow = null;
-      if (pendingViewportRow != null) {
-        final targetPixels =
-            pendingViewportRow.clamp(0, scrollbackRows) * cellHeight;
-        final correction = targetPixels - _source.pixels;
-        if (correction.abs() > 0.01) _source.correctBy(correction);
-      }
-
-      if (!_stickToBottom &&
-          scrollbackRows > 0 &&
-          effectiveViewportRow >= scrollbackRows) {
-        _stickToBottom = true;
-      }
-      if (_stickToBottom && maxExtent > 0) {
-        final correction = maxExtent - _source.pixels;
-        if (correction.abs() > 0.01) _source.correctBy(correction);
-        if (effectiveViewportRow < scrollbackRows) {
-          _requestViewportRow(scrollbackRows);
-        }
-      }
+      _applyCorrections(
+        scrollbackRows,
+        cellHeight,
+        effectiveViewportRow,
+        maxExtent,
+      );
       _source.applyContentDimensions(0, maxExtent);
       _lastScrollbackRows = scrollbackRows;
       _stickToBottom =
@@ -291,6 +252,47 @@ final class TerminalViewportCoordinator extends ViewportOffset {
     } finally {
       _applyingLayout = false;
     }
+  }
+
+  bool wraps(ViewportOffset source) => identical(_source, source);
+
+  void _applyCorrections(
+    int scrollbackRows,
+    double cellHeight,
+    int effectiveViewportRow,
+    double maxExtent,
+  ) {
+    final pendingPixelCorrection = _pendingPixelCorrection;
+    _pendingPixelCorrection = null;
+    if (pendingPixelCorrection != null) {
+      _source.correctBy(pendingPixelCorrection);
+    }
+
+    final pendingViewportRow = _pendingViewportRow;
+    _pendingViewportRow = null;
+    if (pendingViewportRow != null) {
+      final targetPixels =
+          pendingViewportRow.clamp(0, scrollbackRows) * cellHeight;
+      final correction = targetPixels - _source.pixels;
+      if (correction.abs() > 0.01) _source.correctBy(correction);
+    }
+    if (!_stickToBottom &&
+        scrollbackRows > 0 &&
+        effectiveViewportRow >= scrollbackRows) {
+      _stickToBottom = true;
+    }
+    if (_stickToBottom && maxExtent > 0) {
+      final correction = maxExtent - _source.pixels;
+      if (correction.abs() > 0.01) _source.correctBy(correction);
+      if (effectiveViewportRow < scrollbackRows) {
+        _requestViewportRow(scrollbackRows);
+      }
+    }
+  }
+
+  void _handleSourceChanged() {
+    notifyListeners();
+    handlePixelsChanged();
   }
 
   void _requestViewportRow(int row) {
@@ -303,5 +305,28 @@ final class TerminalViewportCoordinator extends ViewportOffset {
     } finally {
       _applyingViewportIntent = false;
     }
+  }
+
+  int _restorePrimarySnapshot(
+    int viewportRow,
+    int scrollbackRows,
+    double cellHeight,
+  ) {
+    final snapshot = _primarySnapshot;
+    if (snapshot == null) return viewportRow;
+
+    final targetPixels = snapshot.logicalRow * cellHeight;
+    final correction = targetPixels - _source.pixels;
+    if (correction.abs() > 0.01) _source.correctBy(correction);
+    _stickToBottom = snapshot.stickToBottom;
+    _primarySnapshot = null;
+    final effectiveViewportRow = snapshot.logicalRow.floor().clamp(
+      0,
+      scrollbackRows,
+    );
+    if (!_stickToBottom && effectiveViewportRow != viewportRow) {
+      _requestViewportRow(effectiveViewportRow);
+    }
+    return effectiveViewportRow;
   }
 }

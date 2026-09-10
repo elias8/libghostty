@@ -6,8 +6,13 @@ import 'dart:typed_data';
 import 'dart:ui';
 
 import 'package:flterm/src/foundation/cell_metrics.dart';
+import 'package:flterm/src/foundation/cell_range.dart';
 import 'package:flterm/src/foundation/dynamic_color.dart';
 import 'package:flterm/src/foundation/terminal_theme.dart';
+import 'package:flterm/src/links/link_match.dart';
+import 'package:flterm/src/links/link_settings.dart'
+    show ActivatedLink, LinkType;
+import 'package:flterm/src/links/link_snapshot.dart';
 import 'package:flterm/src/rendering/atlas/atlas.dart';
 import 'package:flterm/src/rendering/atlas/sprite_buffer.dart';
 import 'package:flterm/src/rendering/frame_builder.dart';
@@ -343,6 +348,52 @@ void main() {
       builder.sync(terminal, terminalDirty: true);
 
       expect(sprites.underline.sealedColors.single, 0xFF010203.toSigned(32));
+    });
+
+    test('sync preserves link underline across a highlight boundary', () {
+      final singleUnderline = atlas.addDecoration(.single);
+      state.updateTheme(
+        TerminalTheme.dark().copyWith(
+          hyperlink: const HyperlinkTheme(
+            idle: HyperlinkStyle(underline: .single),
+          ),
+        ),
+      );
+      writeUtf8(terminal, 'ab');
+      terminal.selection = Selection.fromRefs(
+        start: GridRef.at(terminal, const Position(row: 0, col: 1)),
+        end: GridRef.at(terminal, const Position(row: 0, col: 1)),
+      );
+      const link = LinkMatch(
+        priority: 0,
+        sourceOrder: 0,
+        hoverOnly: false,
+        link: ActivatedLink(
+          type: LinkType.custom,
+          id: 'test',
+          text: 'ab',
+          range: CellRange(
+            start: Position(row: 0, col: 0),
+            end: Position(row: 0, col: 1),
+          ),
+        ),
+      );
+
+      builder.sync(
+        terminal,
+        terminalDirty: true,
+        linkSnapshot: const LinkSnapshot([link]),
+      );
+
+      expect(sprites.underline.count, 2);
+      expect(
+        spriteRectKey(sprites.underline, 0),
+        entryRectKey(singleUnderline),
+      );
+      expect(
+        spriteRectKey(sprites.underline, 1),
+        entryRectKey(singleUnderline),
+      );
     });
 
     test(

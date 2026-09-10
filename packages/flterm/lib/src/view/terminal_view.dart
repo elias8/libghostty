@@ -6,6 +6,7 @@ import 'package:libghostty/libghostty.dart' show GridRef, Position, Selection;
 
 import '../controller/terminal_controller.dart';
 import '../foundation.dart';
+import '../foundation/viewport_selection.dart';
 import '../input/interaction_region.dart';
 import '../links/link_settings.dart';
 import '../rendering.dart';
@@ -358,79 +359,8 @@ final class _TerminalViewState extends State<TerminalView>
   void didUpdateWidget(TerminalView oldWidget) {
     super.didUpdateWidget(oldWidget);
 
-    final controllerChanged = widget.controller != oldWidget.controller;
-    final focusNodeChanged = widget.focusNode != oldWidget.focusNode;
-    final scrollControllerChanged =
-        widget.scrollController != oldWidget.scrollController;
-
-    if (controllerChanged) {
-      _attachment.removeListener(_onControllerChanged);
-      _attachment.dispose();
-    } else if (focusNodeChanged) {
-      _attachment.detach();
-    }
-
-    if (focusNodeChanged) {
-      if (oldWidget.focusNode == null) _focusNode.dispose();
-      _focusNode = widget.focusNode ?? FocusNode();
-    }
-
-    if (scrollControllerChanged) {
-      if (oldWidget.scrollController == null) _scrollController.dispose();
-      _scrollController = widget.scrollController ?? TerminalScrollController();
-    }
-
-    if (widget.scrollPhysics != oldWidget.scrollPhysics) {
-      _updateGestureScrollPhysics();
-    }
-
-    if (controllerChanged) {
-      _attachment = ViewAttachment(_controller);
-      _attachment.addListener(_onControllerChanged);
-      _resizeDeferred = _attachment.resizeDeferred;
-    }
-
-    if (controllerChanged || focusNodeChanged || scrollControllerChanged) {
-      _bindViewListenables();
-      setTerminalScrollControllerActiveScreen(
-        _scrollController,
-        _controller.activeScreen,
-      );
-      _attachment.attach(_focusNode, _scrollController, viewId: _viewId!);
-    }
-
-    _attachment.mouseAutoHide = widget.mouseAutoHide;
-    final oldTheme = _theme;
-    final themeChanged = widget.theme != oldWidget.theme;
-    if (themeChanged) {
-      _theme = widget.theme ?? TerminalTheme.dark();
-    }
-    if (controllerChanged) {
-      _attachment.applyTheme(_theme, initial: true);
-    } else if (themeChanged) {
-      _attachment.applyTheme(_theme);
-    }
-
-    final fontDataChanged = widget.fontData != oldWidget.fontData;
-    final fontFamilyChanged = _theme.fontFamily != oldTheme.fontFamily;
-    if (fontFamilyChanged) _resolvedFontData = null;
-
-    final fontMetricsChanged =
-        fontDataChanged ||
-        _theme.fontSize != oldTheme.fontSize ||
-        _theme.fontWeight != oldTheme.fontWeight ||
-        fontFamilyChanged ||
-        _theme.fontFamilyFallback != oldTheme.fontFamilyFallback;
-    if (fontMetricsChanged) {
-      _metrics = _measureMetrics();
-    }
-
-    if (widget.fontData == null &&
-        (fontFamilyChanged || (fontDataChanged && _resolvedFontData == null))) {
-      unawaited(_resolveFontData(_theme.fontFamily));
-    }
-
-    _syncLinkInteraction();
+    final controllerChanged = _syncViewResources(oldWidget);
+    _syncAppearance(oldWidget, controllerChanged);
   }
 
   @override
@@ -542,12 +472,92 @@ final class _TerminalViewState extends State<TerminalView>
     setState(() {});
   }
 
+  void _syncAppearance(TerminalView oldWidget, bool controllerChanged) {
+    _attachment.mouseAutoHide = widget.mouseAutoHide;
+    final oldTheme = _theme;
+    final themeChanged = widget.theme != oldWidget.theme;
+    if (themeChanged) {
+      _theme = widget.theme ?? TerminalTheme.dark();
+    }
+    if (controllerChanged) {
+      _attachment.applyTheme(_theme, initial: true);
+    } else if (themeChanged) {
+      _attachment.applyTheme(_theme);
+    }
+
+    final fontDataChanged = widget.fontData != oldWidget.fontData;
+    final fontFamilyChanged = _theme.fontFamily != oldTheme.fontFamily;
+    if (fontFamilyChanged) _resolvedFontData = null;
+
+    final fontMetricsChanged =
+        fontDataChanged ||
+        _theme.fontSize != oldTheme.fontSize ||
+        _theme.fontWeight != oldTheme.fontWeight ||
+        fontFamilyChanged ||
+        _theme.fontFamilyFallback != oldTheme.fontFamilyFallback;
+    if (fontMetricsChanged) {
+      _metrics = _measureMetrics();
+    }
+
+    if (widget.fontData == null &&
+        (fontFamilyChanged || (fontDataChanged && _resolvedFontData == null))) {
+      unawaited(_resolveFontData(_theme.fontFamily));
+    }
+
+    _syncLinkInteraction();
+  }
+
   void _syncLinkInteraction() {
     _attachment.configureLinks(
       settings: widget.linkSettings,
       idleStyle: _theme.hyperlink.idle,
       metrics: _metrics,
     );
+  }
+
+  bool _syncViewResources(TerminalView oldWidget) {
+    final controllerChanged = widget.controller != oldWidget.controller;
+    final focusNodeChanged = widget.focusNode != oldWidget.focusNode;
+    final scrollControllerChanged =
+        widget.scrollController != oldWidget.scrollController;
+
+    if (controllerChanged) {
+      _attachment.removeListener(_onControllerChanged);
+      _attachment.dispose();
+    } else if (focusNodeChanged) {
+      _attachment.detach();
+    }
+
+    if (focusNodeChanged) {
+      if (oldWidget.focusNode == null) _focusNode.dispose();
+      _focusNode = widget.focusNode ?? FocusNode();
+    }
+
+    if (scrollControllerChanged) {
+      if (oldWidget.scrollController == null) _scrollController.dispose();
+      _scrollController = widget.scrollController ?? TerminalScrollController();
+    }
+
+    if (widget.scrollPhysics != oldWidget.scrollPhysics) {
+      _updateGestureScrollPhysics();
+    }
+
+    if (controllerChanged) {
+      _attachment = ViewAttachment(_controller);
+      _attachment.addListener(_onControllerChanged);
+      _resizeDeferred = _attachment.resizeDeferred;
+    }
+
+    if (controllerChanged || focusNodeChanged || scrollControllerChanged) {
+      _bindViewListenables();
+      setTerminalScrollControllerActiveScreen(
+        _scrollController,
+        _controller.activeScreen,
+      );
+      _attachment.attach(_focusNode, _scrollController, viewId: _viewId!);
+    }
+
+    return controllerChanged;
   }
 
   void _updateGestureScrollPhysics() {

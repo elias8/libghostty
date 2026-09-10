@@ -4,7 +4,6 @@ import 'package:flutter/painting.dart';
 
 import '../atlas/sprite_buffer.dart';
 import '../paint_state.dart';
-import 'terminal_painter.dart';
 
 /// Paints the terminal background layer.
 ///
@@ -18,7 +17,7 @@ import 'terminal_painter.dart';
 /// composite twice against that backdrop. Per-cell explicit background
 /// rects still render on top, with alpha scaled by the frame builder when
 /// [PaintState.backgroundOpacityCells] is true.
-class BackgroundPainter implements TerminalPainter {
+class BackgroundPainter {
   final Paint _fillPaint;
   final Paint _vertexPaint;
   final SpriteBuffer _sprites;
@@ -28,7 +27,6 @@ class BackgroundPainter implements TerminalPainter {
     : _fillPaint = Paint(),
       _vertexPaint = Paint();
 
-  @override
   void paint(Canvas canvas) {
     if (_state.theme.backgroundOpacity >= 1.0) {
       _fillPaint.color = Color(_state.terminalBackgroundArgb);
