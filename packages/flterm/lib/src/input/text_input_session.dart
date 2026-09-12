@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 
 /// Flutter text input connection for terminal editing.
@@ -456,17 +457,19 @@ final class TextInputSession with DeltaTextInputClient {
     }
   }
 
-  /// Reopens the text-input connection after the current platform callback.
+  /// Reopens the text-input connection after the current frame.
   ///
   /// Closing/reopening while a delta batch is still being delivered leaves iOS
   /// with an open channel that stops handing over keys until the view is
-  /// refocused. Deferring to a microtask lets the platform finish the current
-  /// delivery first; the fresh connection then receives subsequent keys and is
-  /// re-shown so key delivery resumes without a manual refocus.
+  /// refocused. A microtask still runs inside the same platform turn, so the
+  /// reopen is deferred to the next post-frame callback: that lets iOS fully
+  /// settle its marked-text state first, and the fresh connection then receives
+  /// subsequent keys and is re-shown so key delivery resumes without a manual
+  /// refocus.
   void _scheduleReopen() {
     if (_reopenScheduled) return;
     _reopenScheduled = true;
-    scheduleMicrotask(() {
+    SchedulerBinding.instance.addPostFrameCallback((_) {
       _reopenScheduled = false;
       final connection = _connection;
       if (connection == null || !connection.attached) return;
