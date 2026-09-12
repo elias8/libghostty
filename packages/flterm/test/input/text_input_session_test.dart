@@ -64,6 +64,46 @@ void main() {
     tearDown(() => handler.detach());
 
     group('updateEditingValueWithDeltas', () {
+      test('recovers when a delta cannot apply to the sentinel value', () {
+        final calls = recordTextInputCalls();
+        handler.ensureAttached();
+        calls.clear();
+
+        // A platform that ignored our sentinel reset (e.g. iOS after an accent)
+        // can send a delta referencing offsets past our value. Applying it
+        // would throw; the session must recover instead of freezing.
+        expect(
+          () => handler.updateEditingValueWithDeltas([
+            const TextEditingDeltaDeletion(
+              oldText: 'abcde',
+              deletedRange: TextRange(start: 3, end: 5),
+              selection: TextSelection.collapsed(offset: 3),
+              composing: TextRange.empty,
+            ),
+          ]),
+          returnsNormally,
+        );
+
+        // Channel stays alive and is resynced back to the sentinel.
+        expect(handler.isAttached, isTrue);
+        expect(
+          calls.where((call) => call.method == 'TextInput.setEditingState'),
+          isNotEmpty,
+        );
+
+        // Subsequent normal input still commits.
+        handler.updateEditingValueWithDeltas([
+          const TextEditingDeltaInsertion(
+            oldText: ' ',
+            textInserted: 'x',
+            insertionOffset: 1,
+            selection: TextSelection.collapsed(offset: 2),
+            composing: TextRange.empty,
+          ),
+        ]);
+        expect(commits, ['x']);
+      });
+
       test('commits inserted text', () {
         handler.updateEditingValueWithDeltas([
           const TextEditingDeltaInsertion(

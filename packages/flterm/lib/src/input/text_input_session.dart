@@ -1,7 +1,8 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
-import 'package:meta/meta.dart';
 
 /// Publishes editable-box geometry and its root transform for text input.
 typedef TextInputGeometryChanged =
@@ -41,6 +42,7 @@ final class TextInputSession with DeltaTextInputClient {
   var _newlineActionsToSuppress = 0;
   Timer? _newlineActionDedupeTimer;
   var _newlineDeltasToSuppress = 0;
+  var _reopenScheduled = false;
   VoidCallback? _onNewline;
   ValueChanged<int>? _onDelete;
   ValueChanged<String>? _onPreeditChanged;
@@ -210,7 +212,20 @@ final class TextInputSession with DeltaTextInputClient {
         _committedCompositionEdit == .suppressNextDeletionDelta;
     var fromCompositionInBatch = _hadVisiblePreeditText || hasActiveComposition;
     for (final delta in deltas) {
-      _value = delta.apply(_value);
+      final TextEditingValue next;
+      try {
+        next = delta.apply(_value);
+      } on Object {
+        // Some platforms (notably iOS) keep their own marked-text buffer and
+        // ignore the sentinel we push via setEditingState after each commit.
+        // A later delta then references offsets past our sentinel value, so
+        // applying it throws. Left uncaught, that kills the text-input channel
+        // and freezes all further typing (e.g. after composing an accent).
+        // Resync the platform back to the sentinel and drop this batch instead.
+        _recoverFromDesync(delta);
+        return;
+      }
+      _value = next;
       _processDelta(delta, fromCompositionInBatch: fromCompositionInBatch);
       fromCompositionInBatch = fromCompositionInBatch || _hadVisiblePreeditText;
     }
@@ -409,6 +424,68 @@ final class TextInputSession with DeltaTextInputClient {
     if (connection != null && connection.attached) {
       connection.setEditingState(_value);
     }
+  }
+
+  /// Resynchronizes after [failedDelta] could not be applied to the sentinel.
+  ///
+  /// Clears any composition/newline bookkeeping and forces the platform back to
+  /// the sentinel so subsequent input maps to a known state again, keeping the
+  /// text-input channel alive instead of letting the failure freeze typing.
+  ///
+  /// A plain [setEditingState] is not enough on iOS: it keeps its own
+  /// marked-text buffer and ignores the sentinel we push, so every following
+  /// delta stays anchored to that buffer and re-desyncs, dropping input
+  /// indefinitely (e.g. after composing a dead-key accent with a physical
+  /// keyboard). The connection has to be reopened so iOS discards the marked
+  /// text and re-anchors on a fresh sentinel, but reopening synchronously here
+  /// lands mid-delivery and does not re-engage key input until the view is
+  /// refocused, so it is deferred past this callback (see [_scheduleReopen]).
+  ///
+  /// The failing delta usually carries the composed character iOS was trying to
+  /// commit (a dead-key accent), so it is salvaged and committed before the
+  /// batch is dropped; otherwise the accent would be lost with the batch.
+  void _recoverFromDesync(TextEditingDelta failedDelta) {
+    _clearNewlineActionSuppression();
+    _clearCommittedCompositionEdit();
+    final hadVisiblePreeditText = _hadVisiblePreeditText;
+    _hadVisiblePreeditText = false;
+    if (hadVisiblePreeditText) _onPreeditChanged?.call('');
+
+    final salvaged = switch (failedDelta) {
+      TextEditingDeltaInsertion(:final textInserted) => textInserted,
+      TextEditingDeltaReplacement(:final replacementText) => replacementText,
+      _ => '',
+    };
+    if (salvaged.isNotEmpty) _commitText(salvaged);
+
+    _value = _sentinel;
+    if (_connection != null && _connection!.attached) {
+      _scheduleReopen();
+    } else {
+      _resetBuffer();
+    }
+  }
+
+  /// Reopens the text-input connection after the current frame.
+  ///
+  /// Closing/reopening while a delta batch is still being delivered leaves iOS
+  /// with an open channel that stops handing over keys until the view is
+  /// refocused. A microtask still runs inside the same platform turn, so the
+  /// reopen is deferred to the next post-frame callback: that lets iOS fully
+  /// settle its marked-text state first, and the fresh connection then receives
+  /// subsequent keys and is re-shown so key delivery resumes without a manual
+  /// refocus.
+  void _scheduleReopen() {
+    if (_reopenScheduled) return;
+    _reopenScheduled = true;
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      _reopenScheduled = false;
+      final connection = _connection;
+      if (connection == null || !connection.attached) return;
+      _closeConnection();
+      _openConnection();
+      _connection?.show();
+    });
   }
 
   void _resetInputState() {
