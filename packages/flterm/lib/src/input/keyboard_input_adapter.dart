@@ -149,6 +149,8 @@ final class KeyboardInputAdapter extends ChangeNotifier {
 
     if (_shouldIgnoreDeadKey(input)) return .ignored;
 
+    if (_shouldIgnoreSuperShortcut(input)) return .ignored;
+
     if (_shouldForwardCompositionKey(input)) return .skipRemainingHandlers;
 
     final disposition = _controller.handleTerminalKey(
@@ -234,6 +236,29 @@ final class KeyboardInputAdapter extends ChangeNotifier {
     final rune = runes.first;
     return rune == _spacingAcute ||
         (rune >= _combiningStart && rune <= _combiningEnd);
+  }
+
+  /// Whether a Cmd+character chord is an application shortcut the terminal
+  /// must leave alone.
+  ///
+  /// On macOS a Cmd chord that produces a character (Cmd+`, Cmd+1, Cmd+K) is
+  /// never shell input: iTerm2, Terminal.app and Ghostty only pass Cmd through
+  /// when a keybinding explicitly maps it. Flutter still delivers the
+  /// key-down to the focused terminal even when a global HardwareKeyboard
+  /// handler already consumed it, and the encoder would then emit the bare
+  /// character (legacy mode) or a CSI u sequence (Kitty) to the PTY. Returning
+  /// it as ignored lets the app-level shortcut win; if nothing claims it the
+  /// platform just beeps, matching native terminals.
+  ///
+  /// Ctrl chords (Ctrl+C, Ctrl+Cmd+...) and non-character keys (Cmd+arrows,
+  /// which the encoder still emits as modified cursor sequences) are
+  /// untouched.
+  bool _shouldIgnoreSuperShortcut(KeyInput input) {
+    if (!_isDesktopPlatform) return false;
+    if (input.action != .press && input.action != .repeat) return false;
+    final mods = input.mods;
+    if (!mods.hasSuper || mods.hasCtrl) return false;
+    return input.character != null;
   }
 
   bool _shouldForwardCompositionKey(KeyInput input) {

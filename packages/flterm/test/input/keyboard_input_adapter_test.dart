@@ -98,4 +98,91 @@ void main() {
       expect(output, isNotEmpty);
     });
   });
+
+  group('KeyboardInputAdapter super shortcuts', () {
+    late TerminalControllerImpl controller;
+    late KeyboardInputAdapter adapter;
+    late List<int> output;
+
+    setUp(() {
+      debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+      controller = TerminalControllerImpl();
+      output = <int>[];
+      controller.onOutput = output.addAll;
+      adapter = KeyboardInputAdapter(controller);
+    });
+
+    tearDown(() {
+      adapter.dispose();
+      controller.dispose();
+      HardwareKeyboard.instance.clearState();
+      debugDefaultTargetPlatformOverride = null;
+    });
+
+    KeyDownEvent keyDown(
+      PhysicalKeyboardKey physical,
+      LogicalKeyboardKey logical, {
+      String? character,
+    }) {
+      return KeyDownEvent(
+        physicalKey: physical,
+        logicalKey: logical,
+        character: character,
+        timeStamp: Duration.zero,
+      );
+    }
+
+    test('Cmd+` is ignored and reaches no PTY', () async {
+      await simulateKeyDownEvent(LogicalKeyboardKey.metaLeft);
+
+      final result = adapter.handleKeyEvent(
+        keyDown(
+          PhysicalKeyboardKey.backquote,
+          LogicalKeyboardKey.backquote,
+          character: '`',
+        ),
+      );
+
+      expect(result, KeyEventResult.ignored);
+      expect(output, isEmpty);
+    });
+
+    test('Cmd+` under Kitty is ignored and reaches no PTY', () async {
+      controller.write(Uint8List.fromList(utf8.encode('\x1b[>1u')));
+      await simulateKeyDownEvent(LogicalKeyboardKey.metaLeft);
+
+      final result = adapter.handleKeyEvent(
+        keyDown(
+          PhysicalKeyboardKey.backquote,
+          LogicalKeyboardKey.backquote,
+          character: '`',
+        ),
+      );
+
+      expect(result, KeyEventResult.ignored);
+      expect(output, isEmpty);
+    });
+
+    test('Ctrl+C still reaches the PTY', () async {
+      await simulateKeyDownEvent(LogicalKeyboardKey.controlLeft);
+
+      final result = adapter.handleKeyEvent(
+        keyDown(PhysicalKeyboardKey.keyC, LogicalKeyboardKey.keyC),
+      );
+
+      expect(result, KeyEventResult.handled);
+      expect(output, [0x03]);
+    });
+
+    test('Cmd+Left still encodes to the PTY', () async {
+      await simulateKeyDownEvent(LogicalKeyboardKey.metaLeft);
+
+      final result = adapter.handleKeyEvent(
+        keyDown(PhysicalKeyboardKey.arrowLeft, LogicalKeyboardKey.arrowLeft),
+      );
+
+      expect(result, KeyEventResult.handled);
+      expect(utf8.decode(output), '\x1b[1;9D');
+    });
+  });
 }
