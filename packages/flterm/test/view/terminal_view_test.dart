@@ -1315,6 +1315,16 @@ void main() {
     });
 
     group('unmount', () {
+      Widget keyedView(TerminalController controller, ValueKey<int> key) {
+        return MaterialApp(
+          home: TerminalView(
+            key: key,
+            controller: controller,
+            padding: EdgeInsets.zero,
+          ),
+        );
+      }
+
       testWidgets('clears focus state', (tester) async {
         final focusNode = FocusNode();
         addTearDown(focusNode.dispose);
@@ -1350,6 +1360,27 @@ void main() {
         await tester.pumpWidget(wrapInApp(controller: controller));
 
         expect(find.byType(TerminalView), findsOneWidget);
+      });
+
+      testWidgets('transfers the controller during keyed replacement', (
+        tester,
+      ) async {
+        await tester.pumpWidget(keyedView(controller, const ValueKey(1)));
+
+        await tester.pumpWidget(keyedView(controller, const ValueKey(2)));
+
+        expect(tester.takeException(), isNull);
+      });
+
+      testWidgets('ignores metrics while the replaced view is deactivated', (
+        tester,
+      ) async {
+        await tester.pumpWidget(keyedView(controller, const ValueKey(1)));
+
+        await tester.pumpWidget(keyedView(controller, const ValueKey(2)));
+        tester.binding.handleMetricsChanged();
+
+        expect(tester.takeException(), isNull);
       });
     });
 
