@@ -78,6 +78,7 @@ void main() {
         expect(unshiftedCodepointForKey(Key.bracketLeft), 0x5b);
         expect(unshiftedCodepointForKey(Key.backslash), 0x5c);
         expect(unshiftedCodepointForKey(Key.slash), 0x2f);
+        expect(unshiftedCodepointForKey(Key.space), 0x20);
       });
 
       test('returns zero for non-character keys', () {
