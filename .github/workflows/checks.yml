@@ -4,6 +4,7 @@ on:
   workflow_call:
 
 env:
+  FLUTTER_VERSION: "3.47.5"
   ZIG_VERSION: "0.16.0"
 
 jobs:
@@ -258,16 +259,15 @@ jobs:
     needs: [analyze-flterm, changes]
     if: needs.changes.outputs.flterm == 'true'
     runs-on: ubuntu-latest
-    # Goldens run inside the cirruslabs Flutter image so the
-    # libfreetype/libpng/skia stack matches local Docker development. When the
-    # `stable` tag is republished, regenerate them with
-    # `packages/flterm/tool/update_goldens.sh`.
-    container:
-      image: ghcr.io/cirruslabs/flutter:stable
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-tags: false
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
       - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
         with:
           version: ${{ env.ZIG_VERSION }}
