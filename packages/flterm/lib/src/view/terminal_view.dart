@@ -171,9 +171,19 @@ final class _TerminalViewState extends State<TerminalView>
   Uint8List? _resolvedFontData;
   late TerminalScrollController _scrollController;
   late TerminalTheme _theme;
+  var _active = true;
   int? _viewId;
 
   TerminalController get _controller => widget.controller;
+
+  @override
+  void activate() {
+    super.activate();
+    _active = true;
+    WidgetsBinding.instance.addObserver(this);
+    _initializeAttachment(initial: false);
+    _attachment.attach(_focusNode, _scrollController, viewId: _viewId!);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -309,6 +319,14 @@ final class _TerminalViewState extends State<TerminalView>
   }
 
   @override
+  void deactivate() {
+    _active = false;
+    WidgetsBinding.instance.removeObserver(this);
+    _disposeAttachment();
+    super.deactivate();
+  }
+
+  @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     _updateGestureScrollPhysics();
@@ -328,7 +346,7 @@ final class _TerminalViewState extends State<TerminalView>
 
   @override
   void didChangeMetrics() {
-    if (!mounted) return;
+    if (!_active) return;
     final devicePixelRatio = View.of(context).devicePixelRatio;
     if (_devicePixelRatio == devicePixelRatio) return;
     setState(() {
@@ -349,8 +367,7 @@ final class _TerminalViewState extends State<TerminalView>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _attachment.removeListener(_onControllerChanged);
-    _attachment.dispose();
+    if (_active) _disposeAttachment();
     if (widget.focusNode == null) _focusNode.dispose();
     if (widget.scrollController == null) _scrollController.dispose();
     super.dispose();
@@ -361,25 +378,18 @@ final class _TerminalViewState extends State<TerminalView>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
 
-    _attachment = ViewAttachment(_controller);
     _focusNode = widget.focusNode ?? FocusNode();
-
     _theme = widget.theme ?? TerminalTheme.dark();
-    _attachment.applyTheme(_theme, initial: true);
-    _attachment.mouseAutoHide = widget.mouseAutoHide;
     _metrics = _measureMetrics();
 
     if (widget.fontData == null) unawaited(_resolveFontData(_theme.fontFamily));
 
     _scrollController = widget.scrollController ?? TerminalScrollController();
-    _resizeDeferred = _attachment.resizeDeferred;
     setTerminalScrollControllerActiveScreen(
       _scrollController,
       _controller.activeScreen,
     );
-    _attachment.addListener(_onControllerChanged);
-    _bindViewListenables();
-    _syncLinkInteraction();
+    _initializeAttachment(initial: true);
   }
 
   void _bindViewListenables() {
@@ -387,6 +397,11 @@ final class _TerminalViewState extends State<TerminalView>
       _controller.search,
       _attachment.viewportChanges,
     ]);
+  }
+
+  void _disposeAttachment() {
+    _attachment.removeListener(_onControllerChanged);
+    _attachment.dispose();
   }
 
   void _handleFocusChange(bool focused) {
@@ -410,6 +425,16 @@ final class _TerminalViewState extends State<TerminalView>
     if (!mounted || !identical(attachment, _attachment)) return;
     if (data?.text == null || data!.text!.isEmpty) return;
     controller.paste(data.text!);
+  }
+
+  void _initializeAttachment({required bool initial}) {
+    _attachment = ViewAttachment(_controller);
+    _attachment.applyTheme(_theme, initial: initial);
+    _attachment.mouseAutoHide = widget.mouseAutoHide;
+    _resizeDeferred = _attachment.resizeDeferred;
+    _attachment.addListener(_onControllerChanged);
+    _bindViewListenables();
+    _syncLinkInteraction();
   }
 
   CellMetrics _measureMetrics({Uint8List? fontData}) {
