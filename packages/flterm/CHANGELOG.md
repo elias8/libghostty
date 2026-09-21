@@ -46,6 +46,10 @@
 
 ### Fixed
 
+- **Ctrl+Space**: Space now reports its unshifted codepoint, so Ctrl+Space
+  encodes as NUL in legacy mode and as a Kitty CSI u chord instead of a
+  plain space. Neovim and other applications can receive the completion
+  mapping without changing unmodified Space or other Ctrl chords.
 - **Cursor viewport state**: cursor and IME preedit rendering honor whether
   the cursor has a valid viewport position and use its reported visual style.
 - **Text input recovery**: terminal clients reconnect when another input client

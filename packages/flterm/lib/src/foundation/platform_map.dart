@@ -197,6 +197,7 @@ final Map<Key, int> _keyToCodepoint = {
   Key.quote: 0x27,
   Key.semicolon: 0x3b,
   Key.slash: 0x2f,
+  Key.space: 0x20,
 };
 
 /// Maps a Unicode [codepoint] to the corresponding libghostty [Key].
