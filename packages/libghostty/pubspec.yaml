@@ -24,7 +24,7 @@ environment:
   sdk: ^3.11.0
 
 dependencies:
-  code_assets: ^1.2.1
+  code_assets: ^2.1.0
   crypto: ^3.0.7
   ffi: ^2.2.0
   hooks: ^2.0.2
@@ -33,7 +33,7 @@ dependencies:
   web: ^1.1.1
 
 dev_dependencies:
-  ffigen: ^21.0.0
+  ffigen: ^22.0.0
   logging: ^1.3.0
   path: ^1.9.1
   shelf: ^1.4.2
