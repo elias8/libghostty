@@ -16,7 +16,8 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   ///
   /// @param allocator Pointer to the allocator to use, or NULL for the default
   /// @param len Number of bytes to allocate
-  /// @return Pointer to the allocated buffer, or NULL if allocation failed
+  /// @return Pointer to the allocated buffer, or NULL if len is zero or
+  /// allocation failed
   ///
   /// @ingroup allocator
   external Pointer ghostty_alloc(Pointer allocator, int len);
@@ -342,6 +343,8 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// The caller is responsible for freeing the returned buffer with
   /// ghostty_free(), passing the same allocator (or NULL for the default)
   /// that was used for the allocation.
+  /// Empty output returns GHOSTTY_SUCCESS with *out_ptr set to NULL and
+  /// *out_len set to zero. This result can be passed to ghostty_free().
   ///
   /// @param formatter The formatter handle (must not be NULL)
   /// @param allocator Pointer to allocator, or NULL to use the default allocator
@@ -1388,28 +1391,32 @@ extension type GhosttyExports(JSObject _) implements JSObject {
 
   /// Finalize OSC parsing and retrieve the parsed command.
   ///
-  /// Call this function after feeding all bytes of an OSC sequence to the parser
-  /// using ghostty_osc_next() with the exception of the terminating character
-  /// (ESC or ST). This function finalizes the parsing process and returns the
-  /// parsed OSC command.
+  /// Call this after feeding every byte of the sequence to ghostty_osc_next(),
+  /// except the byte that ended it. Pass that byte here as the terminator.
   ///
-  /// The return value is never NULL. Invalid commands will return a command
-  /// with type GHOSTTY_OSC_COMMAND_INVALID.
+  /// If the sequence is not a valid command, this returns NULL. You don't need
+  /// to check for NULL before calling ghostty_osc_command_type(), which
+  /// returns GHOSTTY_OSC_COMMAND_INVALID for it.
   ///
-  /// The terminator parameter specifies the byte that terminated the OSC sequence
-  /// (typically 0x07 for BEL or 0x5C for ST after ESC). This information is
-  /// preserved in the parsed command so that responses can use the same terminator
-  /// format for better compatibility with the calling program. For commands that
-  /// do not require a response, this parameter is ignored and the resulting
-  /// command will not retain the terminator information.
+  /// Commands that reply to the program, such as color queries, end their
+  /// reply the same way the request ended. A terminator of 0x07 (BEL) gets a
+  /// BEL reply, and any other byte gets an ST reply. Commands that don't
+  /// reply ignore the terminator.
+  ///
+  /// If the program cancelled the sequence with CAN (0x18) or SUB (0x1A),
+  /// pass that byte as the terminator. The sequence is then discarded and
+  /// this returns NULL, whatever command it contained. This matches xterm.
+  /// The "Ending a Sequence" section of the overview has an example.
   ///
   /// The returned command handle is valid until the next call to any
   /// `ghostty_osc_*` function with the same parser instance with the exception
   /// of command introspection functions such as `ghostty_osc_command_type`.
   ///
   /// @param parser The parser handle, must not be null.
-  /// @param terminator The terminating byte of the OSC sequence (0x07 for BEL, 0x5C for ST)
-  /// @return Handle to the parsed OSC command
+  /// @param terminator The byte that ended the OSC sequence: 0x07 for BEL,
+  /// 0x5C for ST, or 0x18 (CAN) or 0x1A (SUB) if it was cancelled
+  /// @return Handle to the parsed OSC command, or NULL if the sequence is not
+  /// a valid command or was cancelled
   ///
   /// @ingroup osc
   external int ghostty_osc_end(int parser, int terminator);
@@ -1462,6 +1469,25 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   ///
   /// @ingroup osc
   external void ghostty_osc_reset(int parser);
+
+  /// Set an option on an OSC parser.
+  ///
+  /// `value` points to the option's input type, which is listed in the
+  /// documentation for each GhosttyOscOption value. Pass NULL to restore the
+  /// option's default.
+  ///
+  /// Options stay set across ghostty_osc_reset(). You can change an option
+  /// at any time, but a sequence that is already being parsed may keep the
+  /// old setting. It is simplest to set options before the first sequence.
+  ///
+  /// @param parser The parser handle
+  /// @param option The option to set
+  /// @param value Pointer to the new value, or NULL to restore the default
+  /// @return GHOSTTY_SUCCESS on success, or GHOSTTY_INVALID_VALUE if the parser
+  /// is NULL
+  ///
+  /// @ingroup osc
+  external int ghostty_osc_set(int parser, int option, Pointer value);
 
   /// Encode paste data for writing to the terminal pty.
   ///
@@ -1812,9 +1838,12 @@ extension type GhosttyExports(JSObject _) implements JSObject {
 
   /// Move a render-state row iterator to the next row.
   ///
-  /// Rows are visited contiguously in ascending viewport order, starting at
-  /// y = 0. Returns true if the iterator moved successfully and row data is
-  /// available to read at the new position.
+  /// Rows are visited in order from top to bottom with no gaps. Without
+  /// overscan, the first row is the top row of the viewport. With overscan,
+  /// the first row is the highest captured row above the viewport (see
+  /// GHOSTTY_RENDER_STATE_OPTION_OVERSCAN). Returns true if the iterator
+  /// moved successfully and row data is available to read at the new
+  /// position.
   ///
   /// @param iterator The iterator handle to advance (may be NULL)
   /// @return true if advanced to the next row, false if `iterator` is
@@ -1832,9 +1861,13 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// viewport order. This function does not clear any dirty state.
   ///
   /// @param iterator The iterator handle to advance (NULL returns false)
-  /// @param[out] out_y Receives the viewport y coordinate when true is returned
-  /// (NULL returns false); it is not modified when false is
-  /// returned
+  /// @param[out] out_y Receives the row's position in the iterator when true
+  /// is returned (NULL returns false). It is not modified
+  /// when false is returned. Without overscan, this is the
+  /// viewport y. With overscan, it counts from the highest
+  /// captured row, so use
+  /// GHOSTTY_RENDER_STATE_ROW_DATA_VIEWPORT_Y to place
+  /// the row.
   /// @return true if advanced to a row requiring a redraw, false if an argument
   /// is NULL or the iterator has reached the end of the effective dirty
   /// rows
@@ -2112,7 +2145,7 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// @param search Search handle (NULL returns GHOSTTY_INVALID_VALUE)
   /// @param[out] out_status Receives the status after the tick (may be NULL)
   /// @return GHOSTTY_SUCCESS on success, or GHOSTTY_INVALID_VALUE if
-  /// search is NULL
+  /// search is NULL or the terminal was freed
   ///
   /// @ingroup search
   external int ghostty_search_tick(int search, Pointer out_status);
@@ -2606,6 +2639,10 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// validated and progress reports zero rows. The decoder applies history
   /// to the caller-owned terminal produced by its READY operation.
   ///
+  /// If GHOSTTY_SNAPSHOT_DECODER_OPT_COMPRESS_HISTORY is true, the page is
+  /// compressed before this function returns, unless it is visible in the
+  /// terminal's viewport.
+  ///
   /// A decoding error invalidates the decoder's source position. The terminal
   /// remains caller-owned and usable with its already-restored history, but only
   /// ghostty_snapshot_decoder_free() may subsequently be called on the decoder.
@@ -2854,7 +2891,8 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// The returned bytes are allocated with allocator, or the default allocator
   /// when allocator is NULL. The caller must release them with ghostty_free(),
   /// passing the same allocator and returned length. An empty continuation is a
-  /// successful zero-length allocation.
+  /// successful result with *out_ptr set to NULL and *out_len set to zero,
+  /// which can also be passed to ghostty_free().
   /// Continuation tracking must have been enabled by setting
   /// GHOSTTY_TERMINAL_OPT_CONTINUATION_MAX_BYTES to a nonzero value before the
   /// input that produced the continuation was written.
@@ -3144,6 +3182,9 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// modes, scrollback, scrolling region, and screen contents. The terminal
   /// dimensions are preserved.
   ///
+  /// If synchronized output was enabled, the GHOSTTY_TERMINAL_OPT_RENDER_HOLD
+  /// callback is invoked to report that the hold ended.
+  ///
   /// @param terminal The terminal handle (may be NULL, in which case this is a no-op)
   ///
   /// @ingroup terminal
@@ -3153,12 +3194,16 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   ///
   /// Changes the number of columns and rows in the terminal. The primary
   /// screen will reflow content if wraparound mode is enabled; the alternate
-  /// screen does not reflow. If the dimensions are unchanged, this is a no-op.
+  /// screen does not reflow. If the dimensions are unchanged, the grid is
+  /// left as is, but everything below still applies.
   ///
   /// This also updates the terminal's pixel dimensions (used for image
   /// protocols and size reports), disables synchronized output mode (allowed
   /// by the spec so that resize results are shown immediately), and sends an
   /// in-band size report if mode 2048 is enabled.
+  ///
+  /// If synchronized output was enabled, the GHOSTTY_TERMINAL_OPT_RENDER_HOLD
+  /// callback is invoked to report that the hold ended.
   ///
   /// @param terminal The terminal handle (NULL returns GHOSTTY_INVALID_VALUE)
   /// @param cols New width in cells (must be greater than zero)
@@ -3393,6 +3438,8 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// The returned buffer is allocated using allocator, or the default allocator
   /// if NULL is passed. The caller owns the returned buffer and must free it with
   /// ghostty_free(), passing the same allocator and returned length.
+  /// Empty output returns GHOSTTY_SUCCESS with *out_ptr set to NULL and
+  /// *out_len set to zero. This result can be passed to ghostty_free().
   ///
   /// The returned bytes are not NUL-terminated. This supports plain text, VT, and
   /// HTML uniformly as byte output.
