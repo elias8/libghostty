@@ -224,6 +224,12 @@ sealed class TerminalController implements Listenable {
   /// during [write].
   set onProgressReport(ValueChanged<TerminalProgress>? callback);
 
+  /// Sets the callback for validated OSC 7501 program status reports.
+  ///
+  /// The report contains copied strings and can be retained after the
+  /// callback returns. Fires synchronously during [write].
+  set onProgramStatus(TerminalProgramStatusCallback? callback);
+
   /// Sets the callback invoked when the working directory changes.
   ///
   /// Programs commonly report the directory with OSC 7, OSC 9, or OSC 1337.
@@ -232,6 +238,18 @@ sealed class TerminalController implements Listenable {
   /// exactly as reported: OSC 7 commonly supplies a `file://` URI, whereas OSC
   /// 9 and OSC 1337 commonly supply a path.
   set onPwdChanged(VoidCallback? value);
+
+  /// Sets the callback for shell integration events reported through OSC 133.
+  ///
+  /// The event contains copied command and error strings. It fires
+  /// synchronously during [write].
+  set onSemanticPrompt(TerminalSemanticPromptCallback? callback);
+
+  /// Sets the callback for full terminal resets received through RIS (`ESC c`).
+  ///
+  /// Fires synchronously during [write]. Programmatic terminal resets do not
+  /// invoke this callback.
+  set onReset(VoidCallback? callback);
 
   /// Sets the callback that reports measured terminal grid changes.
   ///
@@ -260,6 +278,14 @@ sealed class TerminalController implements Listenable {
   /// the callback to obtain the updated value. The callback runs synchronously
   /// while [write] processes the sequence.
   set onTitleChanged(VoidCallback? value);
+
+  /// Sets the callback for unsupported terminal string sequences.
+  ///
+  /// Capture requires a positive [TerminalConfig.unknownSequenceMaxBytes].
+  /// The callback receives copied binary-safe content and fires synchronously
+  /// during [write]. Only normally terminated sequences with unsupported
+  /// identifiers are reported. The callback must not call [write] reentrantly.
+  set onUnknownSequence(TerminalUnknownSequenceCallback? callback);
 
   /// The working directory reported by the shell through OSC 7, OSC 9, or
   /// OSC 1337.

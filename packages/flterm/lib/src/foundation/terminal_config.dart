@@ -126,6 +126,13 @@ class TerminalConfig {
   /// Defaults to 65 MiB. Set to 0 to reject APC payload data.
   final int apcBufferLimit;
 
+  /// Maximum bytes captured from an unsupported terminal string sequence.
+  ///
+  /// Defaults to zero, which disables capture. Positive values enable bounded
+  /// capture for [TerminalController.onUnknownSequence]. Values range from
+  /// zero through `0xffffffff` for consistent native and WebAssembly behavior.
+  final int unknownSequenceMaxBytes;
+
   /// Maximum decoded bytes accepted in one Kitty clipboard write.
   ///
   /// Defaults to libghostty's 64 MiB limit. Set to null to restore that
@@ -188,6 +195,7 @@ class TerminalConfig {
     this.cursorBlink,
     this.glyphProtocol = false,
     this.apcBufferLimit = defaultApcBufferLimit,
+    this.unknownSequenceMaxBytes = 0,
     this.clipboardWriteMaxBytes,
     this.enquiryResponse = '',
     this.modes = defaultModes,
@@ -222,6 +230,14 @@ class TerminalConfig {
        ),
        assert(apcBufferLimit >= 0, 'apcBufferLimit must be non-negative'),
        assert(
+         unknownSequenceMaxBytes >= 0,
+         'unknownSequenceMaxBytes must be non-negative',
+       ),
+       assert(
+         unknownSequenceMaxBytes <= 0xffffffff,
+         'unknownSequenceMaxBytes must fit an unsigned 32-bit integer',
+       ),
+       assert(
          clipboardWriteMaxBytes == null || clipboardWriteMaxBytes >= 0,
          'clipboardWriteMaxBytes must be non-negative',
        );
@@ -235,6 +251,7 @@ class TerminalConfig {
     scrollbackMaxLines,
     kittyImageStorageLimit,
     apcBufferLimit,
+    unknownSequenceMaxBytes,
     clipboardWriteMaxBytes,
     glyphProtocol,
     cursorStyle,
@@ -257,6 +274,7 @@ class TerminalConfig {
           scrollbackMaxLines == other.scrollbackMaxLines &&
           kittyImageStorageLimit == other.kittyImageStorageLimit &&
           apcBufferLimit == other.apcBufferLimit &&
+          unknownSequenceMaxBytes == other.unknownSequenceMaxBytes &&
           clipboardWriteMaxBytes == other.clipboardWriteMaxBytes &&
           glyphProtocol == other.glyphProtocol &&
           cursorStyle == other.cursorStyle &&
@@ -276,6 +294,7 @@ class TerminalConfig {
     int? scrollbackMaxLines,
     int? kittyImageStorageLimit,
     int? apcBufferLimit,
+    int? unknownSequenceMaxBytes,
     int? clipboardWriteMaxBytes,
     bool? glyphProtocol,
     CursorShape? cursorStyle,
@@ -295,6 +314,8 @@ class TerminalConfig {
       kittyImageStorageLimit:
           kittyImageStorageLimit ?? this.kittyImageStorageLimit,
       apcBufferLimit: apcBufferLimit ?? this.apcBufferLimit,
+      unknownSequenceMaxBytes:
+          unknownSequenceMaxBytes ?? this.unknownSequenceMaxBytes,
       clipboardWriteMaxBytes:
           clipboardWriteMaxBytes ?? this.clipboardWriteMaxBytes,
       glyphProtocol: glyphProtocol ?? this.glyphProtocol,
@@ -314,6 +335,7 @@ class TerminalConfig {
       'TerminalConfig('
       'cols: $cols, rows: $rows, '
       'continuationMaxBytes: $continuationMaxBytes, '
+      'unknownSequenceMaxBytes: $unknownSequenceMaxBytes, '
       'scrollbackMaxBytes: $scrollbackMaxBytes, '
       'scrollbackMaxLines: $scrollbackMaxLines, '
       'modes: ${modes.length} entries)';
