@@ -22,15 +22,18 @@ final class SnapshotDecoder {
   /// snapshot. It must fit an unsigned 32-bit integer so the behavior is
   /// portable to WebAssembly. When null, libghostty's default limit is used.
   /// Set [retainContinuation] to keep continuation tracking enabled on the
-  /// restored terminal.
+  /// restored terminal. Set [compressHistory] to compress each scrollback
+  /// page as it is restored during incremental decoding.
   SnapshotDecoder(
     Uint8List bytes, {
     int? maxContinuationBytes,
     bool retainContinuation = false,
+    bool compressHistory = false,
   }) : _handle = bindings.snapshot.snapshotDecoderNew(
          bytes,
          maxContinuationBytes: _checkedContinuationLimit(maxContinuationBytes),
          retainContinuation: retainContinuation,
+         compressHistory: compressHistory,
        ) {
     _finalizer.attach(this, _handle, detach: this);
   }
@@ -52,6 +55,11 @@ final class SnapshotDecoder {
     return bindings.snapshot.snapshotDecoderRetainContinuation(
       _requireHandle(),
     );
+  }
+
+  /// Whether scrollback history is compressed while it is restored.
+  bool get compressHistory {
+    return bindings.snapshot.snapshotDecoderCompressHistory(_requireHandle());
   }
 
   /// Number of source bytes consumed by the decoder.

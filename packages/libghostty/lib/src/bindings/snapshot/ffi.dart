@@ -60,6 +60,7 @@ final class FfiSnapshotBindings implements SnapshotBindings {
     Uint8List bytes, {
     int? maxContinuationBytes,
     bool retainContinuation = false,
+    bool compressHistory = false,
   }) {
     final allocationLength = bytes.isEmpty ? 1 : bytes.length;
     final source = calloc<Uint8>(allocationLength);
@@ -85,6 +86,7 @@ final class FfiSnapshotBindings implements SnapshotBindings {
           created,
           maxContinuationBytes: maxContinuationBytes,
           retainContinuation: retainContinuation,
+          compressHistory: compressHistory,
         );
         return created;
       });
@@ -132,6 +134,11 @@ final class FfiSnapshotBindings implements SnapshotBindings {
   @override
   bool snapshotDecoderRetainContinuation(LibGhosttyHandle decoder) {
     return _getBool(decoder, SnapshotDecoderData.retainContinuation);
+  }
+
+  @override
+  bool snapshotDecoderCompressHistory(LibGhosttyHandle decoder) {
+    return _getBool(decoder, SnapshotDecoderData.compressHistory);
   }
 
   @override
@@ -255,6 +262,7 @@ final class FfiSnapshotBindings implements SnapshotBindings {
     LibGhosttyHandle decoder, {
     required int? maxContinuationBytes,
     required bool retainContinuation,
+    required bool compressHistory,
   }) {
     using((arena) {
       if (maxContinuationBytes != null) {
@@ -264,6 +272,10 @@ final class FfiSnapshotBindings implements SnapshotBindings {
       if (retainContinuation) {
         final value = arena<Bool>()..value = true;
         _set(decoder, SnapshotDecoderOption.retainContinuation, value.cast());
+      }
+      if (compressHistory) {
+        final value = arena<Bool>()..value = true;
+        _set(decoder, SnapshotDecoderOption.compressHistory, value.cast());
       }
     });
   }
