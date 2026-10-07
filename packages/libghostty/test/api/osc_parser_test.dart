@@ -35,6 +35,55 @@ void main() {
         final command = parser.end(0x07);
         expect(command.type, OscCommandType.invalid);
       });
+
+      test('captures unknown commands when configured', () {
+        final parser = OscParser(unknownMaxBytes: 64);
+        addTearDown(parser.dispose);
+
+        parser.feedBytes(utf8.encode('7400;status=busy'));
+        final command = parser.end(0x07);
+
+        expect(command.type, OscCommandType.unknown);
+        expect(command.unknownContent, utf8.encode('7400;status=busy'));
+        expect(command.unknownTruncated, isFalse);
+        expect(command.unknownTerminator, OscTerminator.bel);
+      });
+
+      test('copies truncated content and preserves its terminator', () {
+        final parser = OscParser(unknownMaxBytes: 4);
+        addTearDown(parser.dispose);
+
+        parser.feedBytes(utf8.encode('7400;status=busy'));
+        final command = parser.end(0x5c);
+        parser.reset();
+
+        expect(command.unknownContent, utf8.encode('7400'));
+        expect(command.unknownTruncated, isTrue);
+        expect(command.unknownTerminator, OscTerminator.st);
+      });
+
+      test('unknown capture remains disabled by default', () {
+        parser.feedBytes(utf8.encode('7400;status=busy'));
+
+        final command = parser.end(0x07);
+
+        expect(command.type, OscCommandType.invalid);
+        expect(command.unknownContent, isNull);
+        expect(command.unknownTruncated, isNull);
+        expect(command.unknownTerminator, isNull);
+      });
+
+      test('discards cancelled sequences', () {
+        for (final terminator in [0x18, 0x1a]) {
+          parser.feedBytes(utf8.encode('7400;status=busy'));
+
+          final command = parser.end(terminator);
+
+          expect(command.type, OscCommandType.invalid);
+          expect(command.unknownContent, isNull);
+          parser.reset();
+        }
+      });
     });
 
     group('reset', () {

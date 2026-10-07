@@ -1021,11 +1021,24 @@ final class FfiTerminalBindings implements TerminalBindings {
           ) {
             try {
               final sequence = pointer.ref;
+              final payload = switch (sequence.tag) {
+                .apc => (
+                  content: _readBytes(sequence.value.apc.content),
+                  truncated: sequence.value.apc.truncated,
+                  terminator: null,
+                ),
+                .osc => (
+                  content: _readBytes(sequence.value.osc.content),
+                  truncated: sequence.value.osc.truncated,
+                  terminator: sequence.value.osc.terminator,
+                ),
+              };
               callback(
                 TerminalUnknownSequence(
                   tag: sequence.tag,
-                  content: _readBytes(sequence.value.apc.content),
-                  truncated: sequence.value.apc.truncated,
+                  content: payload.content,
+                  truncated: payload.truncated,
+                  terminator: payload.terminator,
                 ),
               );
             } on Object catch (error, stackTrace) {

@@ -83,6 +83,7 @@ export 'src/generated/libghostty_enums.g.dart'
         MouseButton,
         OptionAsAlt,
         OscCommandType,
+        OscTerminator,
         PointTag,
         SearchScroll,
         SearchStatus,

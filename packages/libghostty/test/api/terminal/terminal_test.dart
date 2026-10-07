@@ -137,6 +137,18 @@ void main() {
         expect(sequence?.truncated, isTrue);
       });
 
+      test('copies unknown OSC content and its terminator', () {
+        TerminalUnknownSequence? sequence;
+        terminal.unknownSequenceMaxBytes = 32;
+        terminal.onUnknownSequence = (value) => sequence = value;
+
+        terminal.write(Uint8List.fromList('\x1b]7400;x\x1b\\'.codeUnits));
+
+        expect(sequence?.tag, TerminalUnknownSequenceTag.osc);
+        expect(sequence?.content, Uint8List.fromList('7400;x'.codeUnits));
+        expect(sequence?.terminator, OscTerminator.st);
+      });
+
       test('clears the callback and capture limit', () {
         var count = 0;
         terminal.unknownSequenceMaxBytes = 32;

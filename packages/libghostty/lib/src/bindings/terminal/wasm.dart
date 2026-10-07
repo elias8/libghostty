@@ -1159,29 +1159,37 @@ final class WasmTerminalBindings implements TerminalBindings {
       (reuseIndex) => _registerCallback(
         ((int _, int _, int pointer) {
           try {
-            final content =
-                pointer +
-                _layout.unknownSequenceValue +
-                _layout.unknownStringSequenceContent;
+            final tag = TerminalUnknownSequenceTag.fromValue(
+              _memory.readU32(pointer + _layout.unknownSequenceTag),
+            );
+            final value = pointer + _layout.unknownSequenceValue;
+            final (contentOffset, truncatedOffset, terminator) = switch (tag) {
+              .apc => (
+                _layout.unknownStringSequenceContent,
+                _layout.unknownStringSequenceTruncated,
+                null,
+              ),
+              .osc => (
+                _layout.unknownOscSequenceContent,
+                _layout.unknownOscSequenceTruncated,
+                OscTerminator.fromValue(
+                  _memory.readU32(value + _layout.unknownOscSequenceTerminator),
+                ),
+              ),
+            };
+            final content = value + contentOffset;
             final contentPointer = _memory.readPtr(content);
             final contentLength = _memory.readU32(content + _layout.stringLen);
             callback!(
               TerminalUnknownSequence(
-                tag: .fromValue(
-                  _memory.readU32(pointer + _layout.unknownSequenceTag),
-                ),
+                tag: tag,
                 content: contentPointer == 0 || contentLength == 0
                     ? Uint8List(0)
                     : Uint8List.fromList(
                         _memory.readBytes(contentPointer, contentLength),
                       ),
-                truncated:
-                    _memory.readU8(
-                      pointer +
-                          _layout.unknownSequenceValue +
-                          _layout.unknownStringSequenceTruncated,
-                    ) !=
-                    0,
+                truncated: _memory.readU8(value + truncatedOffset) != 0,
+                terminator: terminator,
               ),
             );
           } on Object catch (error, stackTrace) {

@@ -280,9 +280,13 @@ final class TerminalUnknownSequence {
   /// Whether the byte limit or an allocation failure shortened the content.
   final bool truncated;
 
+  /// How an OSC sequence ended, or null for other sequence families.
+  final OscTerminator? terminator;
+
   const TerminalUnknownSequence({
     required this.tag,
     required this.content,
     required this.truncated,
+    this.terminator,
   });
 }

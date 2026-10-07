@@ -16,7 +16,7 @@ void main() {
     });
 
     test('parses an OSC window title through direct bindings', () {
-      final parser = bindings.oscNew();
+      final parser = bindings.oscNew(unknownMaxBytes: 0);
       addTearDown(() => bindings.oscFree(parser));
 
       final bytes = utf8.encode('0;Terminal');
