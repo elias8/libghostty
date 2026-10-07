@@ -4,6 +4,54 @@ import '../generated/libghostty_enums.g.dart';
 import 'aliases.dart';
 import 'color.dart';
 
+/// Number of extra rows requested or captured above and below the viewport.
+@immutable
+final class RenderOverscan {
+  /// Rows above the top of the viewport.
+  final int above;
+
+  /// Rows below the bottom of the viewport.
+  final int below;
+
+  const RenderOverscan({required this.above, required this.below});
+
+  @override
+  int get hashCode => Object.hash(above, below);
+
+  @override
+  bool operator ==(Object other) =>
+      other is RenderOverscan && other.above == above && other.below == below;
+
+  @override
+  String toString() => 'RenderOverscan(above: $above, below: $below)';
+}
+
+/// Opaque identity for a row across render-state updates.
+///
+/// Compare values for equality or use them as map keys. The words have no
+/// meaning outside equality and preserve the complete upstream 128-bit id.
+@immutable
+final class RenderRowId {
+  /// First opaque word of the row id.
+  final BigInt word0;
+
+  /// Second opaque word of the row id.
+  final BigInt word1;
+
+  /// Creates an opaque row id from its two unsigned 64-bit words.
+  const RenderRowId({required this.word0, required this.word1});
+
+  @override
+  int get hashCode => Object.hash(word0, word1);
+
+  @override
+  bool operator ==(Object other) =>
+      other is RenderRowId && other.word0 == word0 && other.word1 == word1;
+
+  @override
+  String toString() => 'RenderRowId($word0, $word1)';
+}
+
 /// Immutable cursor state from a render-state snapshot.
 ///
 /// When [viewportHasValue] is false, [viewportX], [viewportY], and [wideTail]

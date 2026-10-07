@@ -50,6 +50,42 @@ void main() {
         expect(renderState.cols, 120);
         expect(renderState.rows, 40);
       });
+
+      test('defaults to no overscan', () {
+        expect(
+          renderState.overscanRequest,
+          const RenderOverscan(above: 0, below: 0),
+        );
+
+        renderState.update(terminal);
+
+        expect(renderState.overscan, const RenderOverscan(above: 0, below: 0));
+      });
+
+      test('captures requested overscan around the viewport', () {
+        terminal.resize(cols: 10, rows: 10);
+        terminal.write(
+          Uint8List.fromList(
+            List.generate(50, (i) => 'line $i').join('\r\n').codeUnits,
+          ),
+        );
+        terminal.scrollViewport(-5);
+        renderState.overscanRequest = const RenderOverscan(above: 3, below: 2);
+
+        renderState.update(terminal);
+
+        expect(
+          renderState.overscanRequest,
+          const RenderOverscan(above: 3, below: 2),
+        );
+        expect(renderState.overscan, const RenderOverscan(above: 3, below: 2));
+
+        renderState.overscanRequest = const RenderOverscan(above: 0, below: 0);
+        expect(renderState.overscan, const RenderOverscan(above: 3, below: 2));
+        renderState.update(terminal);
+
+        expect(renderState.overscan, const RenderOverscan(above: 0, below: 0));
+      });
     });
 
     group('dispose', () {

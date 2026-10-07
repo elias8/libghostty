@@ -148,6 +148,8 @@ export 'src/types/types.dart'
         PaletteColor,
         Position,
         RejectedException,
+        RenderOverscan,
+        RenderRowId,
         RenderStateCursor,
         RgbColor,
         Scrollbar,
