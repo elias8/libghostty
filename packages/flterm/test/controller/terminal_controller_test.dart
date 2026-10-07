@@ -4,6 +4,7 @@ library;
 import 'dart:convert';
 
 import 'package:fake_async/fake_async.dart';
+import 'package:flterm/flterm.dart' as flterm;
 import 'package:flterm/src/controller/terminal_controller.dart';
 import 'package:flterm/src/foundation.dart';
 import 'package:flterm/src/input/input_message.dart';
@@ -1465,6 +1466,127 @@ void main() {
         writeControllerUtf8(controller, '\x1b]9;4;1;42\x07');
 
         expect(report, const TerminalProgress(state: .set, progress: 42));
+      });
+    });
+
+    group('session events', () {
+      test(
+        'forwards OSC 7501 program status through the public package API',
+        () {
+          final reports = <flterm.TerminalProgramStatus>[];
+          controller.onProgramStatus = reports.add;
+
+          writeControllerUtf8(
+            controller,
+            '\x1b]7501;state=blocked:kind=permission:progress=40:id=a/b'
+            ':app=terraform:title=UGxhbg==:msg=QXBwbHk/\x07',
+          );
+
+          expect(reports, hasLength(1));
+          expect(reports.single.state, flterm.ProgramStatusState.blocked);
+          expect(reports.single.kind, flterm.ProgramStatusKind.permission);
+          expect(reports.single.progress, 40);
+          expect(reports.single.message, 'Apply?');
+
+          final retained = reports.single;
+          writeControllerUtf8(controller, '\x1b]7501;state=done\x07');
+          controller.dispose();
+          expect(retained.message, 'Apply?');
+        },
+      );
+
+      test('forwards OSC 133 semantic prompt fields', () {
+        final events = <flterm.TerminalSemanticPrompt>[];
+        controller.onSemanticPrompt = events.add;
+
+        writeControllerUtf8(controller, '\x1b]133;D;-1;err=boom\x07');
+
+        expect(events, hasLength(1));
+        expect(events.single.kind, flterm.SemanticPromptKind.commandEnd);
+        expect(
+          events.single.promptKind,
+          flterm.SemanticPromptPromptKind.primary,
+        );
+        expect(events.single.exitCode, -1);
+        expect(events.single.error, 'boom');
+      });
+
+      test(
+        'reports RIS input and clears the callback when replaced with null',
+        () {
+          var resets = 0;
+          controller.onReset = () => resets++;
+
+          writeControllerUtf8(controller, '\x1bc');
+          controller.onReset = null;
+          writeControllerUtf8(controller, '\x1bc');
+
+          expect(resets, 1);
+        },
+      );
+
+      test('captures unknown sequences only when configured', () {
+        final sequences = <flterm.TerminalUnknownSequence>[];
+        controller.onUnknownSequence = sequences.add;
+
+        writeControllerUtf8(controller, '\x1b_abc\x1b\\');
+        expect(sequences, isEmpty);
+
+        controller.config = controller.config.copyWith(
+          unknownSequenceMaxBytes: 2,
+        );
+        writeControllerUtf8(controller, '\x1b_abc\x1b\\');
+
+        expect(sequences, hasLength(1));
+        expect(sequences.single.tag, flterm.TerminalUnknownSequenceTag.apc);
+        expect(sequences.single.content, [0x61, 0x62]);
+        expect(sequences.single.truncated, isTrue);
+        expect(sequences.single.terminator, isNull);
+
+        controller.config = controller.config.copyWith(
+          unknownSequenceMaxBytes: 0,
+        );
+        writeControllerUtf8(controller, '\x1b_abc\x1b\\');
+        expect(sequences, hasLength(1));
+
+        controller.config = controller.config.copyWith(
+          unknownSequenceMaxBytes: 32,
+        );
+        writeControllerUtf8(controller, '\x1b]7400;x\x1b\\');
+
+        expect(sequences, hasLength(2));
+        expect(sequences.last.tag, flterm.TerminalUnknownSequenceTag.osc);
+        expect(sequences.last.content, '7400;x'.codeUnits);
+        expect(sequences.last.truncated, isFalse);
+        expect(sequences.last.terminator, flterm.OscTerminator.st);
+
+        var replacements = 0;
+        controller.onUnknownSequence = (_) => replacements++;
+        writeControllerUtf8(controller, '\x1b]7400;y\x1b\\');
+        expect(replacements, 1);
+
+        controller.onUnknownSequence = null;
+        writeControllerUtf8(controller, '\x1b]7400;z\x1b\\');
+        expect(replacements, 1);
+      });
+
+      test('forwards callback errors from controller.write', () {
+        final error = StateError('status callback failed');
+        controller.onProgramStatus = (_) => throw error;
+
+        expect(
+          () => writeControllerUtf8(controller, '\x1b]7501;state=done\x07'),
+          throwsA(same(error)),
+        );
+      });
+
+      test('new callback setters reject use after disposal', () {
+        controller.dispose();
+
+        expect(() => controller.onProgramStatus = null, throwsStateError);
+        expect(() => controller.onSemanticPrompt = null, throwsStateError);
+        expect(() => controller.onReset = null, throwsStateError);
+        expect(() => controller.onUnknownSequence = null, throwsStateError);
       });
     });
 

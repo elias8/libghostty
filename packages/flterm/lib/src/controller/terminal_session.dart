@@ -220,9 +220,27 @@ final class TerminalSession extends TerminalController with ChangeNotifier {
   }
 
   @override
+  set onProgramStatus(TerminalProgramStatusCallback? callback) {
+    _checkNotDisposed();
+    _terminal.onProgramStatus = callback;
+  }
+
+  @override
   set onPwdChanged(VoidCallback? value) {
     _checkNotDisposed();
     _onPwdChanged = value;
+  }
+
+  @override
+  set onSemanticPrompt(TerminalSemanticPromptCallback? callback) {
+    _checkNotDisposed();
+    _terminal.onSemanticPrompt = callback;
+  }
+
+  @override
+  set onReset(VoidCallback? callback) {
+    _checkNotDisposed();
+    _terminal.onReset = callback;
   }
 
   @override
@@ -239,6 +257,12 @@ final class TerminalSession extends TerminalController with ChangeNotifier {
   set onTitleChanged(VoidCallback? value) {
     _checkNotDisposed();
     _terminal.onTitleChanged = value;
+  }
+
+  @override
+  set onUnknownSequence(TerminalUnknownSequenceCallback? callback) {
+    _checkNotDisposed();
+    _terminal.onUnknownSequence = callback;
   }
 
   @override
@@ -608,6 +632,7 @@ final class TerminalSession extends TerminalController with ChangeNotifier {
     _terminal.scrollbackMaxLines = _config.scrollbackMaxLines;
     _terminal.kittyImageStorageLimit = _config.kittyImageStorageLimit;
     _terminal.clipboardWriteMaxBytes = _config.clipboardWriteMaxBytes;
+    _terminal.unknownSequenceMaxBytes = _config.unknownSequenceMaxBytes;
     _terminal.setApcBufferLimit(_config.apcBufferLimit);
     _terminal.setGlyphProtocol(enabled: _config.glyphProtocol);
     _terminal.defaultCursorShape = .fromValue(_config.cursorStyle.value);
