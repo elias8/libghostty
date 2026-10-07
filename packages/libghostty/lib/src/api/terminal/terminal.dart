@@ -388,6 +388,18 @@ final class Terminal with ChangeNotifier {
     return MouseTracking.none;
   }
 
+  /// Mouse pointer shape requested by the running program through OSC 22.
+  MouseShape get mouseShape =>
+      bindings.terminal.terminalGetMouseShape(_terminalHandle);
+
+  /// Screen and Kitty graphics memory held by this terminal.
+  ///
+  /// This reads every screen page and may take time for long scrollback
+  /// histories. Query it when checking memory budgets instead of after every
+  /// write.
+  TerminalMemoryUsage get memoryUsage =>
+      bindings.terminal.terminalGetMemoryUsage(_terminalHandle);
+
   /// Registers a callback for BEL character (0x07).
   ///
   /// Fires synchronously during [write]. Set to null to ignore bell events.
@@ -465,6 +477,14 @@ final class Terminal with ChangeNotifier {
     bindings.terminal.terminalSetOnProgressReport(_terminalHandle, value);
   }
 
+  /// Registers a callback for validated OSC 7501 program status reports.
+  ///
+  /// The strings in each report are copied and remain valid after the
+  /// callback returns. Set to null to ignore reports.
+  set onProgramStatus(TerminalProgramStatusCallback? value) {
+    bindings.terminal.terminalSetOnProgramStatus(_terminalHandle, value);
+  }
+
   /// Registers a callback for working-directory changes via OSC 7/9/1337.
   ///
   /// Read the new [pwd] inside the callback. OSC 7 values remain raw URIs;
@@ -472,6 +492,32 @@ final class Terminal with ChangeNotifier {
   /// [write].
   set onPwdChanged(VoidCallback? value) {
     bindings.terminal.terminalSetOnPwdChanged(_terminalHandle, value);
+  }
+
+  /// Registers a callback when synchronized output starts or ends a render
+  /// hold.
+  ///
+  /// The callback receives true when a hold starts and false when it ends.
+  /// Set to null to ignore these events.
+  set onRenderHold(ValueSetter<bool>? value) {
+    bindings.terminal.terminalSetOnRenderHold(_terminalHandle, value);
+  }
+
+  /// Registers a callback after the program performs a full terminal reset.
+  ///
+  /// Fires synchronously during [write] when the program sends RIS (`ESC c`).
+  /// It does not fire for [reset]. Set to null to ignore reset events.
+  set onReset(VoidCallback? value) {
+    bindings.terminal.terminalSetOnReset(_terminalHandle, value);
+  }
+
+  /// Registers a callback for shell integration events reported through
+  /// OSC 133.
+  ///
+  /// Command and error strings are copied and remain valid after the callback
+  /// returns. Set to null to ignore these events.
+  set onSemanticPrompt(TerminalSemanticPromptCallback? value) {
+    bindings.terminal.terminalSetOnSemanticPrompt(_terminalHandle, value);
   }
 
   /// Registers a callback for XTWINOPS size queries (CSI 14/16/18 t).
@@ -600,6 +646,40 @@ final class Terminal with ChangeNotifier {
   /// disable scrollback by lines.
   set scrollbackMaxLines(int? value) {
     bindings.terminal.terminalSetScrollbackMaxLines(_terminalHandle, value);
+  }
+
+  /// Controls whether a resize can pull rows from scrollback into the active
+  /// grid.
+  ///
+  /// Set null to restore libghostty's default, which is true. Set false when
+  /// the PTY keeps its own screen buffer without scrollback.
+  set resizePullScrollback(bool? value) {
+    bindings.terminal.terminalSetResizePullScrollback(
+      _terminalHandle,
+      value: value,
+    );
+  }
+
+  /// Enables or disables DECRQCRA checksum replies.
+  ///
+  /// Checksum replies are disabled by default because a program could use
+  /// them to read screen contents.
+  set xtChecksumReport(bool enabled) {
+    bindings.terminal.terminalSetXtChecksumReport(
+      _terminalHandle,
+      enabled: enabled,
+    );
+  }
+
+  /// Sets DECRQCRA checksum calculation flags and the default used after a
+  /// full terminal reset.
+  ///
+  /// The value must be between 0 and 31. Set null to restore the DEC default.
+  set xtChecksumExtension(int? value) {
+    if (value != null && (value < 0 || value > 31)) {
+      throw RangeError.range(value, 0, 31, 'value');
+    }
+    bindings.terminal.terminalSetXtChecksumExtension(_terminalHandle, value);
   }
 
   /// Number of rows in the scrollback buffer (excluding the active grid).

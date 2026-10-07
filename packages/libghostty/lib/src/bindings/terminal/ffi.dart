@@ -328,6 +328,40 @@ final class FfiTerminalBindings implements TerminalBindings {
       _getBool(terminal, .mouseTracking, 'ghostty_terminal_get');
 
   @override
+  MouseShape terminalGetMouseShape(LibGhosttyHandle terminal) =>
+      .fromValue(_getU32(terminal, .mouseShape, 'ghostty_terminal_get'));
+
+  @override
+  TerminalMemoryUsage terminalGetMemoryUsage(LibGhosttyHandle terminal) {
+    return using((arena) {
+      final value = arena<native.TerminalMemoryUsage>();
+      value.ref.size = sizeOf<native.TerminalMemoryUsage>();
+      final result = native.ghostty_terminal_get(
+        .fromAddress(terminal.value),
+        .memoryUsage,
+        value.cast(),
+      );
+      checkRequiredCode(result.value, operation: 'ghostty_terminal_get');
+      final usage = value.ref;
+      return TerminalMemoryUsage(
+        compressionSupported: usage.compression_supported,
+        primaryPages: usage.primary_pages,
+        primaryVirtualBytes: usage.primary_virtual_bytes,
+        primaryResidentBytes: usage.primary_resident_bytes,
+        primaryCompressedPages: usage.primary_compressed_pages,
+        primaryCompressedBytes: usage.primary_compressed_bytes,
+        primaryImageBytes: usage.primary_image_bytes,
+        alternatePages: usage.alternate_pages,
+        alternateVirtualBytes: usage.alternate_virtual_bytes,
+        alternateResidentBytes: usage.alternate_resident_bytes,
+        alternateCompressedPages: usage.alternate_compressed_pages,
+        alternateCompressedBytes: usage.alternate_compressed_bytes,
+        alternateImageBytes: usage.alternate_image_bytes,
+      );
+    });
+  }
+
+  @override
   String terminalGetPwd(LibGhosttyHandle terminal) =>
       _getString(terminal, .pwd, requiredValue: true)!;
 
@@ -955,6 +989,109 @@ final class FfiTerminalBindings implements TerminalBindings {
   }
 
   @override
+  void terminalSetOnProgramStatus(
+    LibGhosttyHandle terminal,
+    TerminalProgramStatusCallback? callback,
+  ) {
+    final callable = callback == null
+        ? null
+        : NativeCallable<
+            Void Function(
+              native.Terminal,
+              Pointer<Void>,
+              Pointer<native.TerminalProgramStatus>,
+            )
+          >.isolateLocal((
+            native.Terminal terminal,
+            Pointer<Void> userdata,
+            Pointer<native.TerminalProgramStatus> pointer,
+          ) {
+            try {
+              final value = pointer.ref;
+              if (value.size < sizeOf<native.TerminalProgramStatus>()) return;
+              callback(
+                TerminalProgramStatus(
+                  state: .fromValue(value.stateAsInt),
+                  kind: .fromValue(value.kindAsInt),
+                  progress: value.progress < 0 ? null : value.progress,
+                  id: _readString(value.id),
+                  app: _readString(value.app),
+                  title: _readString(value.title),
+                  message: _readString(value.message),
+                ),
+              );
+            } on Object catch (error, stackTrace) {
+              _captureCallbackError(error, stackTrace);
+            }
+          });
+    _replaceCallback(terminal, .programStatus, callable);
+  }
+
+  @override
+  void terminalSetOnSemanticPrompt(
+    LibGhosttyHandle terminal,
+    TerminalSemanticPromptCallback? callback,
+  ) {
+    final callable = callback == null
+        ? null
+        : NativeCallable<
+            Void Function(
+              native.Terminal,
+              Pointer<Void>,
+              Pointer<native.TerminalSemanticPrompt>,
+            )
+          >.isolateLocal((
+            native.Terminal terminal,
+            Pointer<Void> userdata,
+            Pointer<native.TerminalSemanticPrompt> pointer,
+          ) {
+            try {
+              final value = pointer.ref;
+              if (value.size < sizeOf<native.TerminalSemanticPrompt>()) return;
+              callback(
+                TerminalSemanticPrompt(
+                  kind: .fromValue(value.kindAsInt),
+                  promptKind: .fromValue(value.prompt_kindAsInt),
+                  exitCode: value.has_exit_code ? value.exit_code : null,
+                  command: _readString(value.command),
+                  error: _readString(value.error),
+                ),
+              );
+            } on Object catch (error, stackTrace) {
+              _captureCallbackError(error, stackTrace);
+            }
+          });
+    _replaceCallback(terminal, .semanticPrompt, callable);
+  }
+
+  @override
+  void terminalSetOnRenderHold(
+    LibGhosttyHandle terminal,
+    ValueSetter<bool>? callback,
+  ) {
+    final callable = callback == null
+        ? null
+        : NativeCallable<
+            Void Function(native.Terminal, Pointer<Void>, Bool)
+          >.isolateLocal((
+            native.Terminal terminal,
+            Pointer<Void> userdata,
+            bool held,
+          ) {
+            try {
+              callback(held);
+            } on Object catch (error, stackTrace) {
+              _captureCallbackError(error, stackTrace);
+            }
+          });
+    _replaceCallback(terminal, .renderHold, callable);
+  }
+
+  @override
+  void terminalSetOnReset(LibGhosttyHandle terminal, VoidCallback? callback) =>
+      _setVoidCallback(terminal, .reset, callback);
+
+  @override
   void terminalSetOnPwdChanged(
     LibGhosttyHandle terminal,
     VoidCallback? callback,
@@ -1021,11 +1158,24 @@ final class FfiTerminalBindings implements TerminalBindings {
           ) {
             try {
               final sequence = pointer.ref;
+              final payload = switch (sequence.tag) {
+                .apc => (
+                  content: _readBytes(sequence.value.apc.content),
+                  truncated: sequence.value.apc.truncated,
+                  terminator: null,
+                ),
+                .osc => (
+                  content: _readBytes(sequence.value.osc.content),
+                  truncated: sequence.value.osc.truncated,
+                  terminator: sequence.value.osc.terminator,
+                ),
+              };
               callback(
                 TerminalUnknownSequence(
                   tag: sequence.tag,
-                  content: _readBytes(sequence.value.apc.content),
-                  truncated: sequence.value.apc.truncated,
+                  content: payload.content,
+                  truncated: payload.truncated,
+                  terminator: payload.terminator,
                 ),
               );
             } on Object catch (error, stackTrace) {
@@ -1100,6 +1250,29 @@ final class FfiTerminalBindings implements TerminalBindings {
   @override
   void terminalSetScrollbackMaxLines(LibGhosttyHandle terminal, int? lines) =>
       _setSize(terminal, .scrollbackMaxLines, lines);
+
+  @override
+  void terminalSetResizePullScrollback(
+    LibGhosttyHandle terminal, {
+    required bool? value,
+  }) => _setBool(terminal, .resizePullScrollback, value);
+
+  @override
+  void terminalSetXtChecksumReport(
+    LibGhosttyHandle terminal, {
+    required bool enabled,
+  }) => _setBool(terminal, .xtChecksumReport, enabled);
+
+  @override
+  void terminalSetXtChecksumExtension(LibGhosttyHandle terminal, int? value) {
+    if (value == null) {
+      _setOption(terminal, .xtChecksumExtension, nullptr.cast());
+      return;
+    }
+    RangeError.checkValueInInterval(value, 0, 31, 'value');
+    _outU8.value = value;
+    _setOption(terminal, .xtChecksumExtension, _outU8.cast());
+  }
 
   @override
   void terminalSetTerminfoName(LibGhosttyHandle terminal, String? name) =>

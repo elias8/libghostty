@@ -1,4 +1,5 @@
 import 'dart:ffi';
+import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 
@@ -34,6 +35,41 @@ final class FfiParserBindings implements ParserBindings {
   }
 
   @override
+  RawOscUnknownCommandData? oscCommandUnknownData(LibGhosttyHandle command) {
+    return using((arena) {
+      final nativeCommand = native.OscCommand.fromAddress(command.value);
+      final content = arena<native.String>();
+      if (!native.ghostty_osc_command_data(
+        nativeCommand,
+        OscCommandData.unknownContent,
+        content.cast(),
+      )) {
+        return null;
+      }
+      final truncated = arena<Bool>();
+      final hasTruncated = native.ghostty_osc_command_data(
+        nativeCommand,
+        OscCommandData.unknownTruncated,
+        truncated.cast(),
+      );
+      final terminator = arena<Uint32>();
+      final hasTerminator = native.ghostty_osc_command_data(
+        nativeCommand,
+        OscCommandData.unknownTerminator,
+        terminator.cast(),
+      );
+      if (!hasTruncated || !hasTerminator) return null;
+      return (
+        content: Uint8List.fromList(
+          content.ref.ptr.asTypedList(content.ref.len),
+        ),
+        truncated: truncated.value,
+        terminator: OscTerminator.fromValue(terminator.value),
+      );
+    });
+  }
+
+  @override
   LibGhosttyHandle oscEnd(LibGhosttyHandle parser, int terminator) {
     final command = native.ghostty_osc_end(
       Pointer.fromAddress(parser.value),
@@ -53,12 +89,30 @@ final class FfiParserBindings implements ParserBindings {
   }
 
   @override
-  LibGhosttyHandle oscNew() {
+  LibGhosttyHandle oscNew({required int unknownMaxBytes}) {
     return using((arena) {
       final out = arena<Pointer<native.OscParserImpl>>();
       final result = native.ghostty_osc_new(nullptr, out);
       checkResultCode(result.value, operation: 'ghostty_osc_new');
-      return .fromAddress(out.value.address);
+      final handle = LibGhosttyHandle.fromAddress(out.value.address);
+      if (unknownMaxBytes == 0) return handle;
+      try {
+        final value = arena<Size>()..value = unknownMaxBytes;
+        checkResultCode(
+          native
+              .ghostty_osc_set(
+                out.value,
+                OscOption.unknownMaxBytes,
+                value.cast(),
+              )
+              .value,
+          operation: 'ghostty_osc_set',
+        );
+      } on Object {
+        native.ghostty_osc_free(out.value);
+        rethrow;
+      }
+      return handle;
     });
   }
 

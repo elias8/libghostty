@@ -5,6 +5,8 @@ import 'package:libghostty/libghostty.dart'
         DirtyState,
         GridRef,
         Position,
+        RenderOverscan,
+        RenderRowId,
         RenderState,
         RowIterator,
         Selection,
@@ -92,6 +94,53 @@ void main() {
         expect(first, 0);
         expect(second, 1);
       });
+
+      test(
+        'reports viewport positions and stable row ids without overscan',
+        () {
+          renderState.update(terminal);
+          rows.reset(renderState);
+          expect(rows.next(), isTrue);
+          final firstId = rows.id;
+
+          expect(rows.viewportY, 0);
+          expect(
+            rows.id == RenderRowId(word0: BigInt.zero, word1: BigInt.zero),
+            isFalse,
+          );
+          renderState.update(terminal);
+          rows.reset(renderState);
+          expect(rows.next(), isTrue);
+
+          expect(rows.id, firstId);
+          expect(rows.viewportY, 0);
+        },
+      );
+
+      test(
+        'reports negative viewport positions for rows above the viewport',
+        () {
+          terminal.resize(cols: 10, rows: 10);
+          terminal.write(
+            Uint8List.fromList(
+              List.generate(50, (i) => 'line $i').join('\r\n').codeUnits,
+            ),
+          );
+          terminal.scrollViewport(-5);
+          renderState.overscanRequest = const RenderOverscan(
+            above: 3,
+            below: 2,
+          );
+          renderState.update(terminal);
+          rows.reset(renderState);
+          final positions = <int>[];
+          while (rows.next()) {
+            positions.add(rows.viewportY);
+          }
+
+          expect(positions, [-3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+        },
+      );
     });
 
     void installSelection() {

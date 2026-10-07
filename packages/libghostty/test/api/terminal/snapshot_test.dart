@@ -53,6 +53,15 @@ void main() {
     }
 
     group('constructor', () {
+      test('does not compress history by default', () {
+        final source = Terminal(cols: 4, rows: 1);
+        addTearDown(source.dispose);
+        final decoder = SnapshotDecoder(source.encodeSnapshot());
+        addTearDown(decoder.dispose);
+
+        expect(decoder.compressHistory, isFalse);
+      });
+
       test('copies source bytes at construction', () {
         final source = Terminal(cols: 8, rows: 2);
         addTearDown(source.dispose);
@@ -227,6 +236,25 @@ void main() {
 
         expect(pages, isNotEmpty);
         expect(restored.scrollbackRows, source.scrollbackRows);
+      });
+
+      test('compresses history while restoring pages when requested', () {
+        final source = terminalWithHistory();
+        addTearDown(source.dispose);
+        final decoder = SnapshotDecoder(
+          source.encodeSnapshot(),
+          compressHistory: true,
+        );
+        addTearDown(decoder.dispose);
+
+        final restored = decoder.ready();
+        addTearDown(restored.dispose);
+        final pages = drainPages(decoder);
+
+        expect(pages, isNotEmpty);
+        expect(decoder.compressHistory, isTrue);
+        expect(restored.scrollbackRows, source.scrollbackRows);
+        expect(plainText(restored), plainText(source));
       });
 
       test('returns null after the final history page', () {

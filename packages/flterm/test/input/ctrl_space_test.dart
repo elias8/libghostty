@@ -2,7 +2,6 @@
 library;
 
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:flterm/src/controller/terminal_controller.dart';
 import 'package:flutter/services.dart';

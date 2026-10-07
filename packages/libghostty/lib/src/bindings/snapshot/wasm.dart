@@ -92,6 +92,7 @@ final class WasmSnapshotBindings implements SnapshotBindings {
     Uint8List bytes, {
     int? maxContinuationBytes,
     bool retainContinuation = false,
+    bool compressHistory = false,
   }) {
     final allocationLength = bytes.isEmpty ? 1 : bytes.length;
     var source = 0;
@@ -114,6 +115,7 @@ final class WasmSnapshotBindings implements SnapshotBindings {
         handle,
         maxContinuationBytes: maxContinuationBytes,
         retainContinuation: retainContinuation,
+        compressHistory: compressHistory,
       );
       return handle;
     } catch (_) {
@@ -161,6 +163,11 @@ final class WasmSnapshotBindings implements SnapshotBindings {
   @override
   bool snapshotDecoderRetainContinuation(LibGhosttyHandle decoder) {
     return _getBool(decoder, SnapshotDecoderData.retainContinuation);
+  }
+
+  @override
+  bool snapshotDecoderCompressHistory(LibGhosttyHandle decoder) {
+    return _getBool(decoder, SnapshotDecoderData.compressHistory);
   }
 
   @override
@@ -284,6 +291,7 @@ final class WasmSnapshotBindings implements SnapshotBindings {
     LibGhosttyHandle decoder, {
     required int? maxContinuationBytes,
     required bool retainContinuation,
+    required bool compressHistory,
   }) {
     if (maxContinuationBytes != null) {
       final value = _allocate(4);
@@ -299,6 +307,15 @@ final class WasmSnapshotBindings implements SnapshotBindings {
       try {
         _memory.writeU8(value, 1);
         _set(decoder, SnapshotDecoderOption.retainContinuation, value);
+      } finally {
+        _exports.freeBytes(value, 1);
+      }
+    }
+    if (compressHistory) {
+      final value = _allocate(1);
+      try {
+        _memory.writeU8(value, 1);
+        _set(decoder, SnapshotDecoderOption.compressHistory, value);
       } finally {
         _exports.freeBytes(value, 1);
       }

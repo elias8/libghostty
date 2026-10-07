@@ -43,7 +43,9 @@ abstract interface class TerminalBindings {
   String? terminalGetKittyImageMediumTempFile(LibGhosttyHandle terminal);
   int? terminalGetKittyImageStorageLimit(LibGhosttyHandle terminal);
   int terminalGetKittyKeyboardFlags(LibGhosttyHandle terminal);
+  TerminalMemoryUsage terminalGetMemoryUsage(LibGhosttyHandle terminal);
   bool terminalGetMouseTracking(LibGhosttyHandle terminal);
+  MouseShape terminalGetMouseShape(LibGhosttyHandle terminal);
   String terminalGetPwd(LibGhosttyHandle terminal);
   int terminalGetRows(LibGhosttyHandle terminal);
   int? terminalGetScrollbackMaxBytes(LibGhosttyHandle terminal);
@@ -154,9 +156,22 @@ abstract interface class TerminalBindings {
     LibGhosttyHandle terminal,
     TerminalProgressCallback? callback,
   );
+  void terminalSetOnProgramStatus(
+    LibGhosttyHandle terminal,
+    TerminalProgramStatusCallback? callback,
+  );
   void terminalSetOnPwdChanged(
     LibGhosttyHandle terminal,
     VoidCallback? callback,
+  );
+  void terminalSetOnRenderHold(
+    LibGhosttyHandle terminal,
+    ValueSetter<bool>? callback,
+  );
+  void terminalSetOnReset(LibGhosttyHandle terminal, VoidCallback? callback);
+  void terminalSetOnSemanticPrompt(
+    LibGhosttyHandle terminal,
+    TerminalSemanticPromptCallback? callback,
   );
   void terminalSetOnSize(
     LibGhosttyHandle terminal,
@@ -182,6 +197,10 @@ abstract interface class TerminalBindings {
   void terminalSetPwd(LibGhosttyHandle terminal, String? pwd);
   void terminalSetScrollbackMaxBytes(LibGhosttyHandle terminal, int? bytes);
   void terminalSetScrollbackMaxLines(LibGhosttyHandle terminal, int? lines);
+  void terminalSetResizePullScrollback(
+    LibGhosttyHandle terminal, {
+    required bool? value,
+  });
   void terminalSetTerminfoName(LibGhosttyHandle terminal, String? name);
   void terminalSetTitle(LibGhosttyHandle terminal, String? title);
   void terminalSetTitleReport(
@@ -192,6 +211,11 @@ abstract interface class TerminalBindings {
     LibGhosttyHandle terminal,
     int? bytes,
   );
+  void terminalSetXtChecksumExtension(LibGhosttyHandle terminal, int? value);
+  void terminalSetXtChecksumReport(
+    LibGhosttyHandle terminal, {
+    required bool enabled,
+  });
   void terminalVtWrite(LibGhosttyHandle terminal, Uint8List data);
   int? terminalWriteUntilGround(LibGhosttyHandle terminal, Uint8List data);
 }

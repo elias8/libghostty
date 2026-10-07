@@ -81,6 +81,35 @@ final class RenderState {
   var _cols = 0;
   var _rows = 0;
 
+  /// Number of rows captured above and below the viewport by the last update.
+  ///
+  /// The captured amount can be smaller than [overscanRequest] near the
+  /// beginning or end of the scrollback.
+  RenderOverscan get overscan {
+    _ensureAlive();
+    return bindings.render.renderStateGetOverscan(_handle);
+  }
+
+  /// Requested overscan for subsequent updates.
+  ///
+  /// Both values default to zero, which captures only the viewport. A new
+  /// request takes effect on the next [update].
+  RenderOverscan get overscanRequest {
+    _ensureAlive();
+    return bindings.render.renderStateGetOverscanRequest(_handle);
+  }
+
+  set overscanRequest(RenderOverscan value) {
+    _ensureAlive();
+    if (value.above < 0 || value.above > 0xffff) {
+      throw RangeError.range(value.above, 0, 0xffff, 'above');
+    }
+    if (value.below < 0 || value.below > 0xffff) {
+      throw RangeError.range(value.below, 0, 0xffff, 'below');
+    }
+    bindings.render.renderStateSetOverscanRequest(_handle, value);
+  }
+
   /// Creates an empty render state.
   ///
   /// Call [update] before reading any viewport data. Throws

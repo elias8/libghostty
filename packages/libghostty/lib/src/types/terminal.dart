@@ -265,6 +265,192 @@ final class TerminalProgress {
       other.progress == progress;
 }
 
+/// Memory held by a terminal's screens and Kitty graphics storage.
+///
+/// Resident bytes include compressed page storage but exclude Kitty image
+/// bytes. Reading this value visits every screen page, so read it when
+/// checking memory budgets instead of after every terminal write.
+@immutable
+final class TerminalMemoryUsage {
+  /// Whether this build can compress scrollback pages.
+  final bool compressionSupported;
+
+  /// Number of pages allocated for the primary screen.
+  final int primaryPages;
+
+  /// Address space reserved for primary screen pages.
+  final int primaryVirtualBytes;
+
+  /// Resident primary screen bytes, including compressed page data.
+  final int primaryResidentBytes;
+
+  /// Number of compressed primary screen pages.
+  final int primaryCompressedPages;
+
+  /// Compressed primary data bytes, already included in resident bytes.
+  final int primaryCompressedBytes;
+
+  /// Kitty image bytes stored for the primary screen.
+  final int primaryImageBytes;
+
+  /// Number of pages allocated for the alternate screen.
+  final int alternatePages;
+
+  /// Address space reserved for alternate screen pages.
+  final int alternateVirtualBytes;
+
+  /// Resident alternate screen bytes, including compressed page data.
+  final int alternateResidentBytes;
+
+  /// Number of compressed alternate screen pages.
+  final int alternateCompressedPages;
+
+  /// Compressed alternate data bytes, already included in resident bytes.
+  final int alternateCompressedBytes;
+
+  /// Kitty image bytes stored for the alternate screen.
+  final int alternateImageBytes;
+
+  const TerminalMemoryUsage({
+    required this.compressionSupported,
+    required this.primaryPages,
+    required this.primaryVirtualBytes,
+    required this.primaryResidentBytes,
+    required this.primaryCompressedPages,
+    required this.primaryCompressedBytes,
+    required this.primaryImageBytes,
+    required this.alternatePages,
+    required this.alternateVirtualBytes,
+    required this.alternateResidentBytes,
+    required this.alternateCompressedPages,
+    required this.alternateCompressedBytes,
+    required this.alternateImageBytes,
+  });
+
+  @override
+  int get hashCode => Object.hashAll([
+    compressionSupported,
+    primaryPages,
+    primaryVirtualBytes,
+    primaryResidentBytes,
+    primaryCompressedPages,
+    primaryCompressedBytes,
+    primaryImageBytes,
+    alternatePages,
+    alternateVirtualBytes,
+    alternateResidentBytes,
+    alternateCompressedPages,
+    alternateCompressedBytes,
+    alternateImageBytes,
+  ]);
+
+  @override
+  bool operator ==(Object other) =>
+      other is TerminalMemoryUsage &&
+      other.compressionSupported == compressionSupported &&
+      other.primaryPages == primaryPages &&
+      other.primaryVirtualBytes == primaryVirtualBytes &&
+      other.primaryResidentBytes == primaryResidentBytes &&
+      other.primaryCompressedPages == primaryCompressedPages &&
+      other.primaryCompressedBytes == primaryCompressedBytes &&
+      other.primaryImageBytes == primaryImageBytes &&
+      other.alternatePages == alternatePages &&
+      other.alternateVirtualBytes == alternateVirtualBytes &&
+      other.alternateResidentBytes == alternateResidentBytes &&
+      other.alternateCompressedPages == alternateCompressedPages &&
+      other.alternateCompressedBytes == alternateCompressedBytes &&
+      other.alternateImageBytes == alternateImageBytes;
+}
+
+/// A valid OSC 7501 program status report received by a terminal.
+@immutable
+final class TerminalProgramStatus {
+  /// The program's reported state.
+  final ProgramStatusState state;
+
+  /// What the program needs when [state] is blocked.
+  final ProgramStatusKind kind;
+
+  /// Progress from 0 through 100, or null when the report omits it.
+  final int? progress;
+
+  /// Record identifier. An empty value denotes the root program record.
+  final String id;
+
+  /// Stable machine-readable program name.
+  final String app;
+
+  /// Short human-readable record label.
+  final String title;
+
+  /// Human-readable status message.
+  final String message;
+
+  const TerminalProgramStatus({
+    required this.state,
+    required this.kind,
+    required this.progress,
+    required this.id,
+    required this.app,
+    required this.title,
+    required this.message,
+  });
+
+  @override
+  int get hashCode =>
+      Object.hash(state, kind, progress, id, app, title, message);
+
+  @override
+  bool operator ==(Object other) =>
+      other is TerminalProgramStatus &&
+      other.state == state &&
+      other.kind == kind &&
+      other.progress == progress &&
+      other.id == id &&
+      other.app == app &&
+      other.title == title &&
+      other.message == message;
+}
+
+/// A shell integration event reported through OSC 133.
+@immutable
+final class TerminalSemanticPrompt {
+  /// The command lifecycle step reported by the shell.
+  final SemanticPromptKind kind;
+
+  /// Which prompt started, meaningful when [kind] is prompt start.
+  final SemanticPromptPromptKind promptKind;
+
+  /// The command's exit code, or null when the shell omitted it.
+  final int? exitCode;
+
+  /// The command line about to run, or an empty string when unavailable.
+  final String command;
+
+  /// Error detail for command completion, or an empty string when omitted.
+  final String error;
+
+  const TerminalSemanticPrompt({
+    required this.kind,
+    required this.promptKind,
+    required this.exitCode,
+    required this.command,
+    required this.error,
+  });
+
+  @override
+  int get hashCode => Object.hash(kind, promptKind, exitCode, command, error);
+
+  @override
+  bool operator ==(Object other) =>
+      other is TerminalSemanticPrompt &&
+      other.kind == kind &&
+      other.promptKind == promptKind &&
+      other.exitCode == exitCode &&
+      other.command == command &&
+      other.error == error;
+}
+
 /// An unsupported terminal string sequence captured by the terminal parser.
 ///
 /// [content] is copied into Dart-owned memory and may contain arbitrary binary
@@ -280,9 +466,13 @@ final class TerminalUnknownSequence {
   /// Whether the byte limit or an allocation failure shortened the content.
   final bool truncated;
 
+  /// How an OSC sequence ended, or null for other sequence families.
+  final OscTerminator? terminator;
+
   const TerminalUnknownSequence({
     required this.tag,
     required this.content,
     required this.truncated,
+    this.terminator,
   });
 }

@@ -14,10 +14,12 @@ abstract interface class SnapshotBindings {
     Uint8List bytes, {
     int? maxContinuationBytes,
     bool retainContinuation = false,
+    bool compressHistory = false,
   });
   RawSnapshotProgress? snapshotDecoderNext(LibGhosttyHandle decoder);
   LibGhosttyHandle snapshotDecoderReady(LibGhosttyHandle decoder);
   bool snapshotDecoderRetainContinuation(LibGhosttyHandle decoder);
+  bool snapshotDecoderCompressHistory(LibGhosttyHandle decoder);
   int snapshotDecoderSourceOffset(LibGhosttyHandle decoder);
   Uint8List snapshotEncode(LibGhosttyHandle terminal);
 }

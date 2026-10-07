@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import '../../generated/libghostty_enums.g.dart';
 import '../../generated/libghostty_wasm.g.dart';
 import '../../types/types.dart';
@@ -46,6 +48,46 @@ final class WasmParserBindings implements ParserBindings {
   }
 
   @override
+  RawOscUnknownCommandData? oscCommandUnknownData(LibGhosttyHandle command) {
+    final frame = _scratch.acquire(const []);
+    try {
+      final content = frame.variableAddress(0, _layout.stringSize);
+      if (_exports.ghostty_osc_command_data(
+            command.value,
+            OscCommandData.unknownContent.value,
+            content,
+          ) ==
+          0) {
+        return null;
+      }
+      final truncated = frame.variableAddress(1, 1);
+      final hasTruncated = _exports.ghostty_osc_command_data(
+        command.value,
+        OscCommandData.unknownTruncated.value,
+        truncated,
+      );
+      final terminator = frame.variableAddress(2, 4, alignment: 4);
+      final hasTerminator = _exports.ghostty_osc_command_data(
+        command.value,
+        OscCommandData.unknownTerminator.value,
+        terminator,
+      );
+      if (hasTruncated == 0 || hasTerminator == 0) return null;
+      final pointer = _memory.readPtr(content);
+      final length = _memory.readU32(content + _layout.stringLen);
+      return (
+        content: pointer == 0 || length == 0
+            ? Uint8List(0)
+            : Uint8List.fromList(_memory.readBytes(pointer, length)),
+        truncated: _memory.readU8(truncated) != 0,
+        terminator: .fromValue(_memory.readU32(terminator)),
+      );
+    } finally {
+      frame.release();
+    }
+  }
+
+  @override
   LibGhosttyHandle oscEnd(LibGhosttyHandle parser, int terminator) {
     return .fromAddress(_exports.ghostty_osc_end(parser.value, terminator));
   }
@@ -61,12 +103,34 @@ final class WasmParserBindings implements ParserBindings {
   }
 
   @override
-  LibGhosttyHandle oscNew() {
+  LibGhosttyHandle oscNew({required int unknownMaxBytes}) {
     final out = _requirePointer(_exports.allocateOpaque());
     try {
       final result = _exports.ghostty_osc_new(0, out);
       checkResultCode(result, operation: 'ghostty_osc_new');
-      return .fromAddress(_exports.ghostty_wasm_take_opaque(out));
+      final handle = LibGhosttyHandle.fromAddress(
+        _exports.ghostty_wasm_take_opaque(out),
+      );
+      if (unknownMaxBytes == 0) return handle;
+      var value = 0;
+      try {
+        value = _requirePointer(_exports.allocateBytes(wasm32PointerSize));
+        _memory.writeU32(value, unknownMaxBytes);
+        checkResultCode(
+          _exports.ghostty_osc_set(
+            handle.value,
+            OscOption.unknownMaxBytes.value,
+            value,
+          ),
+          operation: 'ghostty_osc_set',
+        );
+      } on Object {
+        _exports.ghostty_osc_free(handle.value);
+        rethrow;
+      } finally {
+        if (value != 0) _exports.freeBytes(value, wasm32PointerSize);
+      }
+      return handle;
     } finally {
       _exports.freeOpaque(out);
     }

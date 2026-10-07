@@ -178,6 +178,18 @@ final class WasmRenderBindings implements RenderBindings {
       _required(_raw.renderStateGetCursor(s.value), 'ghostty_render_state_get');
 
   @override
+  RenderOverscan renderStateGetOverscan(LibGhosttyHandle s) => _required(
+    _raw.renderStateGetOverscan(s.value),
+    'ghostty_render_state_get',
+  );
+
+  @override
+  RenderOverscan renderStateGetOverscanRequest(LibGhosttyHandle s) => _required(
+    _raw.renderStateGetOverscanRequest(s.value),
+    'ghostty_render_state_get',
+  );
+
+  @override
   RenderStateDirty renderStateGetDirty(LibGhosttyHandle s) =>
       _required(_raw.renderStateGetDirty(s.value), 'ghostty_render_state_get');
 
@@ -197,6 +209,15 @@ final class WasmRenderBindings implements RenderBindings {
   @override
   void renderStateSetDirty(LibGhosttyHandle s, RenderStateDirty d) =>
       _check(_raw.renderStateSetDirty(s.value, d), 'ghostty_render_state_set');
+
+  @override
+  void renderStateSetOverscanRequest(
+    LibGhosttyHandle s,
+    RenderOverscan overscan,
+  ) => _check(
+    _raw.renderStateSetOverscanRequest(s.value, overscan),
+    'ghostty_render_state_set',
+  );
 
   @override
   void renderStateUpdate(LibGhosttyHandle s, LibGhosttyHandle t) => _check(
@@ -343,6 +364,16 @@ final class WasmRenderBindings implements RenderBindings {
   @override
   bool rowIteratorGetDirty(LibGhosttyHandle h) => _required(
     _raw.rowIteratorGetDirty(h.value),
+    'ghostty_render_state_row_get',
+  );
+
+  @override
+  RenderRowId rowIteratorGetId(LibGhosttyHandle h) =>
+      _required(_raw.rowIteratorGetId(h.value), 'ghostty_render_state_row_get');
+
+  @override
+  int rowIteratorGetViewportY(LibGhosttyHandle h) => _required(
+    _raw.rowIteratorGetViewportY(h.value),
     'ghostty_render_state_row_get',
   );
 
@@ -910,6 +941,39 @@ final class _WasmRenderRaw {
     }
   }
 
+  CResult<RenderOverscan> renderStateGetOverscan(int state) =>
+      _renderStateGetOverscan(state, RenderStateData.overscan);
+
+  CResult<RenderOverscan> renderStateGetOverscanRequest(int state) =>
+      _renderStateGetOverscan(state, RenderStateData.overscanRequest);
+
+  CResult<RenderOverscan> _renderStateGetOverscan(
+    int state,
+    RenderStateData data,
+  ) {
+    final size = _layout.renderOverscanSize;
+    final frame = _scratch.acquire(const []);
+    try {
+      final outPtr = frame.variableAddress(0, size);
+      _zero(outPtr, size);
+      final result = Result.fromValue(
+        _exports.ghostty_render_state_get(state, data.value, outPtr),
+      );
+      if (result != .success) {
+        return (result, const RenderOverscan(above: 0, below: 0));
+      }
+      return (
+        result,
+        RenderOverscan(
+          above: _memory.readU16(outPtr + _layout.renderOverscanAbove),
+          below: _memory.readU16(outPtr + _layout.renderOverscanBelow),
+        ),
+      );
+    } finally {
+      frame.release();
+    }
+  }
+
   CResult<RenderStateDirty> renderStateGetDirty(int state) {
     final raw = _renderStateGetI32(state, .dirty);
     return (raw.$1, RenderStateDirty.fromValue(raw.$2));
@@ -973,6 +1037,26 @@ final class _WasmRenderRaw {
         valPtr,
       );
       return Result.fromValue(result);
+    } finally {
+      frame.release();
+    }
+  }
+
+  Result renderStateSetOverscanRequest(int state, RenderOverscan overscan) {
+    final size = _layout.renderOverscanSize;
+    final frame = _scratch.acquire(const []);
+    try {
+      final valuePtr = frame.variableAddress(0, size);
+      _zero(valuePtr, size);
+      _memory.writeU16(valuePtr + _layout.renderOverscanAbove, overscan.above);
+      _memory.writeU16(valuePtr + _layout.renderOverscanBelow, overscan.below);
+      return Result.fromValue(
+        _exports.ghostty_render_state_set(
+          state,
+          RenderStateOption.overscan.value,
+          valuePtr,
+        ),
+      );
     } finally {
       frame.release();
     }
@@ -1425,6 +1509,52 @@ final class _WasmRenderRaw {
       );
       if (result != .success) return (result, 0);
       return (result, _memory.readU64(outPtr));
+    } finally {
+      frame.release();
+    }
+  }
+
+  CResult<int> rowIteratorGetViewportY(int iterator) {
+    final frame = _scratch.acquire(const []);
+    try {
+      final outPtr = frame.variableAddress(0, 4, alignment: 4);
+      final result = Result.fromValue(
+        _exports.ghostty_render_state_row_get(
+          iterator,
+          RenderStateRowData.viewportY.value,
+          outPtr,
+        ),
+      );
+      if (result != .success) return (result, 0);
+      return (result, _memory.readI32(outPtr));
+    } finally {
+      frame.release();
+    }
+  }
+
+  CResult<RenderRowId> rowIteratorGetId(int iterator) {
+    final size = _layout.renderRowIdSize;
+    final frame = _scratch.acquire(const []);
+    try {
+      final outPtr = frame.variableAddress(0, size, alignment: 8);
+      _zero(outPtr, size);
+      final result = Result.fromValue(
+        _exports.ghostty_render_state_row_get(
+          iterator,
+          RenderStateRowData.id.value,
+          outPtr,
+        ),
+      );
+      if (result != .success) {
+        return (result, RenderRowId(word0: BigInt.zero, word1: BigInt.zero));
+      }
+      BigInt readWord(int index) {
+        final address = outPtr + _layout.renderRowIdBits + index * 8;
+        return (BigInt.from(_memory.readU32(address + 4)) << 32) |
+            BigInt.from(_memory.readU32(address));
+      }
+
+      return (result, RenderRowId(word0: readWord(0), word1: readWord(1)));
     } finally {
       frame.release();
     }

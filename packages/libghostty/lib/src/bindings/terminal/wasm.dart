@@ -352,6 +352,64 @@ final class WasmTerminalBindings implements TerminalBindings {
       _getBool(terminal, .mouseTracking, 'ghostty_terminal_get');
 
   @override
+  MouseShape terminalGetMouseShape(LibGhosttyHandle terminal) =>
+      .fromValue(_getU32(terminal, .mouseShape, 'ghostty_terminal_get'));
+
+  @override
+  TerminalMemoryUsage terminalGetMemoryUsage(LibGhosttyHandle terminal) {
+    final pointer = _allocateBytes(_layout.terminalMemoryUsageSize);
+    try {
+      _memory.writeU32(pointer, _layout.terminalMemoryUsageSize);
+      final result = _exports.ghostty_terminal_get(
+        terminal.value,
+        TerminalData.memoryUsage.value,
+        pointer,
+      );
+      checkResultCode(result, operation: 'ghostty_terminal_get');
+      int read(int offset) => _memory.readU64(pointer + offset);
+      return TerminalMemoryUsage(
+        compressionSupported:
+            _memory.readU8(
+              pointer + _layout.terminalMemoryUsageCompressionSupported,
+            ) !=
+            0,
+        primaryPages: read(_layout.terminalMemoryUsagePrimaryPages),
+        primaryVirtualBytes: read(
+          _layout.terminalMemoryUsagePrimaryVirtualBytes,
+        ),
+        primaryResidentBytes: read(
+          _layout.terminalMemoryUsagePrimaryResidentBytes,
+        ),
+        primaryCompressedPages: read(
+          _layout.terminalMemoryUsagePrimaryCompressedPages,
+        ),
+        primaryCompressedBytes: read(
+          _layout.terminalMemoryUsagePrimaryCompressedBytes,
+        ),
+        primaryImageBytes: read(_layout.terminalMemoryUsagePrimaryImageBytes),
+        alternatePages: read(_layout.terminalMemoryUsageAlternatePages),
+        alternateVirtualBytes: read(
+          _layout.terminalMemoryUsageAlternateVirtualBytes,
+        ),
+        alternateResidentBytes: read(
+          _layout.terminalMemoryUsageAlternateResidentBytes,
+        ),
+        alternateCompressedPages: read(
+          _layout.terminalMemoryUsageAlternateCompressedPages,
+        ),
+        alternateCompressedBytes: read(
+          _layout.terminalMemoryUsageAlternateCompressedBytes,
+        ),
+        alternateImageBytes: read(
+          _layout.terminalMemoryUsageAlternateImageBytes,
+        ),
+      );
+    } finally {
+      _exports.freeBytes(pointer, _layout.terminalMemoryUsageSize);
+    }
+  }
+
+  @override
   String terminalGetPwd(LibGhosttyHandle terminal) =>
       _getString(terminal, .pwd);
 
@@ -1062,6 +1120,149 @@ final class WasmTerminalBindings implements TerminalBindings {
   }
 
   @override
+  void terminalSetOnProgramStatus(
+    LibGhosttyHandle terminal,
+    TerminalProgramStatusCallback? callback,
+  ) {
+    _setCallback(
+      terminal,
+      .programStatus,
+      callback,
+      (reuseIndex) => _registerCallback(
+        ((int _, int _, int pointer) {
+          try {
+            if (_memory.readU32(pointer) < _layout.terminalProgramStatusSize) {
+              return;
+            }
+            final progress = _memory.readU8(
+              pointer + _layout.terminalProgramStatusProgress,
+            );
+            callback!(
+              TerminalProgramStatus(
+                state: .fromValue(
+                  _memory.readU32(pointer + _layout.terminalProgramStatusState),
+                ),
+                kind: .fromValue(
+                  _memory.readU32(pointer + _layout.terminalProgramStatusKind),
+                ),
+                progress: progress == 0xff ? null : progress,
+                id: _readString(pointer + _layout.terminalProgramStatusId),
+                app: _readString(pointer + _layout.terminalProgramStatusApp),
+                title: _readString(
+                  pointer + _layout.terminalProgramStatusTitle,
+                ),
+                message: _readString(
+                  pointer + _layout.terminalProgramStatusMessage,
+                ),
+              ),
+            );
+          } on Object catch (error, stackTrace) {
+            _captureCallbackError(error, stackTrace);
+          }
+        }).toJS,
+        ['i32', 'i32', 'i32'],
+        reuseIndex: reuseIndex,
+      ),
+    );
+  }
+
+  @override
+  void terminalSetOnSemanticPrompt(
+    LibGhosttyHandle terminal,
+    TerminalSemanticPromptCallback? callback,
+  ) {
+    _setCallback(
+      terminal,
+      .semanticPrompt,
+      callback,
+      (reuseIndex) => _registerCallback(
+        ((int _, int _, int pointer) {
+          try {
+            if (_memory.readU32(pointer) < _layout.terminalSemanticPromptSize) {
+              return;
+            }
+            final hasExitCode =
+                _memory.readU8(
+                  pointer + _layout.terminalSemanticPromptHasExitCode,
+                ) !=
+                0;
+            callback!(
+              TerminalSemanticPrompt(
+                kind: .fromValue(
+                  _memory.readU32(pointer + _layout.terminalSemanticPromptKind),
+                ),
+                promptKind: .fromValue(
+                  _memory.readU32(
+                    pointer + _layout.terminalSemanticPromptPromptKind,
+                  ),
+                ),
+                exitCode: hasExitCode
+                    ? _memory.readI32(
+                        pointer + _layout.terminalSemanticPromptExitCode,
+                      )
+                    : null,
+                command: _readString(
+                  pointer + _layout.terminalSemanticPromptCommand,
+                ),
+                error: _readString(
+                  pointer + _layout.terminalSemanticPromptError,
+                ),
+              ),
+            );
+          } on Object catch (error, stackTrace) {
+            _captureCallbackError(error, stackTrace);
+          }
+        }).toJS,
+        ['i32', 'i32', 'i32'],
+        reuseIndex: reuseIndex,
+      ),
+    );
+  }
+
+  @override
+  void terminalSetOnRenderHold(
+    LibGhosttyHandle terminal,
+    ValueSetter<bool>? callback,
+  ) {
+    _setCallback(
+      terminal,
+      .renderHold,
+      callback,
+      (reuseIndex) => _registerCallback(
+        ((int _, int _, int held) {
+          try {
+            callback!(held != 0);
+          } on Object catch (error, stackTrace) {
+            _captureCallbackError(error, stackTrace);
+          }
+        }).toJS,
+        ['i32', 'i32', 'i32'],
+        reuseIndex: reuseIndex,
+      ),
+    );
+  }
+
+  @override
+  void terminalSetOnReset(LibGhosttyHandle terminal, VoidCallback? callback) {
+    _setCallback(
+      terminal,
+      .reset,
+      callback,
+      (reuseIndex) => _registerCallback(
+        ((int _, int _) {
+          try {
+            callback!();
+          } on Object catch (error, stackTrace) {
+            _captureCallbackError(error, stackTrace);
+          }
+        }).toJS,
+        ['i32', 'i32'],
+        reuseIndex: reuseIndex,
+      ),
+    );
+  }
+
+  @override
   void terminalSetOnPwdChanged(
     LibGhosttyHandle terminal,
     VoidCallback? callback,
@@ -1159,29 +1360,37 @@ final class WasmTerminalBindings implements TerminalBindings {
       (reuseIndex) => _registerCallback(
         ((int _, int _, int pointer) {
           try {
-            final content =
-                pointer +
-                _layout.unknownSequenceValue +
-                _layout.unknownStringSequenceContent;
+            final tag = TerminalUnknownSequenceTag.fromValue(
+              _memory.readU32(pointer + _layout.unknownSequenceTag),
+            );
+            final value = pointer + _layout.unknownSequenceValue;
+            final (contentOffset, truncatedOffset, terminator) = switch (tag) {
+              .apc => (
+                _layout.unknownStringSequenceContent,
+                _layout.unknownStringSequenceTruncated,
+                null,
+              ),
+              .osc => (
+                _layout.unknownOscSequenceContent,
+                _layout.unknownOscSequenceTruncated,
+                OscTerminator.fromValue(
+                  _memory.readU32(value + _layout.unknownOscSequenceTerminator),
+                ),
+              ),
+            };
+            final content = value + contentOffset;
             final contentPointer = _memory.readPtr(content);
             final contentLength = _memory.readU32(content + _layout.stringLen);
             callback!(
               TerminalUnknownSequence(
-                tag: .fromValue(
-                  _memory.readU32(pointer + _layout.unknownSequenceTag),
-                ),
+                tag: tag,
                 content: contentPointer == 0 || contentLength == 0
                     ? Uint8List(0)
                     : Uint8List.fromList(
                         _memory.readBytes(contentPointer, contentLength),
                       ),
-                truncated:
-                    _memory.readU8(
-                      pointer +
-                          _layout.unknownSequenceValue +
-                          _layout.unknownStringSequenceTruncated,
-                    ) !=
-                    0,
+                truncated: _memory.readU8(value + truncatedOffset) != 0,
+                terminator: terminator,
               ),
             );
           } on Object catch (error, stackTrace) {
@@ -1269,6 +1478,43 @@ final class WasmTerminalBindings implements TerminalBindings {
   @override
   void terminalSetScrollbackMaxLines(LibGhosttyHandle terminal, int? lines) {
     _setU32(terminal, .scrollbackMaxLines, lines);
+  }
+
+  @override
+  void terminalSetResizePullScrollback(
+    LibGhosttyHandle terminal, {
+    required bool? value,
+  }) {
+    _setBool(terminal, .resizePullScrollback, value);
+  }
+
+  @override
+  void terminalSetXtChecksumReport(
+    LibGhosttyHandle terminal, {
+    required bool enabled,
+  }) {
+    _setBool(terminal, .xtChecksumReport, enabled);
+  }
+
+  @override
+  void terminalSetXtChecksumExtension(LibGhosttyHandle terminal, int? value) {
+    if (value == null) {
+      _setNull(terminal, .xtChecksumExtension);
+      return;
+    }
+    RangeError.checkValueInInterval(value, 0, 31, 'value');
+    final pointer = _allocateBytes(1);
+    try {
+      _memory.writeU8(pointer, value);
+      final result = _exports.ghostty_terminal_set(
+        terminal.value,
+        TerminalOption.xtChecksumExtension.value,
+        pointer,
+      );
+      checkResultCode(result, operation: 'ghostty_terminal_set');
+    } finally {
+      _exports.freeBytes(pointer, 1);
+    }
   }
 
   @override

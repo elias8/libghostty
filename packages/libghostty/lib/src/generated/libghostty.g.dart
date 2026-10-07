@@ -17,7 +17,8 @@ import 'libghostty_enums.g.dart';
 ///
 /// @param allocator Pointer to the allocator to use, or NULL for the default
 /// @param len Number of bytes to allocate
-/// @return Pointer to the allocated buffer, or NULL if allocation failed
+/// @return Pointer to the allocated buffer, or NULL if len is zero or
+/// allocation failed
 ///
 /// @ingroup allocator
 @ffi.Native<ffi.Pointer<ffi.Uint8> Function(ffi.Pointer<Allocator>, ffi.Size)>(
@@ -519,6 +520,8 @@ Result ghostty_formatter_format(Formatter formatter, Writer writer) {
 /// The caller is responsible for freeing the returned buffer with
 /// ghostty_free(), passing the same allocator (or NULL for the default)
 /// that was used for the allocation.
+/// Empty output returns GHOSTTY_SUCCESS with *out_ptr set to NULL and
+/// *out_len set to zero. This result can be passed to ghostty_free().
 ///
 /// @param formatter The formatter handle (must not be NULL)
 /// @param allocator Pointer to allocator, or NULL to use the default allocator
@@ -2285,28 +2288,32 @@ OscCommandType ghostty_osc_command_type(OscCommand command) {
 
 /// Finalize OSC parsing and retrieve the parsed command.
 ///
-/// Call this function after feeding all bytes of an OSC sequence to the parser
-/// using ghostty_osc_next() with the exception of the terminating character
-/// (ESC or ST). This function finalizes the parsing process and returns the
-/// parsed OSC command.
+/// Call this after feeding every byte of the sequence to ghostty_osc_next(),
+/// except the byte that ended it. Pass that byte here as the terminator.
 ///
-/// The return value is never NULL. Invalid commands will return a command
-/// with type GHOSTTY_OSC_COMMAND_INVALID.
+/// If the sequence is not a valid command, this returns NULL. You don't need
+/// to check for NULL before calling ghostty_osc_command_type(), which
+/// returns GHOSTTY_OSC_COMMAND_INVALID for it.
 ///
-/// The terminator parameter specifies the byte that terminated the OSC sequence
-/// (typically 0x07 for BEL or 0x5C for ST after ESC). This information is
-/// preserved in the parsed command so that responses can use the same terminator
-/// format for better compatibility with the calling program. For commands that
-/// do not require a response, this parameter is ignored and the resulting
-/// command will not retain the terminator information.
+/// Commands that reply to the program, such as color queries, end their
+/// reply the same way the request ended. A terminator of 0x07 (BEL) gets a
+/// BEL reply, and any other byte gets an ST reply. Commands that don't
+/// reply ignore the terminator.
+///
+/// If the program cancelled the sequence with CAN (0x18) or SUB (0x1A),
+/// pass that byte as the terminator. The sequence is then discarded and
+/// this returns NULL, whatever command it contained. This matches xterm.
+/// The "Ending a Sequence" section of the overview has an example.
 ///
 /// The returned command handle is valid until the next call to any
 /// `ghostty_osc_*` function with the same parser instance with the exception
 /// of command introspection functions such as `ghostty_osc_command_type`.
 ///
 /// @param parser The parser handle, must not be null.
-/// @param terminator The terminating byte of the OSC sequence (0x07 for BEL, 0x5C for ST)
-/// @return Handle to the parsed OSC command
+/// @param terminator The byte that ended the OSC sequence: 0x07 for BEL,
+/// 0x5C for ST, or 0x18 (CAN) or 0x1A (SUB) if it was cancelled
+/// @return Handle to the parsed OSC command, or NULL if the sequence is not
+/// a valid command or was cancelled
 ///
 /// @ingroup osc
 @ffi.Native<OscCommand Function(OscParser, ffi.Uint8)>(isLeaf: true)
@@ -2377,6 +2384,40 @@ external void ghostty_osc_next(OscParser parser, int byte);
 /// @ingroup osc
 @ffi.Native<ffi.Void Function(OscParser)>(isLeaf: true)
 external void ghostty_osc_reset(OscParser parser);
+
+/// Set an option on an OSC parser.
+///
+/// `value` points to the option's input type, which is listed in the
+/// documentation for each OscOption value. Pass NULL to restore the
+/// option's default.
+///
+/// Options stay set across ghostty_osc_reset(). You can change an option
+/// at any time, but a sequence that is already being parsed may keep the
+/// old setting. It is simplest to set options before the first sequence.
+///
+/// @param parser The parser handle
+/// @param option The option to set
+/// @param value Pointer to the new value, or NULL to restore the default
+/// @return GHOSTTY_SUCCESS on success, or GHOSTTY_INVALID_VALUE if the parser
+/// is NULL
+///
+/// @ingroup osc
+@ffi.Native<
+  ffi.Int Function(OscParser, ffi.UnsignedInt, ffi.Pointer<ffi.Void>)
+>(symbol: 'ghostty_osc_set', isLeaf: true)
+external int _ghostty_osc_set(
+  OscParser parser,
+  int option,
+  ffi.Pointer<ffi.Void> value,
+);
+
+Result ghostty_osc_set(
+  OscParser parser,
+  OscOption option,
+  ffi.Pointer<ffi.Void> value,
+) {
+  return Result.fromValue(_ghostty_osc_set(parser, option.value, value));
+}
 
 /// Encode paste data for writing to the terminal pty.
 ///
@@ -2953,9 +2994,12 @@ Result ghostty_render_state_row_iterator_new(
 
 /// Move a render-state row iterator to the next row.
 ///
-/// Rows are visited contiguously in ascending viewport order, starting at
-/// y = 0. Returns true if the iterator moved successfully and row data is
-/// available to read at the new position.
+/// Rows are visited in order from top to bottom with no gaps. Without
+/// overscan, the first row is the top row of the viewport. With overscan,
+/// the first row is the highest captured row above the viewport (see
+/// GHOSTTY_RENDER_STATE_OPTION_OVERSCAN). Returns true if the iterator
+/// moved successfully and row data is available to read at the new
+/// position.
 ///
 /// @param iterator The iterator handle to advance (may be NULL)
 /// @return true if advanced to the next row, false if `iterator` is
@@ -2976,9 +3020,13 @@ external bool ghostty_render_state_row_iterator_next(
 /// viewport order. This function does not clear any dirty state.
 ///
 /// @param iterator The iterator handle to advance (NULL returns false)
-/// @param[out] out_y Receives the viewport y coordinate when true is returned
-/// (NULL returns false); it is not modified when false is
-/// returned
+/// @param[out] out_y Receives the row's position in the iterator when true
+/// is returned (NULL returns false). It is not modified
+/// when false is returned. Without overscan, this is the
+/// viewport y. With overscan, it counts from the highest
+/// captured row, so use
+/// GHOSTTY_RENDER_STATE_ROW_DATA_VIEWPORT_Y to place
+/// the row.
 /// @return true if advanced to a row requiring a redraw, false if an argument
 /// is NULL or the iterator has reached the end of the effective dirty
 /// rows
@@ -3411,7 +3459,7 @@ Result ghostty_search_set(
 /// @param search Search handle (NULL returns GHOSTTY_INVALID_VALUE)
 /// @param[out] out_status Receives the status after the tick (may be NULL)
 /// @return GHOSTTY_SUCCESS on success, or GHOSTTY_INVALID_VALUE if
-/// search is NULL
+/// search is NULL or the terminal was freed
 ///
 /// @ingroup search
 @ffi.Native<ffi.Int Function(Search, ffi.Pointer<ffi.UnsignedInt>)>(
@@ -4220,6 +4268,10 @@ Result ghostty_snapshot_decoder_new_buf(
 /// validated and progress reports zero rows. The decoder applies history
 /// to the caller-owned terminal produced by its READY operation.
 ///
+/// If GHOSTTY_SNAPSHOT_DECODER_OPT_COMPRESS_HISTORY is true, the page is
+/// compressed before this function returns, unless it is visible in the
+/// terminal's viewport.
+///
 /// A decoding error invalidates the decoder's source position. The terminal
 /// remains caller-owned and usable with its already-restored history, but only
 /// ghostty_snapshot_decoder_free() may subsequently be called on the decoder.
@@ -4613,7 +4665,8 @@ Result ghostty_terminal_compression_activity(
 /// The returned bytes are allocated with allocator, or the default allocator
 /// when allocator is NULL. The caller must release them with ghostty_free(),
 /// passing the same allocator and returned length. An empty continuation is a
-/// successful zero-length allocation.
+/// successful result with *out_ptr set to NULL and *out_len set to zero,
+/// which can also be passed to ghostty_free().
 /// Continuation tracking must have been enabled by setting
 /// GHOSTTY_TERMINAL_OPT_CONTINUATION_MAX_BYTES to a nonzero value before the
 /// input that produced the continuation was written.
@@ -5068,6 +5121,9 @@ Result ghostty_terminal_point_from_grid_ref(
 /// modes, scrollback, scrolling region, and screen contents. The terminal
 /// dimensions are preserved.
 ///
+/// If synchronized output was enabled, the GHOSTTY_TERMINAL_OPT_RENDER_HOLD
+/// callback is invoked to report that the hold ended.
+///
 /// @param terminal The terminal handle (may be NULL, in which case this is a no-op)
 ///
 /// @ingroup terminal
@@ -5078,12 +5134,16 @@ external void ghostty_terminal_reset(Terminal terminal);
 ///
 /// Changes the number of columns and rows in the terminal. The primary
 /// screen will reflow content if wraparound mode is enabled; the alternate
-/// screen does not reflow. If the dimensions are unchanged, this is a no-op.
+/// screen does not reflow. If the dimensions are unchanged, the grid is
+/// left as is, but everything below still applies.
 ///
 /// This also updates the terminal's pixel dimensions (used for image
 /// protocols and size reports), disables synchronized output mode (allowed
 /// by the spec so that resize results are shown immediately), and sends an
 /// in-band size report if mode 2048 is enabled.
+///
+/// If synchronized output was enabled, the GHOSTTY_TERMINAL_OPT_RENDER_HOLD
+/// callback is invoked to report that the hold ended.
 ///
 /// @param terminal The terminal handle (NULL returns GHOSTTY_INVALID_VALUE)
 /// @param cols New width in cells (must be greater than zero)
@@ -5480,6 +5540,8 @@ Result ghostty_terminal_selection_equal(
 /// The returned buffer is allocated using allocator, or the default allocator
 /// if NULL is passed. The caller owns the returned buffer and must free it with
 /// ghostty_free(), passing the same allocator and returned length.
+/// Empty output returns GHOSTTY_SUCCESS with *out_ptr set to NULL and
+/// *out_len set to zero. This result can be passed to ghostty_free().
 ///
 /// The returned bytes are not NUL-terminated. This supports plain text, VT, and
 /// HTML uniformly as byte output.
@@ -6183,8 +6245,14 @@ final class AllocatorVtable extends ffi.Struct {
   ///
   /// @param ctx The allocator context
   /// @param len Number of bytes to allocate
-  /// @param alignment Required alignment for the allocation. Guaranteed to
-  /// be a power of two between 1 and 16 inclusive.
+  /// @param alignment Required alignment for the allocation, as the number
+  /// of low bits of the returned address that must be zero. This is not
+  /// a byte count: convert it with `1 << alignment` before passing it to
+  /// aligned_alloc or posix_memalign. For example:
+  /// - 1: the lowest bit must be zero (2-byte aligned)
+  /// - 2: the lowest two bits must be zero (4-byte aligned)
+  /// - 4: the lowest four bits must be zero (16-byte aligned)
+  /// This matches Zig's `std.mem.Alignment`.
   /// @param ret_addr First return address of the allocation call stack (0 if not provided)
   /// @return Pointer to allocated memory, or NULL if allocation failed
   external ffi.Pointer<
@@ -7658,12 +7726,58 @@ final class RenderStateCursor extends ffi.Struct {
 
 final class RenderStateImpl extends ffi.Opaque {}
 
+/// A number of rows above and below the viewport.
+///
+/// This is used both to request overscan with
+/// GHOSTTY_RENDER_STATE_OPTION_OVERSCAN and to report how many rows an
+/// update captured with GHOSTTY_RENDER_STATE_DATA_OVERSCAN. See "Overscan"
+/// in the render state overview for how the extra rows are used.
+///
+/// @ingroup render
+final class RenderStateOverscan extends ffi.Struct {
+  /// Rows above the top of the viewport.
+  @ffi.Uint16()
+  external int above;
+
+  /// Rows below the bottom of the viewport.
+  @ffi.Uint16()
+  external int below;
+
+  static ffi.Pointer<RenderStateOverscan> $allocate(
+    ffi.Allocator $allocator, {
+    required int above,
+    required int below,
+  }) => $allocator<RenderStateOverscan>()
+    ..ref.above = above
+    ..ref.below = below;
+}
+
 /// Opaque handle to render-state row cells.
 ///
 /// @ingroup render
 typedef RenderStateRowCells = ffi.Pointer<RenderStateRowCellsImpl>;
 
 final class RenderStateRowCellsImpl extends ffi.Opaque {}
+
+/// The identity of a row across render state updates.
+///
+/// Treat this value as opaque. Two ids are the same when both words are
+/// equal. No other comparison or interpretation is meaningful, and the
+/// contents may change between library versions. A zero-initialized id is
+/// never valid, so it can be used to mean "no row".
+///
+/// @code{.c}
+/// bool same = a.bits[0] == b.bits[0] && a.bits[1] == b.bits[1];
+/// @endcode
+///
+/// See "Row Identity" in the render state overview for how to use ids.
+///
+/// @ingroup render
+final class RenderStateRowId extends ffi.Struct {
+  /// Opaque id data. Compare both words for equality.
+  @ffi.Array.multi([2])
+  external ffi.Array<ffi.Uint64> bits;
+}
 
 /// Opaque handle to a render-state row iterator.
 ///
@@ -8047,6 +8161,8 @@ final class SnapshotDecoderImpl extends ffi.Opaque {}
 ///
 /// The memory is not owned by this struct. The pointer is only valid
 /// for the lifetime documented by the API that produces or consumes it.
+/// Empty strings produced by the library have a non-NULL pointer to valid
+/// storage.
 final class String extends ffi.Struct {
   /// Pointer to the string bytes.
   external ffi.Pointer<ffi.Uint8> ptr;
@@ -8178,16 +8294,52 @@ final class SurfacePosition extends ffi.Struct {
 
 /// Callback type for PNG decoding.
 ///
-/// Decodes raw PNG data into RGBA pixels. The output pixel data must be
-/// allocated through the provided allocator. The library takes ownership
-/// of the buffer and will free it with the same allocator.
+/// The library calls this when it receives a PNG image and needs the raw
+/// pixels. The callback decodes the PNG bytes in @p data and describes
+/// the result in @p out. See the example in the @ref sys overview for a
+/// complete callback.
+///
+/// ### On success
+///
+/// Allocate the pixel buffer with ghostty_alloc() and @p allocator, write
+/// the decoded pixels into it, set all four fields of @p out, and return
+/// true. The library then owns the buffer and frees it with the same
+/// allocator. See SysImage for the expected pixel layout.
+///
+/// The allocator limits how much memory a single image may use, so
+/// ghostty_alloc() can return NULL for very large images. Treat that as
+/// a failure.
+///
+/// ### On failure
+///
+/// Free anything that was allocated and return false. The library does
+/// not read @p out in this case, and the image is rejected.
+///
+/// ### The output struct starts zeroed
+///
+/// The library sets every field of @p out to zero before it calls the
+/// callback. This has two practical effects:
+///
+/// - If the callback returns true but `data` is still NULL, the library
+/// treats the call as a failure.
+/// - Language bindings can store a pointer into @p out directly. Some
+/// runtimes, such as Go, require memory to be initialized before a
+/// pointer is written into it, and this guarantee satisfies that
+/// requirement.
+///
+/// Only @p out is zeroed. Memory returned by ghostty_alloc() is not.
+///
+/// @p data and @p allocator are only valid for the duration of the
+/// callback.
 ///
 /// @param userdata  The userdata pointer set via GHOSTTY_SYS_OPT_USERDATA
 /// @param allocator The allocator to use for the output pixel buffer
 /// @param data      Pointer to the raw PNG data
 /// @param data_len  Length of the raw PNG data in bytes
-/// @param[out] out  On success, filled with the decoded image
-/// @return true on success, false on failure
+/// @param[out] out  The decoded image. Zeroed by the library before the
+/// call, and filled in by the callback on success.
+/// @return true if the image was decoded and @p out was filled in,
+/// false on failure
 typedef SysDecodePngFn =
     ffi.Pointer<
       ffi.NativeFunction<
@@ -8201,11 +8353,16 @@ typedef SysDecodePngFn =
       >
     >;
 
-/// Result of decoding an image.
+/// A decoded image, filled in by a decode callback such as
+/// SysDecodePngFn.
 ///
-/// The `data` buffer must be allocated through the allocator provided to
-/// the decode callback. The library takes ownership and will free it
-/// with the same allocator.
+/// Pixels are 8-bit RGBA: four bytes per pixel, stored row by row starting
+/// at the top-left corner, with no padding between rows. A complete image
+/// is therefore `width * height * 4` bytes long.
+///
+/// The pixel buffer must be allocated with the allocator passed to the
+/// decode callback. When the callback returns true, the library takes
+/// ownership of the buffer and frees it with that same allocator.
 final class SysImage extends ffi.Struct {
   /// Image width in pixels.
   @ffi.Uint32()
@@ -8215,10 +8372,13 @@ final class SysImage extends ffi.Struct {
   @ffi.Uint32()
   external int height;
 
-  /// Pointer to the decoded RGBA pixel data.
+  /// The decoded RGBA pixels, allocated with the allocator passed to
+  /// the decode callback.
   external ffi.Pointer<ffi.Uint8> data;
 
-  /// Length of the pixel data in bytes.
+  /// Length of `data` in bytes. This must be the exact size that was
+  /// requested from the allocator, because the library uses it to free
+  /// the buffer.
   @ffi.Size()
   external int data_len;
 
@@ -8495,6 +8655,148 @@ typedef TerminalEnquiryFn =
 
 final class TerminalImpl extends ffi.Opaque {}
 
+/// Memory held by a terminal.
+///
+/// Read with ghostty_terminal_get() and
+/// `GHOSTTY_TERMINAL_DATA_MEMORY_USAGE`. This helps applications that host
+/// many terminals stay within a memory budget, for example by compressing
+/// or closing the terminals that hold the most memory first.
+///
+/// Most of a terminal's memory goes to its screen contents and scrollback,
+/// which are stored in fixed-size blocks called pages. Resident bytes are
+/// the physical memory pages use right now, and are the figure to budget
+/// against. Virtual bytes are the address space reserved for pages.
+/// Compressing scrollback lowers the resident figure but not the virtual
+/// one, because each page's space stays reserved for decompression.
+///
+/// This is a sized struct. Set `size` before the call, most easily with
+/// GHOSTTY_INIT_SIZED(). Later versions of libghostty-vt may add fields to
+/// the end of this struct, and the size tells the library which version
+/// your program was compiled against. This lets older programs keep working
+/// with newer versions of the library.
+///
+/// Each screen has its own set of fields, named with a `primary_` or
+/// `alternate_` prefix. The primary screen holds shell output and all of
+/// the scrollback. The alternate screen is used by full-screen programs
+/// such as text editors, and its fields are all zero until a program first
+/// switches to it. Add the two sets together for the terminal's total.
+///
+/// Everything the terminal displays is stored inside pages, including
+/// colors, styles and hyperlinks, so those are already part of the page
+/// figures. Images are stored separately and have their own fields. Small
+/// structures outside of pages, such as the window title and internal
+/// bookkeeping, are not counted. They are small next to the pages once a
+/// terminal has any scrollback.
+///
+/// On macOS, the operating system takes back memory freed by compression
+/// lazily, when something else needs it. Until then, the memory use the
+/// system reports for your process (its RSS) can be higher than the
+/// resident figures here.
+///
+/// @snippet c-vt-compression/src/main.c memory-usage
+///
+/// @ingroup terminal
+final class TerminalMemoryUsage extends ffi.Struct {
+  /// Size of this struct in bytes. Set by the caller.
+  @ffi.Size()
+  external int size;
+
+  /// Whether compressing scrollback can free memory on this platform. When
+  /// false, ghostty_terminal_compress() reports
+  /// `GHOSTTY_TERMINAL_COMPRESSION_RESULT_UNSUPPORTED` and the compressed
+  /// fields are always zero. To reduce a terminal's memory on such a
+  /// platform, you have to do something else, such as closing it.
+  @ffi.Bool()
+  external bool compression_supported;
+
+  /// Number of pages in the primary screen, including compressed pages.
+  @ffi.Uint64()
+  external int primary_pages;
+
+  /// Bytes of address space reserved for the primary screen's pages. This
+  /// includes compressed pages and spare pages kept ready for reuse.
+  /// Always at least `primary_resident_bytes`.
+  @ffi.Uint64()
+  external int primary_virtual_bytes;
+
+  /// Bytes of physical memory used by the primary screen's pages. A
+  /// compressed page counts only its compressed size. Use this figure for
+  /// memory budgets.
+  @ffi.Uint64()
+  external int primary_resident_bytes;
+
+  /// Number of the primary screen's pages that are compressed.
+  @ffi.Uint64()
+  external int primary_compressed_pages;
+
+  /// Bytes of compressed data held for the primary screen's compressed
+  /// pages. This is already included in `primary_resident_bytes`.
+  @ffi.Uint64()
+  external int primary_compressed_bytes;
+
+  /// Bytes of image data stored for the primary screen through the Kitty
+  /// graphics protocol. This is not included in `primary_resident_bytes`.
+  /// Always zero when libghostty-vt is built without Kitty graphics.
+  @ffi.Uint64()
+  external int primary_image_bytes;
+
+  /// The same as `primary_pages`, for the alternate screen.
+  @ffi.Uint64()
+  external int alternate_pages;
+
+  /// The same as `primary_virtual_bytes`, for the alternate screen.
+  @ffi.Uint64()
+  external int alternate_virtual_bytes;
+
+  /// The same as `primary_resident_bytes`, for the alternate screen.
+  @ffi.Uint64()
+  external int alternate_resident_bytes;
+
+  /// The same as `primary_compressed_pages`, for the alternate screen.
+  @ffi.Uint64()
+  external int alternate_compressed_pages;
+
+  /// The same as `primary_compressed_bytes`, for the alternate screen.
+  @ffi.Uint64()
+  external int alternate_compressed_bytes;
+
+  /// The same as `primary_image_bytes`, for the alternate screen.
+  @ffi.Uint64()
+  external int alternate_image_bytes;
+
+  static ffi.Pointer<TerminalMemoryUsage> $allocate(
+    ffi.Allocator $allocator, {
+    required int size,
+    required bool compression_supported,
+    required int primary_pages,
+    required int primary_virtual_bytes,
+    required int primary_resident_bytes,
+    required int primary_compressed_pages,
+    required int primary_compressed_bytes,
+    required int primary_image_bytes,
+    required int alternate_pages,
+    required int alternate_virtual_bytes,
+    required int alternate_resident_bytes,
+    required int alternate_compressed_pages,
+    required int alternate_compressed_bytes,
+    required int alternate_image_bytes,
+  }) => $allocator<TerminalMemoryUsage>()
+    ..ref.size = size
+    ..ref.compression_supported = compression_supported
+    ..ref.primary_pages = primary_pages
+    ..ref.primary_virtual_bytes = primary_virtual_bytes
+    ..ref.primary_resident_bytes = primary_resident_bytes
+    ..ref.primary_compressed_pages = primary_compressed_pages
+    ..ref.primary_compressed_bytes = primary_compressed_bytes
+    ..ref.primary_image_bytes = primary_image_bytes
+    ..ref.alternate_pages = alternate_pages
+    ..ref.alternate_virtual_bytes = alternate_virtual_bytes
+    ..ref.alternate_resident_bytes = alternate_resident_bytes
+    ..ref.alternate_compressed_pages = alternate_compressed_pages
+    ..ref.alternate_compressed_bytes = alternate_compressed_bytes
+    ..ref.alternate_image_bytes = alternate_image_bytes;
+}
+
 /// A terminal mode and boolean value used for mode configuration and queries.
 ///
 /// For GHOSTTY_TERMINAL_DATA_MODE, initialize `mode` before calling
@@ -8520,6 +8822,179 @@ final class TerminalModeConfig extends ffi.Struct {
     ..ref.mode = mode
     ..ref.value = value;
 }
+
+/// A program status report (OSC 7501).
+///
+/// The program status protocol lets a program tell the terminal what it is
+/// doing: idle, working, done, waiting on the user, or failed, and why. It
+/// is meant for long-running work like builds, deploys, and coding agents,
+/// where the user is often looking at something else and wants to know when
+/// the work finishes or needs them. The protocol only describes state. How
+/// to show it, if at all, is up to your application.
+///
+/// The full specification is at
+/// https://www.superlogical.com/rex/docs/build/program-status
+///
+/// For example, a program waiting for the user to approve a change sends
+/// this, where ST is the string terminator (ESC \ or BEL):
+///
+/// @code
+/// ESC ] 7501 ; state=blocked:kind=permission:app=terraform:msg=QXBwbHk/ ST
+/// @endcode
+///
+/// The callback then receives a report with:
+///
+/// - `state`: GHOSTTY_PROGRAM_STATUS_STATE_BLOCKED
+/// - `kind`: GHOSTTY_PROGRAM_STATUS_KIND_PERMISSION
+/// - `progress`: -1, because the program didn't send one
+/// - `id`: empty, because this is the root record
+/// - `app`: "terraform"
+/// - `title`: empty
+/// - `message`: "Apply?", decoded from the base64 in `msg`
+///
+/// Only reports that pass every check in the specification reach the
+/// callback. Text that the program didn't send is an empty string (len=0),
+/// never NULL. All strings are only valid during the callback, so copy any
+/// you want to keep.
+///
+/// This is a sized struct. Later versions may add fields at the end, and
+/// `size` tells you which fields are present. Every field below has been
+/// present since this struct was introduced.
+///
+/// @ingroup terminal
+final class TerminalProgramStatus extends ffi.Struct {
+  /// Size of this struct in bytes.
+  @ffi.Size()
+  external int size;
+
+  /// What the program is doing.
+  @ffi.UnsignedInt()
+  external int stateAsInt;
+
+  ProgramStatusState get state => ProgramStatusState.fromValue(stateAsInt);
+  set state(ProgramStatusState value) => stateAsInt = value.value;
+
+  /// What the program needs from the user. Only set for
+  /// GHOSTTY_PROGRAM_STATUS_STATE_BLOCKED. It is
+  /// GHOSTTY_PROGRAM_STATUS_KIND_NONE for other states, when the program
+  /// didn't say, or when it sent a kind this version doesn't know.
+  @ffi.UnsignedInt()
+  external int kindAsInt;
+
+  ProgramStatusKind get kind => ProgramStatusKind.fromValue(kindAsInt);
+  set kind(ProgramStatusKind value) => kindAsInt = value.value;
+
+  /// How far along the work is, from 0 through 100. Only set for
+  /// GHOSTTY_PROGRAM_STATUS_STATE_WORKING and
+  /// GHOSTTY_PROGRAM_STATUS_STATE_BLOCKED. It is -1 for other states, when
+  /// the program didn't say, or when it sent a value outside that range.
+  @ffi.Int8()
+  external int progress;
+
+  /// Which record this report is about. Empty for the root record.
+  ///
+  /// A program that only reports on itself leaves this empty. A program
+  /// that reports on several things at once gives each its own id, such as
+  /// "us-east" and "eu-west" for a deploy to two regions. A "/" makes one
+  /// record the child of another, so "build/test" is a child of "build".
+  /// The parent record doesn't have to exist.
+  external String id;
+
+  /// A stable name for the program that a machine can match on, such as
+  /// "cargo" or "terraform".
+  external String app;
+
+  /// A short label for the record, meant for people. Programs that report
+  /// several records use this to tell them apart.
+  external String title;
+
+  /// One line of text for people, saying what the record is doing,
+  /// waiting for, or has finished. You may shorten it to fit, but don't
+  /// try to read meaning into it.
+  external String message;
+}
+
+/// Callback function type for program status reports (OSC 7501).
+///
+/// Called synchronously each time the running program sends a valid
+/// report. See TerminalProgramStatus for what a report contains.
+///
+/// The terminal doesn't store reports, so your application keeps them. To
+/// follow the specification, keep one record per id. A report with an empty
+/// id is about the root record, the program itself. The records follow
+/// these rules:
+///
+/// - A report replaces its record completely. A value the report leaves
+/// out is gone from the record afterwards. It doesn't keep its old value.
+/// - A GHOSTTY_PROGRAM_STATUS_STATE_CLEAR report removes the record with
+/// its id and every record beneath it, so clearing "build" also removes
+/// "build/test". A clear report with an empty id removes every record.
+/// - When a new shell prompt starts (GHOSTTY_SEMANTIC_PROMPT_PROMPT_START
+/// from the GHOSTTY_TERMINAL_OPT_SEMANTIC_PROMPT callback) or the program
+/// running in the terminal exits, remove `working` and `blocked` records.
+/// You may remove `idle` records too. Keep `done` and `error` records
+/// until the user has seen them, for example until they next focus the
+/// terminal.
+/// - Keep at most 256 records, and allow at least 64. When a new record
+/// would go over your limit, remove the one that was updated longest ago.
+///
+/// A full reset (RIS, `ESC c`) removes every record. When that happens,
+/// the terminal calls this with a GHOSTTY_PROGRAM_STATUS_STATE_CLEAR report
+/// and an empty id, and then calls the GHOSTTY_TERMINAL_OPT_RESET callback.
+///
+/// `title` and `message` are already decoded and contain no control
+/// characters, but they are still untrusted text from the program. Don't
+/// treat them as markup. If you show them outside the terminal, such as in
+/// a tab or a notification, remove invisible formatting characters like
+/// text direction overrides, and say which terminal the text came from so
+/// a program can't pretend to be one running elsewhere.
+///
+/// Example, where `Records`, `records_clear`, and `records_put` stand in for
+/// your application's own storage:
+///
+/// @code
+/// void on_program_status(Terminal terminal,
+/// void* userdata,
+/// const TerminalProgramStatus* report) {
+/// (void)terminal;
+/// Records* records = userdata;
+///
+/// if (report->state == GHOSTTY_PROGRAM_STATUS_STATE_CLEAR) {
+/// // Remove this record and every record beneath it. An empty id
+/// // removes every record.
+/// records_clear(records, report->id);
+/// return;
+/// }
+///
+/// // Replace the whole record. The strings are only valid during this
+/// // call, so records_put must copy them.
+/// records_put(records, report->id, report->state, report->message);
+/// }
+///
+/// // Set write_pty too, so programs that check for support get a reply.
+/// ghostty_terminal_set(terminal, GHOSTTY_TERMINAL_OPT_USERDATA, records);
+/// ghostty_terminal_set(terminal, GHOSTTY_TERMINAL_OPT_WRITE_PTY,
+/// (const void*)on_write_pty);
+/// ghostty_terminal_set(terminal, GHOSTTY_TERMINAL_OPT_PROGRAM_STATUS,
+/// (const void*)on_program_status);
+/// @endcode
+///
+/// @param terminal The terminal handle
+/// @param userdata The userdata pointer set via GHOSTTY_TERMINAL_OPT_USERDATA
+/// @param report The report. It and its strings are only valid during the
+/// call.
+///
+/// @ingroup terminal
+typedef TerminalProgramStatusFn =
+    ffi.Pointer<
+      ffi.NativeFunction<
+        ffi.Void Function(
+          Terminal terminal,
+          ffi.Pointer<ffi.Void> userdata,
+          ffi.Pointer<TerminalProgramStatus> report,
+        )
+      >
+    >;
 
 /// A progress report emitted by the running program.
 ///
@@ -8596,6 +9071,162 @@ typedef TerminalProgressReportFn =
 ///
 /// @ingroup terminal
 typedef TerminalPwdChangedFn =
+    ffi.Pointer<
+      ffi.NativeFunction<
+        ffi.Void Function(Terminal terminal, ffi.Pointer<ffi.Void> userdata)
+      >
+    >;
+
+/// Callback function type for render_hold.
+///
+/// Called when the running program asks the terminal to stop updating
+/// the screen, and again when it lets the screen update again. We call
+/// the time in between a "render hold".
+///
+/// Programs use a hold to avoid flicker. A full-screen program usually
+/// redraws in several steps: clear, draw the text, move the cursor. If
+/// the screen is drawn halfway through, the user sees a broken frame. To
+/// prevent that, the program starts a hold, draws everything, and then
+/// releases the hold. The screen should keep showing the last finished
+/// frame the whole time and then switch to the new one all at once.
+///
+/// Today the only way a program can start a hold is synchronized output
+/// (DEC private mode 2026, GHOSTTY_MODE_SYNC_OUTPUT). The callback is
+/// named for what the embedder should do rather than for that mode so
+/// that other sources of holds can be added later.
+///
+/// ### When it is called
+///
+/// With `held` set to true when the program sets mode 2026.
+///
+/// With `held` set to false when the hold ends, which happens when:
+///
+/// - the program resets mode 2026
+/// - the terminal is fully reset, by the program (RIS) or by
+/// ghostty_terminal_reset()
+/// - the terminal is resized with ghostty_terminal_resize()
+///
+/// The two calls always come in pairs. Setting the mode while a hold is
+/// already active does nothing, and neither does resetting it when there
+/// is no hold. Changing the mode yourself with GHOSTTY_TERMINAL_OPT_MODE
+/// never invokes the callback.
+///
+/// ### What to do
+///
+/// When a hold begins, the terminal contains exactly the frame the
+/// program wants left on screen. Nothing after the start of the hold has
+/// been processed yet, even if more bytes follow in the same
+/// ghostty_terminal_vt_write() call. Capture that frame by calling
+/// ghostty_render_state_update() from within the callback, then stop
+/// updating the render state until the hold ends. You can keep drawing
+/// the render state in the meantime. It won't change.
+///
+/// @code{.c}
+/// typedef struct {
+/// RenderState render_state;
+/// bool held;
+/// uint64_t hold_started_ms;
+/// } Renderer;
+///
+/// void on_render_hold(Terminal terminal, void* userdata, bool held) {
+/// Renderer* r = userdata;
+/// if (held) {
+/// // Capture the frame the program wants left on screen.
+/// ghostty_render_state_update(r->render_state, terminal);
+/// r->hold_started_ms = now_ms();
+/// }
+/// r->held = held;
+/// }
+///
+/// void draw(Renderer* r, Terminal terminal) {
+/// // Give up on a program that holds the screen for too long.
+/// if (r->held && now_ms() - r->hold_started_ms >= 1000) {
+/// TerminalModeConfig mode = {
+/// .mode = GHOSTTY_MODE_SYNC_OUTPUT,
+/// .value = false,
+/// };
+/// ghostty_terminal_set(terminal, GHOSTTY_TERMINAL_OPT_MODE, &mode);
+/// r->held = false;
+/// }
+///
+/// // During a hold, skip the update and draw the captured frame.
+/// if (!r->held) ghostty_render_state_update(r->render_state, terminal);
+/// draw_render_state(r->render_state);
+/// }
+/// @endcode
+///
+/// ### Timeouts
+///
+/// The terminal has no clock, so it never ends a hold on its own. A
+/// program that crashes or forgets to release its hold would freeze the
+/// screen forever, so you need a timeout like the one above. One second
+/// is a common choice. When it expires, reset the mode yourself and go
+/// back to updating normally. Because setting the mode again during a
+/// hold does nothing, a program can't keep pushing your deadline back.
+///
+/// ### Why a callback
+///
+/// You could instead check GHOSTTY_MODE_SYNC_OUTPUT before each draw
+/// and skip the update when it is set. That is simpler, but it has two
+/// problems. First, the frame left on screen is whatever you happened to
+/// draw last, which can be older than what the program intended or even
+/// a half-drawn frame. Second, if the program releases a hold and starts
+/// the next one between two of your draws, you never see the mode turn
+/// off and the finished frame in between is lost. A program that draws
+/// continuously can then appear frozen. Capturing the frame when each
+/// hold begins avoids both.
+///
+/// ### Other notes
+///
+/// You are free to ignore a hold whenever showing live content matters
+/// more, such as when the user scrolls or starts a selection.
+///
+/// Like every callback, this runs on the thread that called
+/// ghostty_terminal_vt_write(). If another thread draws the render
+/// state, protect the update in the callback the same way you protect
+/// any other access to the render state.
+///
+/// @param terminal The terminal handle
+/// @param userdata The userdata pointer set via GHOSTTY_TERMINAL_OPT_USERDATA
+/// @param held True when a hold begins, false when it ends
+///
+/// @ingroup terminal
+typedef TerminalRenderHoldFn =
+    ffi.Pointer<
+      ffi.NativeFunction<
+        ffi.Void Function(
+          Terminal terminal,
+          ffi.Pointer<ffi.Void> userdata,
+          ffi.Bool held,
+        )
+      >
+    >;
+
+/// Callback function type for reset.
+///
+/// Called when the running program performs a full reset (RIS, `ESC c`).
+/// A full reset clears the screen and scrollback, returns modes to their
+/// defaults, and clears the title and working directory. Use this callback
+/// to reset any state your application keeps about what's running in the
+/// terminal, such as the current command.
+///
+/// The terminal has already reset itself when this is called. The
+/// GHOSTTY_TERMINAL_OPT_TITLE_CHANGED and GHOSTTY_TERMINAL_OPT_PWD_CHANGED
+/// callbacks are not called for the cleared title and working directory,
+/// so update anything you show for them here. A full reset also removes
+/// any progress report and program status records. If you set
+/// GHOSTTY_TERMINAL_OPT_PROGRESS_REPORT or
+/// GHOSTTY_TERMINAL_OPT_PROGRAM_STATUS, those callbacks are called before
+/// this one.
+///
+/// A soft reset (DECSTR, `CSI ! p`) only resets a few modes and doesn't
+/// call this.
+///
+/// @param terminal The terminal handle
+/// @param userdata The userdata pointer set via GHOSTTY_TERMINAL_OPT_USERDATA
+///
+/// @ingroup terminal
+typedef TerminalResetFn =
     ffi.Pointer<
       ffi.NativeFunction<
         ffi.Void Function(Terminal terminal, ffi.Pointer<ffi.Void> userdata)
@@ -8798,6 +9429,110 @@ final class TerminalSelectionFormatOptions extends ffi.Struct {
     ..ref.selection = selection;
 }
 
+/// A shell integration event, passed to the
+/// `GHOSTTY_TERMINAL_OPT_SEMANTIC_PROMPT` callback.
+///
+/// `kind` says which step of the command this is. The other fields only
+/// carry information for the kinds listed on each field, and are zero or
+/// empty otherwise.
+///
+/// Strings are only valid during the callback. Copy them if you need them
+/// later.
+///
+/// This is a sized struct. Later versions may add fields at the end, and
+/// `size` tells you which fields are present. Every field below has been
+/// present since this struct was introduced, so you only need to check
+/// `size` before reading fields added later. Two fields are likely to be
+/// added in the future:
+///
+/// - An identifier the shell assigns to each command.
+/// - A flag on `GHOSTTY_SEMANTIC_PROMPT_PROMPT_START` that says the shell
+/// redrew a prompt it had already drawn, instead of starting a new one.
+///
+/// Neither exists yet.
+///
+/// @ingroup terminal
+final class TerminalSemanticPrompt extends ffi.Struct {
+  /// Size of this struct in bytes.
+  @ffi.Size()
+  external int size;
+
+  /// Which step of the command this event reports.
+  @ffi.UnsignedInt()
+  external int kindAsInt;
+
+  SemanticPromptKind get kind => SemanticPromptKind.fromValue(kindAsInt);
+  set kind(SemanticPromptKind value) => kindAsInt = value.value;
+
+  /// Which prompt is starting. Set for
+  /// `GHOSTTY_SEMANTIC_PROMPT_PROMPT_START`. Always
+  /// `GHOSTTY_SEMANTIC_PROMPT_PROMPT_PRIMARY` for other kinds.
+  @ffi.UnsignedInt()
+  external int prompt_kindAsInt;
+
+  SemanticPromptPromptKind get prompt_kind =>
+      SemanticPromptPromptKind.fromValue(prompt_kindAsInt);
+  set prompt_kind(SemanticPromptPromptKind value) =>
+      prompt_kindAsInt = value.value;
+
+  /// True if the shell reported the command's exit code. Only ever true
+  /// for `GHOSTTY_SEMANTIC_PROMPT_COMMAND_END`.
+  @ffi.Bool()
+  external bool has_exit_code;
+
+  /// The command's exit code. Only meaningful when `has_exit_code` is
+  /// true. Exit codes can be negative, for example on Windows, so use
+  /// `has_exit_code` rather than a special value to tell whether one was
+  /// reported.
+  @ffi.Int32()
+  external int exit_code;
+
+  /// The command line that is about to run, for
+  /// `GHOSTTY_SEMANTIC_PROMPT_OUTPUT_START`. The shell sends it encoded,
+  /// and this is the decoded text. Empty (len=0) if the shell didn't send
+  /// one or it couldn't be decoded.
+  external String command;
+
+  /// A description of what went wrong, for
+  /// `GHOSTTY_SEMANTIC_PROMPT_COMMAND_END` when the shell sent one. Empty
+  /// (len=0) otherwise. Few shells send this. The exit code is the usual
+  /// way to tell whether a command failed.
+  external String error;
+}
+
+/// Callback function type for semantic_prompt.
+///
+/// Called when the shell reports a step of a command. Each command goes
+/// through four steps, in this order: the prompt starts, input starts,
+/// output starts, and the command ends. Then the next prompt starts.
+///
+/// Shells differ in what they report. Many don't send the command line or
+/// the exit code, and some skip steps, so handle each event on its own
+/// instead of expecting a strict order. A shell may also start the same
+/// prompt more than once, for example when it redraws the prompt after a
+/// resize, so treat a repeated `GHOSTTY_SEMANTIC_PROMPT_PROMPT_START` as
+/// harmless.
+///
+/// The terminal has already updated its screen when this is called. A
+/// sequence the terminal rejects as malformed is never reported.
+///
+/// @param terminal The terminal handle
+/// @param userdata The userdata pointer set via GHOSTTY_TERMINAL_OPT_USERDATA
+/// @param event The event. It and its strings are only valid during the
+/// call.
+///
+/// @ingroup terminal
+typedef TerminalSemanticPromptFn =
+    ffi.Pointer<
+      ffi.NativeFunction<
+        ffi.Void Function(
+          Terminal terminal,
+          ffi.Pointer<ffi.Void> userdata,
+          ffi.Pointer<TerminalSemanticPrompt> event,
+        )
+      >
+    >;
+
 /// Callback function type for terminal size reports.
 ///
 /// Called in response to XTWINOPS size queries (CSI 14/16/18 t) and when VT
@@ -8840,6 +9575,44 @@ typedef TerminalTitleChangedFn =
       >
     >;
 
+/// An OSC sequence whose number libghostty-vt does not implement.
+///
+/// OSC sequences start with `ESC ]`, followed by a number that identifies
+/// the command, usually a `;`, and then the command's data. The sequence
+/// ends with either BEL or ESC followed by a backslash. For example, a
+/// program might write:
+///
+/// @code
+/// ESC ] 7400;status=busy BEL
+/// @endcode
+///
+/// For that sequence, `content` is `7400;status=busy` and `terminator`
+/// is GHOSTTY_OSC_TERMINATOR_BEL. See the Unsupported Sequences section of
+/// the terminal documentation for a complete example.
+///
+/// @ingroup terminal
+final class TerminalUnknownOscSequence extends ffi.Struct {
+  /// True if the sequence was longer than
+  /// GHOSTTY_TERMINAL_OPT_UNKNOWN_MAX_BYTES, or memory ran out while
+  /// reading it. In that case `content` holds only the beginning of the
+  /// sequence.
+  @ffi.Bool()
+  external bool truncated;
+
+  /// Everything between `ESC ]` and the terminator, including the number
+  /// at the start. The bytes are not null-terminated and are only valid
+  /// until the callback returns. Copy them if you need them later.
+  external String content;
+
+  /// How the program ended the sequence. If you send a reply, end it the
+  /// same way.
+  @ffi.UnsignedInt()
+  external int terminatorAsInt;
+
+  OscTerminator get terminator => OscTerminator.fromValue(terminatorAsInt);
+  set terminator(OscTerminator value) => terminatorAsInt = value.value;
+}
+
 /// An unsupported terminal sequence.
 ///
 /// @ingroup terminal
@@ -8856,13 +9629,25 @@ final class TerminalUnknownSequence extends ffi.Struct {
 
 /// Callback function type for unsupported terminal sequences.
 ///
-/// Called synchronously for normally terminated sequences whose identifier is
-/// not supported by the active terminal handler. Aborted sequences, malformed
-/// recognized commands, and explicitly disabled known protocols are ignored.
+/// Called once for each complete sequence that libghostty-vt does not
+/// implement. Check `sequence->tag` first, because more kinds of sequences
+/// may be reported in later versions.
 ///
-/// Capture must also be enabled with a nonzero
-/// GHOSTTY_TERMINAL_OPT_UNKNOWN_MAX_BYTES value. Installing this callback alone
-/// does not retain sequence content or allocate memory.
+/// These are not reported:
+///
+/// - Sequences the program cancelled partway through with CAN or SUB.
+/// - Sequences libghostty-vt implements, even when their contents are
+/// malformed.
+/// - Supported protocols that the embedder turned off.
+///
+/// The callback runs during ghostty_terminal_vt_write(). It may write a reply
+/// to the pty, and that reply stays in order with the terminal's own
+/// replies. It must not call ghostty_terminal_vt_write() on the same
+/// terminal.
+///
+/// Nothing is reported until GHOSTTY_TERMINAL_OPT_UNKNOWN_MAX_BYTES is also
+/// set to a nonzero value. Installing the callback by itself keeps no data
+/// and allocates no memory.
 ///
 /// @param terminal The terminal handle
 /// @param userdata The userdata pointer set via GHOSTTY_TERMINAL_OPT_USERDATA
@@ -8886,6 +9671,9 @@ typedef TerminalUnknownSequenceFn =
 final class TerminalUnknownSequenceValue extends ffi.Union {
   /// Application Program Command (APC).
   external TerminalUnknownStringSequence apc;
+
+  /// Operating System Command (OSC).
+  external TerminalUnknownOscSequence osc;
 
   /// Padding for ABI compatibility. Do not use.
   ///

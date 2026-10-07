@@ -1201,14 +1201,14 @@ void main() {
         expect(selection.endCol, 1);
       });
 
-      testWidgets('double click on spacer leaves selection empty', (
+      testWidgets('double click on spacer selects the whole word', (
         tester,
       ) async {
         await tester.pumpWidget(buildHandler(controller: controller));
 
         await tapMouse(tester, const Offset(24, 0), count: 2);
 
-        expect(terminalFor(controller).selection, isNull);
+        expect(controller.selectedText(), 'AB日CD');
       });
     });
 

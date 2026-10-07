@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import '../bindings/bindings.dart';
 import '../bindings/types.dart';
 import '../generated/libghostty_enums.g.dart';
@@ -19,8 +21,24 @@ final class OscCommand {
   /// parser is reused or disposed.
   final String? windowTitle;
 
+  /// Captured bytes from an unimplemented OSC command, or null for other
+  /// command types. The bytes are copied and remain valid after parser reuse.
+  final Uint8List? unknownContent;
+
+  /// Whether [unknownContent] was shortened, or null for other command types.
+  final bool? unknownTruncated;
+
+  /// How the unknown OSC sequence ended, or null for other command types.
+  final OscTerminator? unknownTerminator;
+
   /// Creates a parsed OSC command value.
-  const OscCommand({required this.type, this.windowTitle});
+  const OscCommand({
+    required this.type,
+    this.windowTitle,
+    this.unknownContent,
+    this.unknownTruncated,
+    this.unknownTerminator,
+  });
 }
 
 /// Streaming parser for OSC (Operating System Command) sequences.
@@ -54,8 +72,17 @@ final class OscParser {
 
   /// Creates a new OSC parser.
   ///
+  /// By default, unimplemented command numbers produce
+  /// [OscCommandType.invalid]. Set [unknownMaxBytes] to a positive value to
+  /// retain up to that many bytes from each unimplemented command. It must be
+  /// between 0 and 4294967295 so the limit has the same range on native and
+  /// WebAssembly targets.
+  ///
   /// Throws [OutOfMemoryException] if the native allocation fails.
-  OscParser() : _handle = bindings.parser.oscNew() {
+  OscParser({int unknownMaxBytes = 0})
+    : _handle = bindings.parser.oscNew(
+        unknownMaxBytes: _checkUnknownMaxBytes(unknownMaxBytes),
+      ) {
     _finalizer.attach(this, _handle, detach: this);
   }
 
@@ -92,7 +119,16 @@ final class OscParser {
       .changeWindowTitle => bindings.parser.oscCommandWindowTitle(command),
       _ => null,
     };
-    return OscCommand(type: type, windowTitle: windowTitle);
+    final unknownData = type == OscCommandType.unknown
+        ? bindings.parser.oscCommandUnknownData(command)
+        : null;
+    return OscCommand(
+      type: type,
+      windowTitle: windowTitle,
+      unknownContent: unknownData?.content,
+      unknownTruncated: unknownData?.truncated,
+      unknownTerminator: unknownData?.terminator,
+    );
   }
 
   /// Feeds a single byte to the parser.
@@ -125,4 +161,11 @@ final class OscParser {
 
   LibGhosttyHandle _requireHandle() =>
       _disposed ? throw StateError('OscParser has been disposed') : _handle;
+
+  static int _checkUnknownMaxBytes(int value) {
+    if (value < 0 || value > 0xffffffff) {
+      throw RangeError.range(value, 0, 0xffffffff, 'unknownMaxBytes');
+    }
+    return value;
+  }
 }

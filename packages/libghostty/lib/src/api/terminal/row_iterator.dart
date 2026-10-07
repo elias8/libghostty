@@ -85,12 +85,30 @@ final class RowIterator {
     return _rowSummary.styled;
   }
 
-  /// Viewport-relative row index of the current row (zero-based).
+  /// Zero-based position among rows captured by the render state.
   ///
   /// Undefined before the first successful [next] call.
   int get index {
     _ensurePositioned();
     return _index;
+  }
+
+  /// Row position relative to the viewport top.
+  ///
+  /// This can be negative for rows above the viewport when overscan is
+  /// enabled. Rows below the viewport start at [RenderState.rows].
+  int get viewportY {
+    _ensurePositioned();
+    return bindings.render.rowIteratorGetViewportY(_handle);
+  }
+
+  /// Stable opaque identity for the current row across updates.
+  ///
+  /// Use the value for equality or as a cache key. Rebuild cached row data
+  /// whenever [dirty] is true.
+  RenderRowId get id {
+    _ensurePositioned();
+    return bindings.render.rowIteratorGetId(_handle);
   }
 
   /// Selected column range for the current row, or null when the row does
@@ -153,10 +171,11 @@ final class RowIterator {
 
   /// Advances to the next row requiring a redraw.
   ///
-  /// Rows are visited in ascending viewport order. A clean render state
-  /// produces no rows, a partially dirty state skips clean rows, and a fully
-  /// dirty state visits every remaining row. The iterator remains positioned
-  /// on the returned row, just like [next].
+  /// Rows are visited in top-to-bottom order. A clean render state produces
+  /// no rows, a partially dirty state skips clean rows, and a fully dirty
+  /// state visits every remaining row. The iterator remains positioned on the
+  /// returned row, just like [next]. Use [viewportY] for its viewport-relative
+  /// position when overscan is enabled.
   bool nextDirty() {
     _ensureCurrent();
     final index = bindings.render.rowIteratorNextDirty(_handle);

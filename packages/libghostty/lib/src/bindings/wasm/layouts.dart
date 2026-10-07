@@ -445,6 +445,13 @@ final class Layouts {
   late final int renderRowSelectionStartX;
   late final int renderRowSelectionEndX;
 
+  late final int renderOverscanSize;
+  late final int renderOverscanAbove;
+  late final int renderOverscanBelow;
+
+  late final int renderRowIdSize;
+  late final int renderRowIdBits;
+
   // GhosttySizeReportSize
   late final int sizeReportSize;
   late final int sizeReportColumns;
@@ -453,6 +460,7 @@ final class Layouts {
 
   // GhosttyString
   late final int stringSize;
+  late final int stringPtr;
   late final int stringLen;
 
   // GhosttyStyle
@@ -503,6 +511,43 @@ final class Layouts {
   late final int unknownStringSequenceSize;
   late final int unknownStringSequenceTruncated;
   late final int unknownStringSequenceContent;
+
+  late final int unknownOscSequenceSize;
+  late final int unknownOscSequenceTruncated;
+  late final int unknownOscSequenceContent;
+  late final int unknownOscSequenceTerminator;
+
+  late final int terminalMemoryUsageSize;
+  late final int terminalMemoryUsageCompressionSupported;
+  late final int terminalMemoryUsagePrimaryPages;
+  late final int terminalMemoryUsagePrimaryVirtualBytes;
+  late final int terminalMemoryUsagePrimaryResidentBytes;
+  late final int terminalMemoryUsagePrimaryCompressedPages;
+  late final int terminalMemoryUsagePrimaryCompressedBytes;
+  late final int terminalMemoryUsagePrimaryImageBytes;
+  late final int terminalMemoryUsageAlternatePages;
+  late final int terminalMemoryUsageAlternateVirtualBytes;
+  late final int terminalMemoryUsageAlternateResidentBytes;
+  late final int terminalMemoryUsageAlternateCompressedPages;
+  late final int terminalMemoryUsageAlternateCompressedBytes;
+  late final int terminalMemoryUsageAlternateImageBytes;
+
+  late final int terminalProgramStatusSize;
+  late final int terminalProgramStatusState;
+  late final int terminalProgramStatusKind;
+  late final int terminalProgramStatusProgress;
+  late final int terminalProgramStatusId;
+  late final int terminalProgramStatusApp;
+  late final int terminalProgramStatusTitle;
+  late final int terminalProgramStatusMessage;
+
+  late final int terminalSemanticPromptSize;
+  late final int terminalSemanticPromptKind;
+  late final int terminalSemanticPromptPromptKind;
+  late final int terminalSemanticPromptHasExitCode;
+  late final int terminalSemanticPromptExitCode;
+  late final int terminalSemanticPromptCommand;
+  late final int terminalSemanticPromptError;
 
   factory Layouts.fromJson(String source) {
     final root = _decodeLayoutJson(source);
@@ -834,6 +879,15 @@ final class Layouts {
     renderRowSelectionStartX = struct['start_x'];
     renderRowSelectionEndX = struct['end_x'];
 
+    struct = _Struct(types, 'GhosttyRenderStateOverscan');
+    renderOverscanSize = struct.size;
+    renderOverscanAbove = struct['above'];
+    renderOverscanBelow = struct['below'];
+
+    struct = _Struct(types, 'GhosttyRenderStateRowId');
+    renderRowIdSize = struct.size;
+    renderRowIdBits = struct['bits'];
+
     struct = _Struct(types, 'GhosttySizeReportSize');
     sizeReportSize = struct.size;
     sizeReportColumns = struct['columns'];
@@ -842,6 +896,7 @@ final class Layouts {
 
     struct = _Struct(types, 'GhosttyString');
     stringSize = struct.size;
+    stringPtr = struct['ptr'];
     stringLen = struct['len'];
 
     struct = _Struct(types, 'GhosttyStyle');
@@ -894,6 +949,53 @@ final class Layouts {
     unknownStringSequenceSize = struct.size;
     unknownStringSequenceTruncated = struct['truncated'];
     unknownStringSequenceContent = struct['content'];
+
+    struct = _Struct(types, 'GhosttyTerminalUnknownOscSequence');
+    unknownOscSequenceSize = struct.size;
+    unknownOscSequenceTruncated = struct['truncated'];
+    unknownOscSequenceContent = struct['content'];
+    unknownOscSequenceTerminator = struct['terminator'];
+
+    struct = _Struct(types, 'GhosttyTerminalMemoryUsage');
+    terminalMemoryUsageSize = struct.size;
+    terminalMemoryUsageCompressionSupported = struct['compression_supported'];
+    terminalMemoryUsagePrimaryPages = struct['primary_pages'];
+    terminalMemoryUsagePrimaryVirtualBytes = struct['primary_virtual_bytes'];
+    terminalMemoryUsagePrimaryResidentBytes = struct['primary_resident_bytes'];
+    terminalMemoryUsagePrimaryCompressedPages =
+        struct['primary_compressed_pages'];
+    terminalMemoryUsagePrimaryCompressedBytes =
+        struct['primary_compressed_bytes'];
+    terminalMemoryUsagePrimaryImageBytes = struct['primary_image_bytes'];
+    terminalMemoryUsageAlternatePages = struct['alternate_pages'];
+    terminalMemoryUsageAlternateVirtualBytes =
+        struct['alternate_virtual_bytes'];
+    terminalMemoryUsageAlternateResidentBytes =
+        struct['alternate_resident_bytes'];
+    terminalMemoryUsageAlternateCompressedPages =
+        struct['alternate_compressed_pages'];
+    terminalMemoryUsageAlternateCompressedBytes =
+        struct['alternate_compressed_bytes'];
+    terminalMemoryUsageAlternateImageBytes = struct['alternate_image_bytes'];
+
+    struct = _Struct(types, 'GhosttyTerminalProgramStatus');
+    terminalProgramStatusSize = struct.size;
+    terminalProgramStatusState = struct['state'];
+    terminalProgramStatusKind = struct['kind'];
+    terminalProgramStatusProgress = struct['progress'];
+    terminalProgramStatusId = struct['id'];
+    terminalProgramStatusApp = struct['app'];
+    terminalProgramStatusTitle = struct['title'];
+    terminalProgramStatusMessage = struct['message'];
+
+    struct = _Struct(types, 'GhosttyTerminalSemanticPrompt');
+    terminalSemanticPromptSize = struct.size;
+    terminalSemanticPromptKind = struct['kind'];
+    terminalSemanticPromptPromptKind = struct['prompt_kind'];
+    terminalSemanticPromptHasExitCode = struct['has_exit_code'];
+    terminalSemanticPromptExitCode = struct['exit_code'];
+    terminalSemanticPromptCommand = struct['command'];
+    terminalSemanticPromptError = struct['error'];
   }
 }
 

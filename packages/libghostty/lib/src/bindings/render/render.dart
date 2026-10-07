@@ -36,9 +36,15 @@ abstract interface class RenderBindings {
   RenderStateCursor renderStateGetCursor(LibGhosttyHandle state);
   RenderStateDirty renderStateGetDirty(LibGhosttyHandle state);
   int renderStateGetRows(LibGhosttyHandle state);
+  RenderOverscan renderStateGetOverscan(LibGhosttyHandle state);
+  RenderOverscan renderStateGetOverscanRequest(LibGhosttyHandle state);
   RawRenderStateSummary renderStateGetSummary(LibGhosttyHandle state);
   LibGhosttyHandle renderStateNew();
   void renderStateSetDirty(LibGhosttyHandle state, RenderStateDirty dirty);
+  void renderStateSetOverscanRequest(
+    LibGhosttyHandle state,
+    RenderOverscan overscan,
+  );
   void renderStateUpdate(LibGhosttyHandle state, LibGhosttyHandle terminal);
 
   void rowCellsFree(LibGhosttyHandle cells);
@@ -73,6 +79,8 @@ abstract interface class RenderBindings {
 
   void rowIteratorFree(LibGhosttyHandle iterator);
   bool rowIteratorGetDirty(LibGhosttyHandle iterator);
+  RenderRowId rowIteratorGetId(LibGhosttyHandle iterator);
+  int rowIteratorGetViewportY(LibGhosttyHandle iterator);
   LibGhosttyHandle rowIteratorGetRawRow(LibGhosttyHandle iterator);
   ({int startCol, int endCol})? rowIteratorGetSelection(
     LibGhosttyHandle iterator,

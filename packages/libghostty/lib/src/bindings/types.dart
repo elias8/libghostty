@@ -1,6 +1,14 @@
+import 'dart:typed_data';
+
 import '../generated/libghostty_enums.g.dart';
 import '../types/color.dart';
 import 'result_helpers.dart';
+
+typedef RawOscUnknownCommandData = ({
+  Uint8List content,
+  bool truncated,
+  OscTerminator terminator,
+});
 
 const defaultRawColor = (tag: StyleColorTag.none, palette: 0, r: 0, g: 0, b: 0);
 

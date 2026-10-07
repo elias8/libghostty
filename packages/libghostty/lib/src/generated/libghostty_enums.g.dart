@@ -1348,6 +1348,90 @@ enum MouseFormat {
   };
 }
 
+/// Mouse pointer shapes based on the W3C cursor names.
+///
+/// Hosts map these values to their native pointer shapes; not every platform
+/// supports every shape. These are pointer shapes, not terminal text cursors.
+///
+/// @ingroup mouse
+enum MouseShape {
+  default$(0),
+  contextMenu(1),
+  help(2),
+  pointer(3),
+  progress(4),
+  wait(5),
+  cell(6),
+  crosshair(7),
+  text(8),
+  verticalText(9),
+  alias(10),
+  copy(11),
+  move(12),
+  noDrop(13),
+  notAllowed(14),
+  grab(15),
+  grabbing(16),
+  allScroll(17),
+  colResize(18),
+  rowResize(19),
+  nResize(20),
+  eResize(21),
+  sResize(22),
+  wResize(23),
+  neResize(24),
+  nwResize(25),
+  seResize(26),
+  swResize(27),
+  ewResize(28),
+  nsResize(29),
+  neswResize(30),
+  nwseResize(31),
+  zoomIn(32),
+  zoomOut(33);
+
+  final int value;
+  const MouseShape(this.value);
+
+  static MouseShape fromValue(int value) => switch (value) {
+    0 => default$,
+    1 => contextMenu,
+    2 => help,
+    3 => pointer,
+    4 => progress,
+    5 => wait,
+    6 => cell,
+    7 => crosshair,
+    8 => text,
+    9 => verticalText,
+    10 => alias,
+    11 => copy,
+    12 => move,
+    13 => noDrop,
+    14 => notAllowed,
+    15 => grab,
+    16 => grabbing,
+    17 => allScroll,
+    18 => colResize,
+    19 => rowResize,
+    20 => nResize,
+    21 => eResize,
+    22 => sResize,
+    23 => wResize,
+    24 => neResize,
+    25 => nwResize,
+    26 => seResize,
+    27 => swResize,
+    28 => ewResize,
+    29 => nsResize,
+    30 => neswResize,
+    31 => nwseResize,
+    32 => zoomIn,
+    33 => zoomOut,
+    _ => throw ArgumentError('Unknown value for MouseShape: $value'),
+  };
+}
+
 /// Mouse tracking mode.
 ///
 /// @ingroup mouse
@@ -1448,7 +1532,38 @@ enum OscCommandData {
   ///
   /// Lifetime: Valid until the next call to any ghostty_osc_* function with
   /// the same parser instance. Memory is owned by the parser.
-  changeWindowTitleStr(1);
+  changeWindowTitleStr(1),
+
+  /// The raw bytes of an unknown sequence: everything that was passed to
+  /// ghostty_osc_next(), including the number at the start. For example,
+  /// the sequence `ESC ] 7400;status=busy BEL` gives
+  /// `7400;status=busy`. The bytes are not null-terminated.
+  ///
+  /// Valid for: GHOSTTY_OSC_COMMAND_UNKNOWN
+  ///
+  /// Output type: String *
+  ///
+  /// Lifetime: Valid until the next call to any ghostty_osc_* function with
+  /// the same parser instance. Memory is owned by the parser.
+  unknownContent(2),
+
+  /// True if the unknown sequence was longer than
+  /// GHOSTTY_OSC_OPT_UNKNOWN_MAX_BYTES, or memory ran out while reading it.
+  /// In that case the content holds only the beginning of the sequence.
+  ///
+  /// Valid for: GHOSTTY_OSC_COMMAND_UNKNOWN
+  ///
+  /// Output type: bool *
+  unknownTruncated(3),
+
+  /// How the unknown sequence was ended, based on the terminator passed to
+  /// ghostty_osc_end(). If you reply to the sequence, end the reply the same
+  /// way.
+  ///
+  /// Valid for: GHOSTTY_OSC_COMMAND_UNKNOWN
+  ///
+  /// Output type: OscTerminator *
+  unknownTerminator(4);
 
   final int value;
   const OscCommandData(this.value);
@@ -1456,6 +1571,9 @@ enum OscCommandData {
   static OscCommandData fromValue(int value) => switch (value) {
     0 => invalid,
     1 => changeWindowTitleStr,
+    2 => unknownContent,
+    3 => unknownTruncated,
+    4 => unknownTerminator,
     _ => throw ArgumentError('Unknown value for OscCommandData: $value'),
   };
 }
@@ -1490,7 +1608,22 @@ enum OscCommandType {
   kittyClipboardProtocol(23),
   kittyDndProtocol(24),
   contextSignal(25),
-  kittyDesktopNotification(26);
+  kittyDesktopNotification(26),
+
+  /// An OSC sequence whose number the parser does not implement. Read it
+  /// with the GHOSTTY_OSC_DATA_UNKNOWN_* data types.
+  ///
+  /// Only produced when GHOSTTY_OSC_OPT_UNKNOWN_MAX_BYTES is nonzero.
+  /// Otherwise these sequences are GHOSTTY_OSC_COMMAND_INVALID.
+  unknown(27),
+
+  /// A program status report or support query (OSC 7501), which a program
+  /// sends to say what it is doing, such as working or waiting on the user.
+  ///
+  /// The OSC parser only identifies this command. To receive the report's
+  /// contents, use a terminal with GHOSTTY_TERMINAL_OPT_PROGRAM_STATUS
+  /// instead (see TerminalProgramStatus).
+  programStatus(28);
 
   final int value;
   const OscCommandType(this.value);
@@ -1523,7 +1656,65 @@ enum OscCommandType {
     24 => kittyDndProtocol,
     25 => contextSignal,
     26 => kittyDesktopNotification,
+    27 => unknown,
+    28 => programStatus,
     _ => throw ArgumentError('Unknown value for OscCommandType: $value'),
+  };
+}
+
+/// OSC parser options, set with ghostty_osc_set().
+///
+/// @ingroup osc
+enum OscOption {
+  /// The most bytes to keep from each OSC sequence whose number the parser
+  /// does not implement.
+  ///
+  /// Zero, the default, discards these sequences and they produce
+  /// GHOSTTY_OSC_COMMAND_INVALID. Any other value makes them produce
+  /// GHOSTTY_OSC_COMMAND_UNKNOWN. A NULL value pointer sets the limit back
+  /// to zero.
+  ///
+  /// A sequence longer than the limit is still reported. Its content holds
+  /// the first bytes up to the limit, and GHOSTTY_OSC_DATA_UNKNOWN_TRUNCATED
+  /// is true.
+  ///
+  /// Limits up to 2048 bytes use a buffer the parser already owns and never
+  /// allocate memory. Larger limits allocate memory from the parser's
+  /// allocator for each unknown sequence.
+  ///
+  /// Input type: size_t*
+  unknownMaxBytes(0);
+
+  final int value;
+  const OscOption(this.value);
+
+  static OscOption fromValue(int value) => switch (value) {
+    0 => unknownMaxBytes,
+    _ => throw ArgumentError('Unknown value for OscOption: $value'),
+  };
+}
+
+/// How an OSC sequence was ended.
+///
+/// Programs can end an OSC sequence in two ways. When you reply to a
+/// sequence, end the reply the same way the program ended its request.
+/// Some programs only recognize replies that match.
+///
+/// @ingroup osc
+enum OscTerminator {
+  /// The string terminator (ST): ESC followed by a backslash (0x1B 0x5C).
+  st(0),
+
+  /// The bell character, BEL (byte 0x07).
+  bel(1);
+
+  final int value;
+  const OscTerminator(this.value);
+
+  static OscTerminator fromValue(int value) => switch (value) {
+    0 => st,
+    1 => bel,
+    _ => throw ArgumentError('Unknown value for OscTerminator: $value'),
   };
 }
 
@@ -1578,6 +1769,79 @@ enum PointTag {
   };
 }
 
+/// What a blocked program needs from the user, in a program status report
+/// (OSC 7501).
+///
+/// @ingroup terminal
+enum ProgramStatusKind {
+  /// The program didn't say, or the state isn't
+  /// GHOSTTY_PROGRAM_STATUS_STATE_BLOCKED.
+  none(0),
+
+  /// Approval to do something, such as "Apply these changes?".
+  permission(1),
+
+  /// An answer the user has to type.
+  question(2),
+
+  /// A login, password, token, or other credential.
+  auth(3);
+
+  final int value;
+  const ProgramStatusKind(this.value);
+
+  static ProgramStatusKind fromValue(int value) => switch (value) {
+    0 => none,
+    1 => permission,
+    2 => question,
+    3 => auth,
+    _ => throw ArgumentError('Unknown value for ProgramStatusKind: $value'),
+  };
+}
+
+/// What a program says it is doing, in a program status report (OSC 7501).
+///
+/// See TerminalProgramStatus for an overview of the protocol.
+///
+/// @ingroup terminal
+enum ProgramStatusState {
+  /// At rest, waiting for the user's next instruction. For example, an
+  /// interactive tool sitting at its own prompt.
+  idle(0),
+
+  /// Running on its own. The report may include a progress percentage.
+  working(1),
+
+  /// Finished a piece of work, and the result is ready for the user to
+  /// look at.
+  done(2),
+
+  /// Can't continue until the user does something. `kind` says what the
+  /// program needs and `message` says why. The report may include a
+  /// progress percentage.
+  blocked(3),
+
+  /// Failed and stopped.
+  error(4),
+
+  /// Not a real state. Remove the record with this report's id and every
+  /// record beneath it. If the id is empty, remove every record.
+  clear(5);
+
+  final int value;
+  const ProgramStatusState(this.value);
+
+  static ProgramStatusState fromValue(int value) => switch (value) {
+    0 => idle,
+    1 => working,
+    2 => done,
+    3 => blocked,
+    4 => error,
+    5 => clear,
+    _ => throw ArgumentError('Unknown value for ProgramStatusState: $value'),
+  };
+}
+
 /// Visual style of the cursor.
 ///
 /// @ingroup render
@@ -1618,7 +1882,8 @@ enum RenderStateData {
   /// Viewport width in cells (uint16_t).
   cols(1),
 
-  /// Viewport height in cells (uint16_t).
+  /// Viewport height in cells (uint16_t). This does not include
+  /// overscan rows.
   rows(2),
 
   /// Current dirty state (RenderStateDirty).
@@ -1628,6 +1893,10 @@ enum RenderStateData {
   /// from the render state (RenderStateRowIterator). Row data is
   /// only valid as long as the underlying render state is not updated.
   /// It is unsafe to use row data after updating the render state.
+  ///
+  /// The iterator visits every row the last update captured, from top
+  /// to bottom. This is exactly the viewport unless overscan was
+  /// requested with GHOSTTY_RENDER_STATE_OPTION_OVERSCAN.
   rowIterator(4),
 
   /// Default/current background color (ColorRgb).
@@ -1681,7 +1950,20 @@ enum RenderStateData {
 
   /// All render-state colors in one sized struct (RenderStateColors).
   /// Initialize the output with GHOSTTY_INIT_SIZED before querying.
-  colors(19);
+  colors(19),
+
+  /// How many overscan rows the last update captured on each side
+  /// (RenderStateOverscan). This is never more than the request.
+  /// It is less when those rows don't exist: `above` is smaller near the
+  /// top of the scrollback, and `below` is zero while the viewport is
+  /// scrolled to the bottom.
+  overscan(20),
+
+  /// The overscan request most recently set with
+  /// GHOSTTY_RENDER_STATE_OPTION_OVERSCAN (RenderStateOverscan).
+  /// The next update uses this request. Both sides are zero if it was
+  /// never set.
+  overscanRequest(21);
 
   final int value;
   const RenderStateData(this.value);
@@ -1707,6 +1989,8 @@ enum RenderStateData {
     17 => cursorViewportWideTail,
     18 => cursor,
     19 => colors,
+    20 => overscan,
+    21 => overscanRequest,
     _ => throw ArgumentError('Unknown value for RenderStateData: $value'),
   };
 }
@@ -1740,13 +2024,23 @@ enum RenderStateDirty {
 /// @ingroup render
 enum RenderStateOption {
   /// Set dirty state (RenderStateDirty).
-  dirty(0);
+  dirty(0),
+
+  /// Request overscan rows above and below the viewport
+  /// (RenderStateOverscan). The request takes effect on the next
+  /// update and stays in effect until it is changed. Both sides are zero
+  /// by default, which captures only the viewport. The rows of the last
+  /// update can still be read after changing the request. Expect a full
+  /// redraw on the update after a change. See "Overscan" in the render
+  /// state overview.
+  overscan(1);
 
   final int value;
   const RenderStateOption(this.value);
 
   static RenderStateOption fromValue(int value) => switch (value) {
     0 => dirty,
+    1 => overscan,
     _ => throw ArgumentError('Unknown value for RenderStateOption: $value'),
   };
 }
@@ -1872,7 +2166,19 @@ enum RenderStateRowData {
   /// Bit positions aren't protected by ABI, so callers should parse them
   /// out of the manifest from `ghostty_type_json`. Callers with access
   /// to the C header or without high FFI costs should use `ghostty_cell_get`.
-  cellsRaw(5);
+  cellsRaw(5),
+
+  /// The row's position relative to the top of the viewport (int32_t).
+  /// Viewport rows are 0 through rows - 1. Overscan rows above the
+  /// viewport are negative, and overscan rows below it start at rows.
+  /// Without overscan, this equals the y reported by
+  /// ghostty_render_state_row_iterator_next_dirty().
+  viewportY(6),
+
+  /// The row's identity across updates (RenderStateRowId). This
+  /// works with or without overscan. See "Row Identity" in the render
+  /// state overview.
+  id(7);
 
   final int value;
   const RenderStateRowData(this.value);
@@ -1884,6 +2190,8 @@ enum RenderStateRowData {
     3 => cells,
     4 => selection,
     5 => cellsRaw,
+    6 => viewportY,
+    7 => id,
     _ => throw ArgumentError('Unknown value for RenderStateRowData: $value'),
   };
 }
@@ -2523,6 +2831,83 @@ enum SelectionOrder {
   };
 }
 
+/// The step of a command that a shell integration event reports.
+///
+/// More kinds may be added in later versions, so ignore any kind you don't
+/// handle.
+///
+/// @ingroup terminal
+enum SemanticPromptKind {
+  /// Never reported. This exists so that a zeroed value is not mistaken
+  /// for a real event.
+  invalid(0),
+
+  /// The shell started drawing a prompt. `prompt_kind` says which one.
+  promptStart(1),
+
+  /// The prompt is drawn and the user can start typing a command.
+  inputStart(2),
+
+  /// The user submitted the command and it started running. Anything the
+  /// terminal receives after this is the command's output.
+  outputStart(3),
+
+  /// The command finished running.
+  commandEnd(4);
+
+  final int value;
+  const SemanticPromptKind(this.value);
+
+  static SemanticPromptKind fromValue(int value) => switch (value) {
+    0 => invalid,
+    1 => promptStart,
+    2 => inputStart,
+    3 => outputStart,
+    4 => commandEnd,
+    _ => throw ArgumentError('Unknown value for SemanticPromptKind: $value'),
+  };
+}
+
+/// Which prompt a `GHOSTTY_SEMANTIC_PROMPT_PROMPT_START` event starts.
+///
+/// Most shells only draw a primary prompt. Some also draw a prompt on the
+/// right side of the line, or a prompt at the start of each extra line
+/// when a command spans several lines.
+///
+/// @ingroup terminal
+enum SemanticPromptPromptKind {
+  /// The main prompt shown before each command. This is used when the
+  /// shell doesn't say which prompt it is drawing.
+  primary(0),
+
+  /// A prompt drawn at the right edge of the line, such as zsh's
+  /// RPROMPT.
+  right(1),
+
+  /// A prompt at the start of an extra line of a command that spans
+  /// several lines.
+  continuation(2),
+
+  /// Another prompt for an extra line of input, such as bash's PS2.
+  /// Shells differ in whether they report extra lines as continuation or
+  /// secondary prompts, so most applications should treat the two the
+  /// same.
+  secondary(3);
+
+  final int value;
+  const SemanticPromptPromptKind(this.value);
+
+  static SemanticPromptPromptKind fromValue(int value) => switch (value) {
+    0 => primary,
+    1 => right,
+    2 => continuation,
+    3 => secondary,
+    _ => throw ArgumentError(
+      'Unknown value for SemanticPromptPromptKind: $value',
+    ),
+  };
+}
+
 /// SGR attribute tags.
 ///
 /// These values identify the type of an SGR attribute in a tagged union.
@@ -2724,7 +3109,15 @@ enum SnapshotDecoderData {
   /// This value is available in every non-failed decoder state.
   ///
   /// Output type: bool *
-  retainContinuation(8);
+  retainContinuation(8),
+
+  /// Whether history is compressed while it is restored.
+  ///
+  /// See GHOSTTY_SNAPSHOT_DECODER_OPT_COMPRESS_HISTORY. This value is
+  /// available in every non-failed decoder state.
+  ///
+  /// Output type: bool *
+  compressHistory(9);
 
   final int value;
   const SnapshotDecoderData(this.value);
@@ -2739,6 +3132,7 @@ enum SnapshotDecoderData {
     6 => progressRows,
     7 => progressRemaining,
     8 => retainContinuation,
+    9 => compressHistory,
     _ => throw ArgumentError('Unknown value for SnapshotDecoderData: $value'),
   };
 }
@@ -2778,7 +3172,38 @@ enum SnapshotDecoderOption {
   /// before writing post-snapshot input.
   ///
   /// Input type: bool *
-  retainContinuation(1);
+  retainContinuation(1),
+
+  /// Compress scrollback history while it is restored.
+  ///
+  /// By default, restoring a snapshot leaves all of its scrollback history
+  /// uncompressed, even if the terminal that produced the snapshot had
+  /// compressed it. The history stays that size until the application calls
+  /// ghostty_terminal_compress(). For a terminal with a lot of scrollback,
+  /// that can be many times more memory than the terminal needed before.
+  ///
+  /// When this option is true, the decoder compresses each history page right
+  /// after restoring it. The restored terminal starts out compressed, and the
+  /// decode never holds more than one uncompressed history page at a time.
+  /// The result is the same as decoding normally and then calling
+  /// ghostty_terminal_compress() with GHOSTTY_TERMINAL_COMPRESSION_MODE_FULL,
+  /// without the memory spike in between.
+  ///
+  /// A history page that is on screen when it is restored stays uncompressed.
+  /// This only happens if the viewport is scrolled to the top of the
+  /// scrollback during an incremental decode. Compressed history is
+  /// uncompressed automatically when it is accessed later, for example by
+  /// scrolling or searching.
+  ///
+  /// This only changes how the restored terminal stores its history in
+  /// memory. The snapshot format is unchanged, so it works with any snapshot.
+  /// On platforms that do not support scrollback compression, this option is
+  /// accepted and has no effect.
+  ///
+  /// This is false by default.
+  ///
+  /// Input type: bool *
+  compressHistory(2);
 
   final int value;
   const SnapshotDecoderOption(this.value);
@@ -2786,6 +3211,7 @@ enum SnapshotDecoderOption {
   static SnapshotDecoderOption fromValue(int value) => switch (value) {
     0 => maxContinuationBytes,
     1 => retainContinuation,
+    2 => compressHistory,
     _ => throw ArgumentError('Unknown value for SnapshotDecoderOption: $value'),
   };
 }
@@ -3286,7 +3712,27 @@ enum TerminalData {
   /// GHOSTTY_TERMINAL_OPT_CLIPBOARD_WRITE_MAX_BYTES.
   ///
   /// Output type: size_t *
-  clipboardWriteMaxBytes(40);
+  clipboardWriteMaxBytes(40),
+
+  /// The mouse pointer shape requested by the application through OSC 22.
+  ///
+  /// Initially GHOSTTY_MOUSE_SHAPE_TEXT. Excludes host hover overrides.
+  ///
+  /// Output type: MouseShape *
+  mouseShape(41),
+
+  /// How much memory the terminal holds. See TerminalMemoryUsage
+  /// for what each field means.
+  ///
+  /// Set the struct's `size` field before the call, for example with
+  /// GHOSTTY_INIT_SIZED(). If `size` is too small, this returns
+  /// GHOSTTY_INVALID_VALUE and leaves the struct unchanged.
+  ///
+  /// This never decompresses scrollback, but it does look at every page, so
+  /// avoid reading it after every write.
+  ///
+  /// Output type: TerminalMemoryUsage *
+  memoryUsage(42);
 
   final int value;
   const TerminalData(this.value);
@@ -3333,6 +3779,8 @@ enum TerminalData {
     38 => vtGround,
     39 => cursorAtPrompt,
     40 => clipboardWriteMaxBytes,
+    41 => mouseShape,
+    42 => memoryUsage,
     _ => throw ArgumentError('Unknown value for TerminalData: $value'),
   };
 }
@@ -3658,19 +4106,31 @@ enum TerminalOption {
   /// Input type: TerminalModeConfig*
   mode(34),
 
-  /// Callback invoked for unsupported terminal sequence identifiers. Set to
-  /// NULL to ignore unsupported sequences. Capture must also be enabled with
-  /// GHOSTTY_TERMINAL_OPT_UNKNOWN_MAX_BYTES.
+  /// Callback for escape sequences that libghostty-vt does not implement.
+  /// Set to NULL to stop receiving them.
+  ///
+  /// GHOSTTY_TERMINAL_OPT_UNKNOWN_MAX_BYTES must also be set, or the
+  /// callback is never called. See the Unsupported Sequences section of the
+  /// terminal documentation for an example.
   ///
   /// Input type: TerminalUnknownSequenceFn
   unknownSequence(35),
 
-  /// Set the maximum content bytes retained for each unsupported terminal
-  /// sequence. A NULL value pointer or zero disables capture and prevents
-  /// unknown-sequence callbacks.
+  /// The most bytes of each unsupported sequence to keep and pass to the
+  /// GHOSTTY_TERMINAL_OPT_UNKNOWN_SEQUENCE callback. The same limit applies
+  /// to APC and OSC sequences.
   ///
-  /// When this limit is hit, the unknown sequence callback will still
-  /// be invoked but `truncated` will be set to true.
+  /// Zero, the default, turns unsupported sequence reporting off. A NULL
+  /// value pointer also sets it to zero.
+  ///
+  /// A sequence longer than the limit is still reported. Its content holds
+  /// the first bytes up to the limit, and `truncated` is true.
+  ///
+  /// Choose a limit that fits the largest sequence you expect. Unknown OSC
+  /// sequences up to 2048 bytes are kept in a buffer the terminal already
+  /// owns, so limits up to 2048 add no memory allocations for OSC. Larger
+  /// limits allocate memory for each unknown OSC sequence. Unknown APC
+  /// sequences are always kept in allocated memory.
   ///
   /// Input type: size_t*
   unknownMaxBytes(36),
@@ -3717,7 +4177,98 @@ enum TerminalOption {
   /// maximum length of an escape sequence instead.
   ///
   /// Input type: size_t*
-  clipboardWriteMaxBytes(39);
+  clipboardWriteMaxBytes(39),
+
+  /// Set whether a resize may pull rows out of scrollback back into the
+  /// active area.
+  ///
+  /// When true, growing rows reveals scrollback if the cursor is on the
+  /// bottom row, and a column reflow that needs fewer rows reveals
+  /// scrollback as well. When false, growing rows always appends blank rows
+  /// at the bottom and a column reflow keeps the top of the active area on
+  /// the same content, so a line that is fully in scrollback stays there. A
+  /// soft-wrapped line with at least one row still in the active area may
+  /// still unwrap back into view.
+  ///
+  /// Set this to false when the pty keeps its own screen buffer without
+  /// scrollback, since it cannot pull rows back and will otherwise disagree
+  /// with the terminal about the screen contents after a resize. Windows
+  /// ConPTY is the motivating case.
+  ///
+  /// This is preserved across a full reset (RIS).
+  ///
+  /// A NULL value pointer resets to the built-in default of true.
+  ///
+  /// Input type: bool*
+  resizePullScrollback(40),
+
+  /// Callback invoked when the running program asks the terminal to
+  /// stop updating the screen and when it allows updates again. Today
+  /// this is driven by synchronized output (mode 2026). Set to NULL to
+  /// ignore these events.
+  ///
+  /// See TerminalRenderHoldFn for how to use this in a renderer.
+  ///
+  /// Input type: TerminalRenderHoldFn
+  renderHold(41),
+
+  /// Callback invoked when the shell reports a step of a command: a prompt
+  /// starts, input starts, output starts, or the command ends. Set to NULL
+  /// to ignore these events.
+  ///
+  /// Input type: TerminalSemanticPromptFn
+  semanticPrompt(42),
+
+  /// Callback invoked after the running program performs a full reset
+  /// (RIS, ESC c). Set to NULL to ignore resets.
+  ///
+  /// Input type: TerminalResetFn
+  reset(43),
+
+  /// Enable checksum reports in response to DECRQCRA (CSI Pi ; Pg ; Pt ; Pl ;
+  /// Pb ; Pr * y).
+  ///
+  /// This is disabled by default because a running program can checksum the
+  /// screen one cell at a time and so read back everything on it, including
+  /// output from other programs. Passing NULL or a pointer to false disables
+  /// checksum reporting.
+  ///
+  /// While this is disabled, XTCHECKSUM (CSI Ps # y), which changes how the
+  /// checksum is calculated, is ignored as well.
+  ///
+  /// Input type: bool*
+  xtChecksumReport(44),
+
+  /// Set how the DECRQCRA checksum is calculated after a full reset (RIS).
+  /// This also changes the current calculation.
+  ///
+  /// The value holds the same bits as XTCHECKSUM (CSI Ps # y) and xterm's
+  /// checksumExtension resource, which a running program can still use to
+  /// change the calculation until the next reset:
+  ///
+  /// - 1: don't negate the result
+  /// - 2: don't add the video attributes of each cell
+  /// - 4: don't omit blanks
+  /// - 8: count cells that were never written to as spaces
+  /// - 16: use full codepoints instead of the DEC 8-bit values
+  ///
+  /// Zero, or passing NULL, is the calculation of a real DEC terminal.
+  /// Values above 31 return GHOSTTY_INVALID_VALUE.
+  ///
+  /// Input type: uint8_t*
+  xtChecksumExtension(45),
+
+  /// Callback invoked when the running program sends a program status
+  /// report via OSC 7501. Set to NULL to ignore these reports.
+  ///
+  /// Programs check for support before sending reports by sending
+  /// `OSC 7501 ; ?`. While this callback is set, the terminal answers that
+  /// query through GHOSTTY_TERMINAL_OPT_WRITE_PTY. While it is NULL, the
+  /// query gets no reply, so programs know the protocol isn't supported.
+  /// Set a write_pty callback too, or programs never see the reply.
+  ///
+  /// Input type: TerminalProgramStatusFn
+  programStatus(46);
 
   final int value;
   const TerminalOption(this.value);
@@ -3763,6 +4314,13 @@ enum TerminalOption {
     37 => terminfoName,
     38 => clipboardRead,
     39 => clipboardWriteMaxBytes,
+    40 => resizePullScrollback,
+    41 => renderHold,
+    42 => semanticPrompt,
+    43 => reset,
+    44 => xtChecksumReport,
+    45 => xtChecksumExtension,
+    46 => programStatus,
     _ => throw ArgumentError('Unknown value for TerminalOption: $value'),
   };
 }
@@ -3861,21 +4419,26 @@ enum TerminalScrollViewportTag {
   };
 }
 
-/// Unsupported terminal sequence tags.
+/// The kind of unsupported sequence passed to a
+/// TerminalUnknownSequenceFn callback.
 ///
-/// Only APC sequences are currently reported. Additional sequence types may
-/// be added without changing the callback shape.
+/// New kinds may be added in later versions. Callbacks should ignore any
+/// tag they don't handle.
 ///
 /// @ingroup terminal
 enum TerminalUnknownSequenceTag {
   /// Application Program Command (APC).
-  apc(0);
+  apc(0),
+
+  /// Operating System Command (OSC). The value is in `value.osc`.
+  osc(1);
 
   final int value;
   const TerminalUnknownSequenceTag(this.value);
 
   static TerminalUnknownSequenceTag fromValue(int value) => switch (value) {
     0 => apc,
+    1 => osc,
     _ => throw ArgumentError(
       'Unknown value for TerminalUnknownSequenceTag: $value',
     ),
