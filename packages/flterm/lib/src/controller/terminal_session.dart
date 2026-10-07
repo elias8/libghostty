@@ -284,6 +284,12 @@ final class TerminalSession extends TerminalController with ChangeNotifier {
   }
 
   @override
+  TerminalMemoryUsage get memoryUsage {
+    _checkNotDisposed();
+    return _terminal.memoryUsage;
+  }
+
+  @override
   int get scrollbackRows {
     _checkNotDisposed();
     return _terminal.scrollbackRows;

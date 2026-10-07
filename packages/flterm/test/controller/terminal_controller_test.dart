@@ -596,6 +596,24 @@ void main() {
       });
     });
 
+    group('memory usage', () {
+      test('reports terminal screen memory', () {
+        controller.write(utf8.encode('memory usage'));
+
+        final usage = controller.memoryUsage;
+
+        expect(usage, isA<flterm.TerminalMemoryUsage>());
+        expect(usage.primaryPages, greaterThan(0));
+        expect(usage.primaryResidentBytes, greaterThan(0));
+      });
+
+      test('rejects access after disposal', () {
+        controller.dispose();
+
+        expect(() => controller.memoryUsage, throwsStateError);
+      });
+    });
+
     group('constructor', () {
       test('has no restoration state for an ordinary controller', () {
         expect(controller.restoration, RestorationState.none);

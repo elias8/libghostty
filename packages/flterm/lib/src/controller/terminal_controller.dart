@@ -310,6 +310,14 @@ sealed class TerminalController implements Listenable {
   /// [StateError]. Read [restoration] for the current lifecycle state.
   Future<void> get restored;
 
+  /// Memory held by this terminal's screens and Kitty graphics storage.
+  ///
+  /// Resident bytes include compressed page storage but exclude Kitty image
+  /// bytes. Reading this value visits every screen page, so query it when
+  /// checking memory budgets instead of after every terminal write. This does
+  /// not include the Flutter process's other memory.
+  TerminalMemoryUsage get memoryUsage;
+
   /// The number of scrollback rows in the active screen.
   int get scrollbackRows;
 

@@ -37,6 +37,7 @@ export 'package:libghostty/libghostty.dart'
         SelectionGestureBehaviors,
         SemanticPromptKind,
         SemanticPromptPromptKind,
+        TerminalMemoryUsage,
         TerminalMode,
         TerminalProgramStatus,
         TerminalProgramStatusCallback,
