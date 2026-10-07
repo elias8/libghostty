@@ -95,11 +95,13 @@ void main() {
         Terminal source, {
         bool progressive = true,
         bool deferResize = true,
+        bool compressHistory = false,
       }) {
-        final restored = TerminalController.fromSnapshot(
+        final restored = flterm.TerminalController.fromSnapshot(
           source.encodeSnapshot(),
           progressive: progressive,
           deferResize: deferResize,
+          compressHistory: compressHistory,
         );
         addTearDown(restored.dispose);
         return restored;
@@ -180,6 +182,33 @@ void main() {
 
           await expectLater(restored.restored, completes);
         });
+
+        test('compresses history only when requested', () {
+          final source = terminalWithHistory();
+          final uncompressed = restore(source, progressive: false);
+          final compressed = restore(
+            source,
+            progressive: false,
+            compressHistory: true,
+          );
+
+          final uncompressedUsage = uncompressed.memoryUsage;
+          final compressedUsage = compressed.memoryUsage;
+          expect(uncompressedUsage, isA<flterm.TerminalMemoryUsage>());
+          if (compressedUsage.compressionSupported) {
+            expect(uncompressedUsage.primaryCompressedPages, 0);
+            expect(compressedUsage.primaryCompressedPages, greaterThan(0));
+          }
+
+          for (final restored in [uncompressed, compressed]) {
+            expect(restored.scrollbackRows, source.scrollbackRows);
+            final actual = restored.createFormatter(format: .plain);
+            addTearDown(actual.dispose);
+            final expected = Formatter(terminal: source, format: .plain);
+            addTearDown(expected.dispose);
+            expect(actual.format(), expected.format());
+          }
+        });
       });
 
       group('progressive restoration', () {
@@ -245,6 +274,34 @@ void main() {
             async.flushMicrotasks();
 
             expect(completed, isTrue);
+          });
+        });
+
+        test('compresses history only when requested', () {
+          fakeAsync((async) {
+            final source = terminalWithHistory();
+            final uncompressed = restore(source);
+            final compressed = restore(source, compressHistory: true);
+
+            async.elapse(const Duration(seconds: 1));
+
+            final uncompressedUsage = uncompressed.memoryUsage;
+            final compressedUsage = compressed.memoryUsage;
+            expect(uncompressedUsage, isA<flterm.TerminalMemoryUsage>());
+            if (compressedUsage.compressionSupported) {
+              expect(uncompressedUsage.primaryCompressedPages, 0);
+              expect(compressedUsage.primaryCompressedPages, greaterThan(0));
+            }
+
+            for (final restored in [uncompressed, compressed]) {
+              expect(restored.restoration, RestorationState.complete);
+              expect(restored.scrollbackRows, source.scrollbackRows);
+              final actual = restored.createFormatter(format: .plain);
+              addTearDown(actual.dispose);
+              final expected = Formatter(terminal: source, format: .plain);
+              addTearDown(expected.dispose);
+              expect(actual.format(), expected.format());
+            }
           });
         });
 

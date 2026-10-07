@@ -96,7 +96,10 @@ sealed class TerminalController implements Listenable {
   /// restoration finishes. When false, a view-driven resize may cause
   /// incompatible scrollback pages to be skipped. [preserveSnapshotColors]
   /// defaults to true and preserves terminal colors on initial view attachment;
-  /// later theme changes apply normally.
+  /// later theme changes apply normally. [compressHistory] defaults to false.
+  /// When true, libghostty requests compression of off-screen history pages as
+  /// it restores them in either mode. Builds without compression support and
+  /// pages libghostty cannot reclaim remain uncompressed.
   ///
   /// Dimensions, modes, cursor state, and scrollback limits come from the
   /// snapshot. Replacing [config] afterward applies the new configuration
@@ -117,6 +120,7 @@ sealed class TerminalController implements Listenable {
     bool retainContinuation,
     bool deferResize,
     bool preserveSnapshotColors,
+    bool compressHistory,
   }) = TerminalSession.fromSnapshot;
 
   TerminalController._();
