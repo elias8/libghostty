@@ -342,6 +342,81 @@ void main() {
       });
     });
 
+    group('XT checksum options', () {
+      test('enables reports and restores the default calculation', () {
+        final output = <int>[];
+        terminal.onWritePty = output.addAll;
+        terminal.write(Uint8List.fromList('hello'.codeUnits));
+        terminal.xtChecksumReport = true;
+        terminal.xtChecksumExtension = 1;
+
+        terminal.write(Uint8List.fromList('\x1b[1;1;1;1;1;5*y'.codeUnits));
+        expect(output, Uint8List.fromList('\x1bP1!~0214\x1b\\'.codeUnits));
+
+        output.clear();
+        terminal.write(Uint8List.fromList('\x1b[0#y\x1bc'.codeUnits));
+        terminal.write(Uint8List.fromList('hello'.codeUnits));
+        terminal.write(Uint8List.fromList('\x1b[1;1;1;1;1;5*y'.codeUnits));
+        expect(output, Uint8List.fromList('\x1bP1!~0214\x1b\\'.codeUnits));
+
+        terminal.xtChecksumExtension = null;
+        output.clear();
+        terminal.write(Uint8List.fromList('\x1b[1;1;1;1;1;5*y'.codeUnits));
+        expect(output, Uint8List.fromList('\x1bP1!~FDEC\x1b\\'.codeUnits));
+
+        terminal.xtChecksumReport = false;
+        output.clear();
+        terminal.write(Uint8List.fromList('\x1b[1;1;1;1;1;5*y'.codeUnits));
+        expect(output, isEmpty);
+      });
+
+      test('rejects checksum extension flags outside five bits', () {
+        expect(() => terminal.xtChecksumExtension = 32, throwsRangeError);
+      });
+    });
+
+    test('resize pull scrollback controls whether growth restores history', () {
+      terminal.resize(cols: 5, rows: 3);
+      terminal.resizePullScrollback = false;
+      terminal.write(Uint8List.fromList('1\n2\n3\n4\n5'.codeUnits));
+      terminal.resize(cols: 5, rows: 5);
+      expect(terminal.scrollbackRows, greaterThan(0));
+
+      terminal.resizePullScrollback = null;
+
+      final defaultTerminal = Terminal(cols: 5, rows: 3);
+      addTearDown(defaultTerminal.dispose);
+      defaultTerminal.write(Uint8List.fromList('1\n2\n3\n4\n5'.codeUnits));
+      defaultTerminal.resize(cols: 5, rows: 5);
+      expect(defaultTerminal.scrollbackRows, 0);
+    });
+
+    group('terminal data', () {
+      test('reports the current mouse shape', () {
+        expect(terminal.mouseShape, MouseShape.text);
+
+        terminal.write(Uint8List.fromList('\x1b]22;pointer\x07'.codeUnits));
+        expect(terminal.mouseShape, MouseShape.pointer);
+
+        terminal.write(Uint8List.fromList('\x1b]22;\x07'.codeUnits));
+        expect(terminal.mouseShape, MouseShape.text);
+      });
+
+      test('reports coherent screen memory usage', () {
+        final usage = terminal.memoryUsage;
+
+        expect(usage.primaryPages, greaterThan(0));
+        expect(
+          usage.primaryVirtualBytes,
+          greaterThanOrEqualTo(usage.primaryResidentBytes),
+        );
+        expect(
+          usage.alternateVirtualBytes,
+          greaterThanOrEqualTo(usage.alternateResidentBytes),
+        );
+      });
+    });
+
     group('write', () {
       Object captureError(void Function() operation) {
         try {

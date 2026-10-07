@@ -388,6 +388,18 @@ final class Terminal with ChangeNotifier {
     return MouseTracking.none;
   }
 
+  /// Mouse pointer shape requested by the running program through OSC 22.
+  MouseShape get mouseShape =>
+      bindings.terminal.terminalGetMouseShape(_terminalHandle);
+
+  /// Screen and Kitty graphics memory held by this terminal.
+  ///
+  /// This reads every screen page and may take time for long scrollback
+  /// histories. Query it when checking memory budgets instead of after every
+  /// write.
+  TerminalMemoryUsage get memoryUsage =>
+      bindings.terminal.terminalGetMemoryUsage(_terminalHandle);
+
   /// Registers a callback for BEL character (0x07).
   ///
   /// Fires synchronously during [write]. Set to null to ignore bell events.
@@ -600,6 +612,40 @@ final class Terminal with ChangeNotifier {
   /// disable scrollback by lines.
   set scrollbackMaxLines(int? value) {
     bindings.terminal.terminalSetScrollbackMaxLines(_terminalHandle, value);
+  }
+
+  /// Controls whether a resize can pull rows from scrollback into the active
+  /// grid.
+  ///
+  /// Set null to restore libghostty's default, which is true. Set false when
+  /// the PTY keeps its own screen buffer without scrollback.
+  set resizePullScrollback(bool? value) {
+    bindings.terminal.terminalSetResizePullScrollback(
+      _terminalHandle,
+      value: value,
+    );
+  }
+
+  /// Enables or disables DECRQCRA checksum replies.
+  ///
+  /// Checksum replies are disabled by default because a program could use
+  /// them to read screen contents.
+  set xtChecksumReport(bool enabled) {
+    bindings.terminal.terminalSetXtChecksumReport(
+      _terminalHandle,
+      enabled: enabled,
+    );
+  }
+
+  /// Sets DECRQCRA checksum calculation flags and the default used after a
+  /// full terminal reset.
+  ///
+  /// The value must be between 0 and 31. Set null to restore the DEC default.
+  set xtChecksumExtension(int? value) {
+    if (value != null && (value < 0 || value > 31)) {
+      throw RangeError.range(value, 0, 31, 'value');
+    }
+    bindings.terminal.terminalSetXtChecksumExtension(_terminalHandle, value);
   }
 
   /// Number of rows in the scrollback buffer (excluding the active grid).

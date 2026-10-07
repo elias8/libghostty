@@ -328,6 +328,40 @@ final class FfiTerminalBindings implements TerminalBindings {
       _getBool(terminal, .mouseTracking, 'ghostty_terminal_get');
 
   @override
+  MouseShape terminalGetMouseShape(LibGhosttyHandle terminal) =>
+      .fromValue(_getU32(terminal, .mouseShape, 'ghostty_terminal_get'));
+
+  @override
+  TerminalMemoryUsage terminalGetMemoryUsage(LibGhosttyHandle terminal) {
+    return using((arena) {
+      final value = arena<native.TerminalMemoryUsage>();
+      value.ref.size = sizeOf<native.TerminalMemoryUsage>();
+      final result = native.ghostty_terminal_get(
+        .fromAddress(terminal.value),
+        .memoryUsage,
+        value.cast(),
+      );
+      checkRequiredCode(result.value, operation: 'ghostty_terminal_get');
+      final usage = value.ref;
+      return TerminalMemoryUsage(
+        compressionSupported: usage.compression_supported,
+        primaryPages: usage.primary_pages,
+        primaryVirtualBytes: usage.primary_virtual_bytes,
+        primaryResidentBytes: usage.primary_resident_bytes,
+        primaryCompressedPages: usage.primary_compressed_pages,
+        primaryCompressedBytes: usage.primary_compressed_bytes,
+        primaryImageBytes: usage.primary_image_bytes,
+        alternatePages: usage.alternate_pages,
+        alternateVirtualBytes: usage.alternate_virtual_bytes,
+        alternateResidentBytes: usage.alternate_resident_bytes,
+        alternateCompressedPages: usage.alternate_compressed_pages,
+        alternateCompressedBytes: usage.alternate_compressed_bytes,
+        alternateImageBytes: usage.alternate_image_bytes,
+      );
+    });
+  }
+
+  @override
   String terminalGetPwd(LibGhosttyHandle terminal) =>
       _getString(terminal, .pwd, requiredValue: true)!;
 
@@ -1113,6 +1147,29 @@ final class FfiTerminalBindings implements TerminalBindings {
   @override
   void terminalSetScrollbackMaxLines(LibGhosttyHandle terminal, int? lines) =>
       _setSize(terminal, .scrollbackMaxLines, lines);
+
+  @override
+  void terminalSetResizePullScrollback(
+    LibGhosttyHandle terminal, {
+    required bool? value,
+  }) => _setBool(terminal, .resizePullScrollback, value);
+
+  @override
+  void terminalSetXtChecksumReport(
+    LibGhosttyHandle terminal, {
+    required bool enabled,
+  }) => _setBool(terminal, .xtChecksumReport, enabled);
+
+  @override
+  void terminalSetXtChecksumExtension(LibGhosttyHandle terminal, int? value) {
+    if (value == null) {
+      _setOption(terminal, .xtChecksumExtension, nullptr.cast());
+      return;
+    }
+    RangeError.checkValueInInterval(value, 0, 31, 'value');
+    _outU8.value = value;
+    _setOption(terminal, .xtChecksumExtension, _outU8.cast());
+  }
 
   @override
   void terminalSetTerminfoName(LibGhosttyHandle terminal, String? name) =>

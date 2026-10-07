@@ -352,6 +352,64 @@ final class WasmTerminalBindings implements TerminalBindings {
       _getBool(terminal, .mouseTracking, 'ghostty_terminal_get');
 
   @override
+  MouseShape terminalGetMouseShape(LibGhosttyHandle terminal) =>
+      .fromValue(_getU32(terminal, .mouseShape, 'ghostty_terminal_get'));
+
+  @override
+  TerminalMemoryUsage terminalGetMemoryUsage(LibGhosttyHandle terminal) {
+    final pointer = _allocateBytes(_layout.terminalMemoryUsageSize);
+    try {
+      _memory.writeU32(pointer, _layout.terminalMemoryUsageSize);
+      final result = _exports.ghostty_terminal_get(
+        terminal.value,
+        TerminalData.memoryUsage.value,
+        pointer,
+      );
+      checkResultCode(result, operation: 'ghostty_terminal_get');
+      int read(int offset) => _memory.readU64(pointer + offset);
+      return TerminalMemoryUsage(
+        compressionSupported:
+            _memory.readU8(
+              pointer + _layout.terminalMemoryUsageCompressionSupported,
+            ) !=
+            0,
+        primaryPages: read(_layout.terminalMemoryUsagePrimaryPages),
+        primaryVirtualBytes: read(
+          _layout.terminalMemoryUsagePrimaryVirtualBytes,
+        ),
+        primaryResidentBytes: read(
+          _layout.terminalMemoryUsagePrimaryResidentBytes,
+        ),
+        primaryCompressedPages: read(
+          _layout.terminalMemoryUsagePrimaryCompressedPages,
+        ),
+        primaryCompressedBytes: read(
+          _layout.terminalMemoryUsagePrimaryCompressedBytes,
+        ),
+        primaryImageBytes: read(_layout.terminalMemoryUsagePrimaryImageBytes),
+        alternatePages: read(_layout.terminalMemoryUsageAlternatePages),
+        alternateVirtualBytes: read(
+          _layout.terminalMemoryUsageAlternateVirtualBytes,
+        ),
+        alternateResidentBytes: read(
+          _layout.terminalMemoryUsageAlternateResidentBytes,
+        ),
+        alternateCompressedPages: read(
+          _layout.terminalMemoryUsageAlternateCompressedPages,
+        ),
+        alternateCompressedBytes: read(
+          _layout.terminalMemoryUsageAlternateCompressedBytes,
+        ),
+        alternateImageBytes: read(
+          _layout.terminalMemoryUsageAlternateImageBytes,
+        ),
+      );
+    } finally {
+      _exports.freeBytes(pointer, _layout.terminalMemoryUsageSize);
+    }
+  }
+
+  @override
   String terminalGetPwd(LibGhosttyHandle terminal) =>
       _getString(terminal, .pwd);
 
@@ -1277,6 +1335,43 @@ final class WasmTerminalBindings implements TerminalBindings {
   @override
   void terminalSetScrollbackMaxLines(LibGhosttyHandle terminal, int? lines) {
     _setU32(terminal, .scrollbackMaxLines, lines);
+  }
+
+  @override
+  void terminalSetResizePullScrollback(
+    LibGhosttyHandle terminal, {
+    required bool? value,
+  }) {
+    _setBool(terminal, .resizePullScrollback, value);
+  }
+
+  @override
+  void terminalSetXtChecksumReport(
+    LibGhosttyHandle terminal, {
+    required bool enabled,
+  }) {
+    _setBool(terminal, .xtChecksumReport, enabled);
+  }
+
+  @override
+  void terminalSetXtChecksumExtension(LibGhosttyHandle terminal, int? value) {
+    if (value == null) {
+      _setNull(terminal, .xtChecksumExtension);
+      return;
+    }
+    RangeError.checkValueInInterval(value, 0, 31, 'value');
+    final pointer = _allocateBytes(1);
+    try {
+      _memory.writeU8(pointer, value);
+      final result = _exports.ghostty_terminal_set(
+        terminal.value,
+        TerminalOption.xtChecksumExtension.value,
+        pointer,
+      );
+      checkResultCode(result, operation: 'ghostty_terminal_set');
+    } finally {
+      _exports.freeBytes(pointer, 1);
+    }
   }
 
   @override

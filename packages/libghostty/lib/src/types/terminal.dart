@@ -265,6 +265,103 @@ final class TerminalProgress {
       other.progress == progress;
 }
 
+/// Memory held by a terminal's screens and Kitty graphics storage.
+///
+/// Resident bytes include compressed page storage but exclude Kitty image
+/// bytes. Reading this value visits every screen page, so read it when
+/// checking memory budgets instead of after every terminal write.
+@immutable
+final class TerminalMemoryUsage {
+  /// Whether this build can compress scrollback pages.
+  final bool compressionSupported;
+
+  /// Number of pages allocated for the primary screen.
+  final int primaryPages;
+
+  /// Address space reserved for primary screen pages.
+  final int primaryVirtualBytes;
+
+  /// Resident primary screen bytes, including compressed page data.
+  final int primaryResidentBytes;
+
+  /// Number of compressed primary screen pages.
+  final int primaryCompressedPages;
+
+  /// Compressed primary data bytes, already included in resident bytes.
+  final int primaryCompressedBytes;
+
+  /// Kitty image bytes stored for the primary screen.
+  final int primaryImageBytes;
+
+  /// Number of pages allocated for the alternate screen.
+  final int alternatePages;
+
+  /// Address space reserved for alternate screen pages.
+  final int alternateVirtualBytes;
+
+  /// Resident alternate screen bytes, including compressed page data.
+  final int alternateResidentBytes;
+
+  /// Number of compressed alternate screen pages.
+  final int alternateCompressedPages;
+
+  /// Compressed alternate data bytes, already included in resident bytes.
+  final int alternateCompressedBytes;
+
+  /// Kitty image bytes stored for the alternate screen.
+  final int alternateImageBytes;
+
+  const TerminalMemoryUsage({
+    required this.compressionSupported,
+    required this.primaryPages,
+    required this.primaryVirtualBytes,
+    required this.primaryResidentBytes,
+    required this.primaryCompressedPages,
+    required this.primaryCompressedBytes,
+    required this.primaryImageBytes,
+    required this.alternatePages,
+    required this.alternateVirtualBytes,
+    required this.alternateResidentBytes,
+    required this.alternateCompressedPages,
+    required this.alternateCompressedBytes,
+    required this.alternateImageBytes,
+  });
+
+  @override
+  int get hashCode => Object.hashAll([
+    compressionSupported,
+    primaryPages,
+    primaryVirtualBytes,
+    primaryResidentBytes,
+    primaryCompressedPages,
+    primaryCompressedBytes,
+    primaryImageBytes,
+    alternatePages,
+    alternateVirtualBytes,
+    alternateResidentBytes,
+    alternateCompressedPages,
+    alternateCompressedBytes,
+    alternateImageBytes,
+  ]);
+
+  @override
+  bool operator ==(Object other) =>
+      other is TerminalMemoryUsage &&
+      other.compressionSupported == compressionSupported &&
+      other.primaryPages == primaryPages &&
+      other.primaryVirtualBytes == primaryVirtualBytes &&
+      other.primaryResidentBytes == primaryResidentBytes &&
+      other.primaryCompressedPages == primaryCompressedPages &&
+      other.primaryCompressedBytes == primaryCompressedBytes &&
+      other.primaryImageBytes == primaryImageBytes &&
+      other.alternatePages == alternatePages &&
+      other.alternateVirtualBytes == alternateVirtualBytes &&
+      other.alternateResidentBytes == alternateResidentBytes &&
+      other.alternateCompressedPages == alternateCompressedPages &&
+      other.alternateCompressedBytes == alternateCompressedBytes &&
+      other.alternateImageBytes == alternateImageBytes;
+}
+
 /// An unsupported terminal string sequence captured by the terminal parser.
 ///
 /// [content] is copied into Dart-owned memory and may contain arbitrary binary
