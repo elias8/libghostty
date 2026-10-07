@@ -477,6 +477,14 @@ final class Terminal with ChangeNotifier {
     bindings.terminal.terminalSetOnProgressReport(_terminalHandle, value);
   }
 
+  /// Registers a callback for validated OSC 7501 program status reports.
+  ///
+  /// The strings in each report are copied and remain valid after the
+  /// callback returns. Set to null to ignore reports.
+  set onProgramStatus(TerminalProgramStatusCallback? value) {
+    bindings.terminal.terminalSetOnProgramStatus(_terminalHandle, value);
+  }
+
   /// Registers a callback for working-directory changes via OSC 7/9/1337.
   ///
   /// Read the new [pwd] inside the callback. OSC 7 values remain raw URIs;
@@ -484,6 +492,32 @@ final class Terminal with ChangeNotifier {
   /// [write].
   set onPwdChanged(VoidCallback? value) {
     bindings.terminal.terminalSetOnPwdChanged(_terminalHandle, value);
+  }
+
+  /// Registers a callback when synchronized output starts or ends a render
+  /// hold.
+  ///
+  /// The callback receives true when a hold starts and false when it ends.
+  /// Set to null to ignore these events.
+  set onRenderHold(ValueSetter<bool>? value) {
+    bindings.terminal.terminalSetOnRenderHold(_terminalHandle, value);
+  }
+
+  /// Registers a callback after the program performs a full terminal reset.
+  ///
+  /// Fires synchronously during [write] when the program sends RIS (`ESC c`).
+  /// It does not fire for [reset]. Set to null to ignore reset events.
+  set onReset(VoidCallback? value) {
+    bindings.terminal.terminalSetOnReset(_terminalHandle, value);
+  }
+
+  /// Registers a callback for shell integration events reported through
+  /// OSC 133.
+  ///
+  /// Command and error strings are copied and remain valid after the callback
+  /// returns. Set to null to ignore these events.
+  set onSemanticPrompt(TerminalSemanticPromptCallback? value) {
+    bindings.terminal.terminalSetOnSemanticPrompt(_terminalHandle, value);
   }
 
   /// Registers a callback for XTWINOPS size queries (CSI 14/16/18 t).

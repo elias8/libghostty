@@ -342,6 +342,89 @@ void main() {
       });
     });
 
+    group('onProgramStatus', () {
+      test('copies validated OSC 7501 report fields', () {
+        final reports = <TerminalProgramStatus>[];
+        terminal.onProgramStatus = reports.add;
+
+        terminal.write(
+          Uint8List.fromList(
+            '\x1b]7501;state=blocked:kind=permission:progress=40:id=a/b'
+                    ':app=terraform:title=UGxhbg==:msg=QXBwbHk/\x07'
+                .codeUnits,
+          ),
+        );
+
+        expect(
+          reports.first,
+          const TerminalProgramStatus(
+            state: ProgramStatusState.blocked,
+            kind: ProgramStatusKind.permission,
+            progress: 40,
+            id: 'a/b',
+            app: 'terraform',
+            title: 'Plan',
+            message: 'Apply?',
+          ),
+        );
+
+        terminal.write(
+          Uint8List.fromList('\x1b]7501;state=done\x07'.codeUnits),
+        );
+
+        expect(reports.first.message, 'Apply?');
+        expect(reports.last.state, ProgramStatusState.done);
+      });
+    });
+
+    group('onSemanticPrompt', () {
+      test('copies OSC 133 command lifecycle fields', () {
+        final events = <TerminalSemanticPrompt>[];
+        terminal.onSemanticPrompt = events.add;
+
+        terminal.write(
+          Uint8List.fromList('\x1b]133;D;-1;err=boom\x07'.codeUnits),
+        );
+
+        expect(
+          events.first,
+          const TerminalSemanticPrompt(
+            kind: SemanticPromptKind.commandEnd,
+            promptKind: SemanticPromptPromptKind.primary,
+            exitCode: -1,
+            command: '',
+            error: 'boom',
+          ),
+        );
+
+        terminal.write(Uint8List.fromList('\x1b]133;A\x07'.codeUnits));
+        expect(events.first.error, 'boom');
+        expect(events.last.kind, SemanticPromptKind.promptStart);
+      });
+    });
+
+    group('onRenderHold', () {
+      test('reports synchronized output start and end', () {
+        final events = <bool>[];
+        terminal.onRenderHold = events.add;
+
+        terminal.write(Uint8List.fromList('\x1b[?2026h\x1b[?2026l'.codeUnits));
+
+        expect(events, [true, false]);
+      });
+    });
+
+    group('onReset', () {
+      test('reports full resets sent through RIS', () {
+        var count = 0;
+        terminal.onReset = () => count++;
+
+        terminal.write(Uint8List.fromList('\x1bc'.codeUnits));
+
+        expect(count, 1);
+      });
+    });
+
     group('XT checksum options', () {
       test('enables reports and restores the default calculation', () {
         final output = <int>[];
@@ -875,17 +958,11 @@ void main() {
     });
 
     group('compress', () {
-      test('reports unsupported full compression on Windows', () {
-        final result = terminal.compress(mode: .full);
-
-        expect(result, TerminalCompressionResult.unsupported);
-      }, testOn: 'windows');
-
       test('completes full compression on supported targets', () {
         final result = terminal.compress(mode: .full);
 
         expect(result, TerminalCompressionResult.complete);
-      }, testOn: 'linux || mac-os || android || ios');
+      }, testOn: 'windows || linux || mac-os || android || ios');
     });
 
     group('onClipboardWrite', () {

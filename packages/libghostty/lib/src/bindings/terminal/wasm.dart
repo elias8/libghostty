@@ -1120,6 +1120,149 @@ final class WasmTerminalBindings implements TerminalBindings {
   }
 
   @override
+  void terminalSetOnProgramStatus(
+    LibGhosttyHandle terminal,
+    TerminalProgramStatusCallback? callback,
+  ) {
+    _setCallback(
+      terminal,
+      .programStatus,
+      callback,
+      (reuseIndex) => _registerCallback(
+        ((int _, int _, int pointer) {
+          try {
+            if (_memory.readU32(pointer) < _layout.terminalProgramStatusSize) {
+              return;
+            }
+            final progress = _memory.readU8(
+              pointer + _layout.terminalProgramStatusProgress,
+            );
+            callback!(
+              TerminalProgramStatus(
+                state: .fromValue(
+                  _memory.readU32(pointer + _layout.terminalProgramStatusState),
+                ),
+                kind: .fromValue(
+                  _memory.readU32(pointer + _layout.terminalProgramStatusKind),
+                ),
+                progress: progress == 0xff ? null : progress,
+                id: _readString(pointer + _layout.terminalProgramStatusId),
+                app: _readString(pointer + _layout.terminalProgramStatusApp),
+                title: _readString(
+                  pointer + _layout.terminalProgramStatusTitle,
+                ),
+                message: _readString(
+                  pointer + _layout.terminalProgramStatusMessage,
+                ),
+              ),
+            );
+          } on Object catch (error, stackTrace) {
+            _captureCallbackError(error, stackTrace);
+          }
+        }).toJS,
+        ['i32', 'i32', 'i32'],
+        reuseIndex: reuseIndex,
+      ),
+    );
+  }
+
+  @override
+  void terminalSetOnSemanticPrompt(
+    LibGhosttyHandle terminal,
+    TerminalSemanticPromptCallback? callback,
+  ) {
+    _setCallback(
+      terminal,
+      .semanticPrompt,
+      callback,
+      (reuseIndex) => _registerCallback(
+        ((int _, int _, int pointer) {
+          try {
+            if (_memory.readU32(pointer) < _layout.terminalSemanticPromptSize) {
+              return;
+            }
+            final hasExitCode =
+                _memory.readU8(
+                  pointer + _layout.terminalSemanticPromptHasExitCode,
+                ) !=
+                0;
+            callback!(
+              TerminalSemanticPrompt(
+                kind: .fromValue(
+                  _memory.readU32(pointer + _layout.terminalSemanticPromptKind),
+                ),
+                promptKind: .fromValue(
+                  _memory.readU32(
+                    pointer + _layout.terminalSemanticPromptPromptKind,
+                  ),
+                ),
+                exitCode: hasExitCode
+                    ? _memory.readI32(
+                        pointer + _layout.terminalSemanticPromptExitCode,
+                      )
+                    : null,
+                command: _readString(
+                  pointer + _layout.terminalSemanticPromptCommand,
+                ),
+                error: _readString(
+                  pointer + _layout.terminalSemanticPromptError,
+                ),
+              ),
+            );
+          } on Object catch (error, stackTrace) {
+            _captureCallbackError(error, stackTrace);
+          }
+        }).toJS,
+        ['i32', 'i32', 'i32'],
+        reuseIndex: reuseIndex,
+      ),
+    );
+  }
+
+  @override
+  void terminalSetOnRenderHold(
+    LibGhosttyHandle terminal,
+    ValueSetter<bool>? callback,
+  ) {
+    _setCallback(
+      terminal,
+      .renderHold,
+      callback,
+      (reuseIndex) => _registerCallback(
+        ((int _, int _, int held) {
+          try {
+            callback!(held != 0);
+          } on Object catch (error, stackTrace) {
+            _captureCallbackError(error, stackTrace);
+          }
+        }).toJS,
+        ['i32', 'i32', 'i32'],
+        reuseIndex: reuseIndex,
+      ),
+    );
+  }
+
+  @override
+  void terminalSetOnReset(LibGhosttyHandle terminal, VoidCallback? callback) {
+    _setCallback(
+      terminal,
+      .reset,
+      callback,
+      (reuseIndex) => _registerCallback(
+        ((int _, int _) {
+          try {
+            callback!();
+          } on Object catch (error, stackTrace) {
+            _captureCallbackError(error, stackTrace);
+          }
+        }).toJS,
+        ['i32', 'i32'],
+        reuseIndex: reuseIndex,
+      ),
+    );
+  }
+
+  @override
   void terminalSetOnPwdChanged(
     LibGhosttyHandle terminal,
     VoidCallback? callback,

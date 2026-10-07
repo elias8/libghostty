@@ -51,6 +51,8 @@ typedef DesktopNotificationCallback = void Function(DesktopNotification value);
 
 /// Handles a progress report requested synchronously by terminal content.
 typedef TerminalProgressCallback = void Function(TerminalProgress value);
+typedef TerminalProgramStatusCallback = ValueSetter<TerminalProgramStatus>;
+typedef TerminalSemanticPromptCallback = ValueSetter<TerminalSemanticPrompt>;
 
 /// Handles an unsupported terminal string sequence synchronously.
 typedef TerminalUnknownSequenceCallback = ValueSetter<TerminalUnknownSequence>;

@@ -156,9 +156,22 @@ abstract interface class TerminalBindings {
     LibGhosttyHandle terminal,
     TerminalProgressCallback? callback,
   );
+  void terminalSetOnProgramStatus(
+    LibGhosttyHandle terminal,
+    TerminalProgramStatusCallback? callback,
+  );
   void terminalSetOnPwdChanged(
     LibGhosttyHandle terminal,
     VoidCallback? callback,
+  );
+  void terminalSetOnRenderHold(
+    LibGhosttyHandle terminal,
+    ValueSetter<bool>? callback,
+  );
+  void terminalSetOnReset(LibGhosttyHandle terminal, VoidCallback? callback);
+  void terminalSetOnSemanticPrompt(
+    LibGhosttyHandle terminal,
+    TerminalSemanticPromptCallback? callback,
   );
   void terminalSetOnSize(
     LibGhosttyHandle terminal,

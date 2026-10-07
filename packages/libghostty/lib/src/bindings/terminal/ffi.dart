@@ -989,6 +989,109 @@ final class FfiTerminalBindings implements TerminalBindings {
   }
 
   @override
+  void terminalSetOnProgramStatus(
+    LibGhosttyHandle terminal,
+    TerminalProgramStatusCallback? callback,
+  ) {
+    final callable = callback == null
+        ? null
+        : NativeCallable<
+            Void Function(
+              native.Terminal,
+              Pointer<Void>,
+              Pointer<native.TerminalProgramStatus>,
+            )
+          >.isolateLocal((
+            native.Terminal terminal,
+            Pointer<Void> userdata,
+            Pointer<native.TerminalProgramStatus> pointer,
+          ) {
+            try {
+              final value = pointer.ref;
+              if (value.size < sizeOf<native.TerminalProgramStatus>()) return;
+              callback(
+                TerminalProgramStatus(
+                  state: .fromValue(value.stateAsInt),
+                  kind: .fromValue(value.kindAsInt),
+                  progress: value.progress < 0 ? null : value.progress,
+                  id: _readString(value.id),
+                  app: _readString(value.app),
+                  title: _readString(value.title),
+                  message: _readString(value.message),
+                ),
+              );
+            } on Object catch (error, stackTrace) {
+              _captureCallbackError(error, stackTrace);
+            }
+          });
+    _replaceCallback(terminal, .programStatus, callable);
+  }
+
+  @override
+  void terminalSetOnSemanticPrompt(
+    LibGhosttyHandle terminal,
+    TerminalSemanticPromptCallback? callback,
+  ) {
+    final callable = callback == null
+        ? null
+        : NativeCallable<
+            Void Function(
+              native.Terminal,
+              Pointer<Void>,
+              Pointer<native.TerminalSemanticPrompt>,
+            )
+          >.isolateLocal((
+            native.Terminal terminal,
+            Pointer<Void> userdata,
+            Pointer<native.TerminalSemanticPrompt> pointer,
+          ) {
+            try {
+              final value = pointer.ref;
+              if (value.size < sizeOf<native.TerminalSemanticPrompt>()) return;
+              callback(
+                TerminalSemanticPrompt(
+                  kind: .fromValue(value.kindAsInt),
+                  promptKind: .fromValue(value.prompt_kindAsInt),
+                  exitCode: value.has_exit_code ? value.exit_code : null,
+                  command: _readString(value.command),
+                  error: _readString(value.error),
+                ),
+              );
+            } on Object catch (error, stackTrace) {
+              _captureCallbackError(error, stackTrace);
+            }
+          });
+    _replaceCallback(terminal, .semanticPrompt, callable);
+  }
+
+  @override
+  void terminalSetOnRenderHold(
+    LibGhosttyHandle terminal,
+    ValueSetter<bool>? callback,
+  ) {
+    final callable = callback == null
+        ? null
+        : NativeCallable<
+            Void Function(native.Terminal, Pointer<Void>, Bool)
+          >.isolateLocal((
+            native.Terminal terminal,
+            Pointer<Void> userdata,
+            bool held,
+          ) {
+            try {
+              callback(held);
+            } on Object catch (error, stackTrace) {
+              _captureCallbackError(error, stackTrace);
+            }
+          });
+    _replaceCallback(terminal, .renderHold, callable);
+  }
+
+  @override
+  void terminalSetOnReset(LibGhosttyHandle terminal, VoidCallback? callback) =>
+      _setVoidCallback(terminal, .reset, callback);
+
+  @override
   void terminalSetOnPwdChanged(
     LibGhosttyHandle terminal,
     VoidCallback? callback,
