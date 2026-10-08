@@ -74,11 +74,13 @@ final class TerminalSession extends TerminalController with ChangeNotifier {
     bool retainContinuation = false,
     bool deferResize = true,
     bool preserveSnapshotColors = true,
+    bool compressHistory = false,
   }) {
     final decoder = SnapshotDecoder(
       bytes,
       maxContinuationBytes: maxContinuationBytes,
       retainContinuation: retainContinuation,
+      compressHistory: compressHistory,
     );
     try {
       final terminal = progressive ? decoder.ready() : decoder.decode();
@@ -281,6 +283,12 @@ final class TerminalSession extends TerminalController with ChangeNotifier {
   Future<void> get restored {
     _checkNotDisposed();
     return _restorationCompletion?.future ?? _alreadyRestored;
+  }
+
+  @override
+  TerminalMemoryUsage get memoryUsage {
+    _checkNotDisposed();
+    return _terminal.memoryUsage;
   }
 
   @override
