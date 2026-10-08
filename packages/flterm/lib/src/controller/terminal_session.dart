@@ -645,6 +645,7 @@ final class TerminalSession extends TerminalController with ChangeNotifier {
     _terminal.continuationMaxBytes = _config.continuationMaxBytes;
     _terminal.scrollbackMaxBytes = _config.scrollbackMaxBytes;
     _terminal.scrollbackMaxLines = _config.scrollbackMaxLines;
+    _terminal.resizePullScrollback = _config.resizePullScrollback;
     _terminal.kittyImageStorageLimit = _config.kittyImageStorageLimit;
     _terminal.clipboardWriteMaxBytes = _config.clipboardWriteMaxBytes;
     _terminal.unknownSequenceMaxBytes = _config.unknownSequenceMaxBytes;

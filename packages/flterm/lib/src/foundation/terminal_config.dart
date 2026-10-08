@@ -113,6 +113,12 @@ class TerminalConfig {
   /// value can prune immediately.
   final int? scrollbackMaxLines;
 
+  /// Whether a resize can pull rows from scrollback into the active grid.
+  ///
+  /// Defaults to true, matching libghostty. Set false when the PTY backend
+  /// maintains its own screen buffer without scrollback.
+  final bool resizePullScrollback;
+
   /// Maximum bytes of Kitty graphics image storage.
   ///
   /// Caps the in-memory footprint of images transmitted via the Kitty
@@ -202,6 +208,7 @@ class TerminalConfig {
     this.cursorStyle = .block,
     this.scrollbackMaxBytes = 10_000,
     this.scrollbackMaxLines,
+    this.resizePullScrollback = true,
     this.kittyImageStorageLimit = 64 * 1024 * 1024,
     this.selectionClearOnTyping = true,
     this.scrollToBottom = .onKeystroke,
@@ -249,6 +256,7 @@ class TerminalConfig {
     continuationMaxBytes,
     scrollbackMaxBytes,
     scrollbackMaxLines,
+    resizePullScrollback,
     kittyImageStorageLimit,
     apcBufferLimit,
     unknownSequenceMaxBytes,
@@ -272,6 +280,7 @@ class TerminalConfig {
           continuationMaxBytes == other.continuationMaxBytes &&
           scrollbackMaxBytes == other.scrollbackMaxBytes &&
           scrollbackMaxLines == other.scrollbackMaxLines &&
+          resizePullScrollback == other.resizePullScrollback &&
           kittyImageStorageLimit == other.kittyImageStorageLimit &&
           apcBufferLimit == other.apcBufferLimit &&
           unknownSequenceMaxBytes == other.unknownSequenceMaxBytes &&
@@ -292,6 +301,7 @@ class TerminalConfig {
     int? continuationMaxBytes,
     int? scrollbackMaxBytes,
     int? scrollbackMaxLines,
+    bool? resizePullScrollback,
     int? kittyImageStorageLimit,
     int? apcBufferLimit,
     int? unknownSequenceMaxBytes,
@@ -311,6 +321,7 @@ class TerminalConfig {
       continuationMaxBytes: continuationMaxBytes ?? this.continuationMaxBytes,
       scrollbackMaxBytes: scrollbackMaxBytes ?? this.scrollbackMaxBytes,
       scrollbackMaxLines: scrollbackMaxLines ?? this.scrollbackMaxLines,
+      resizePullScrollback: resizePullScrollback ?? this.resizePullScrollback,
       kittyImageStorageLimit:
           kittyImageStorageLimit ?? this.kittyImageStorageLimit,
       apcBufferLimit: apcBufferLimit ?? this.apcBufferLimit,
@@ -338,5 +349,6 @@ class TerminalConfig {
       'unknownSequenceMaxBytes: $unknownSequenceMaxBytes, '
       'scrollbackMaxBytes: $scrollbackMaxBytes, '
       'scrollbackMaxLines: $scrollbackMaxLines, '
+      'resizePullScrollback: $resizePullScrollback, '
       'modes: ${modes.length} entries)';
 }
