@@ -261,6 +261,7 @@ final class ScrollGestureRegion extends StatefulWidget {
   final ValueChanged<ScrollInput> onScrollInput;
   final ValueListenable<TerminalInteractionState> interaction;
   final ValueChanged<PointerDeviceKind> onScrollStart;
+  final ValueGetter<bool> onContentInteraction;
 
   const ScrollGestureRegion({
     super.key,
@@ -270,6 +271,7 @@ final class ScrollGestureRegion extends StatefulWidget {
     required this.onScrollInput,
     required this.interaction,
     required this.onScrollStart,
+    required this.onContentInteraction,
     required this.child,
   });
 
@@ -394,8 +396,14 @@ final class _ScrollGestureRegionState extends State<ScrollGestureRegion>
   void _endGesture(DragEndDetails details) {
     final activity = _activity;
     if (activity == null || !activity.isDragging) return;
+    if (widget.onContentInteraction()) {
+      _reset();
+      return;
+    }
     final velocity = -details.velocity.pixelsPerSecond;
-    if (activity.markMoved(velocity)) widget.onScrollStart(activity.kind);
+    if (activity.markMoved(velocity)) {
+      widget.onScrollStart(activity.kind);
+    }
     if (!activity.startBallistic(
       physics: widget.physics,
       velocity: velocity,
@@ -436,9 +444,17 @@ final class _ScrollGestureRegionState extends State<ScrollGestureRegion>
       _stopBallistic();
       return;
     }
-    if (event is! PointerScrollEvent ||
-        event.scrollDelta == .zero ||
-        _gestureMode() == null) {
+    if (event is! PointerScrollEvent || event.scrollDelta == .zero) {
+      return;
+    }
+    if (_gestureMode() == null) {
+      if (!widget.onContentInteraction()) return;
+      _stopBallistic();
+      GestureBinding.instance.pointerSignalResolver.register(event, (event) {
+        if (event is PointerScrollEvent) {
+          event.respond(allowPlatformDefault: false);
+        }
+      });
       return;
     }
     final target = _targetAt(event.localPosition);
@@ -461,6 +477,11 @@ final class _ScrollGestureRegionState extends State<ScrollGestureRegion>
   }) {
     if (event is! PointerScrollEvent) return;
     _stopBallistic();
+    if (widget.onContentInteraction()) {
+      _reset();
+      event.respond(allowPlatformDefault: false);
+      return;
+    }
     widget.onScrollStart(event.kind);
     _route(delta, target);
     event.respond(allowPlatformDefault: false);
@@ -540,6 +561,10 @@ final class _ScrollGestureRegionState extends State<ScrollGestureRegion>
   void _tick(Duration elapsed) {
     final activity = _activity;
     if (activity == null || activity.isDragging) return;
+    if (widget.onContentInteraction()) {
+      _reset();
+      return;
+    }
     final delta = activity.advance(elapsed);
     if (delta != Offset.zero) _route(delta, activity.target);
     if (activity.done) _stopBallistic();
@@ -549,7 +574,13 @@ final class _ScrollGestureRegionState extends State<ScrollGestureRegion>
     final activity = _activity;
     if (activity == null || !activity.isDragging) return;
     final delta = -details.delta;
-    if (activity.markMoved(delta)) widget.onScrollStart(activity.kind);
+    if (widget.onContentInteraction()) {
+      _reset();
+      return;
+    }
+    if (activity.markMoved(delta)) {
+      widget.onScrollStart(activity.kind);
+    }
     final adjusted = activity.update(delta, details.sourceTimeStamp);
     if (adjusted != Offset.zero) _route(adjusted, activity.target);
   }

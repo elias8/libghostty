@@ -10,6 +10,9 @@ void setTerminalScrollControllerActiveScreen(
   TerminalScreen activeScreen,
 ) => controller._setActiveScreen(activeScreen);
 
+void stopTerminalScrollController(TerminalScrollController controller) =>
+    controller._goIdle();
+
 /// Scroll controller for [TerminalView].
 ///
 /// On the primary screen, scrolls through the scrollback buffer like
@@ -57,6 +60,12 @@ class TerminalScrollController extends ScrollController {
     _activeScreen = value;
     for (final position in positions) {
       (position as _TerminalScrollPosition)._setActiveScreen(value);
+    }
+  }
+
+  void _goIdle() {
+    for (final position in positions) {
+      (position as _TerminalScrollPosition).goIdle();
     }
   }
 }

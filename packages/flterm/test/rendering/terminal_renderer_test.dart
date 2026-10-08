@@ -45,7 +45,7 @@ void main() {
     bool focused = true,
     bool blinkVisible = true,
     double devicePixelRatio = 1,
-    ValueChanged<RenderHoldCallback?>? onRenderHoldHandlerChanged,
+    ValueChanged<RenderSurfaceCallbacks?>? onRenderSurfaceCallbacksChanged,
     ValueChanged<SurfaceMeasurement>? onGeometryChanged,
     ValueChanged<int>? onViewportRowChanged,
     AtlasPool? atlasPool,
@@ -74,7 +74,7 @@ void main() {
             child: TerminalRenderer(
               terminal: terminal,
               frameChanges: frameChanges,
-              onRenderHoldHandlerChanged: onRenderHoldHandlerChanged,
+              onRenderSurfaceCallbacksChanged: onRenderSurfaceCallbacksChanged,
               theme: theme ?? TerminalTheme.dark(),
               metrics: metrics,
               surfacePadding: surfacePadding,
@@ -397,7 +397,8 @@ void main() {
       await tester.pumpWidget(
         wrap(
           terminal,
-          onRenderHoldHandlerChanged: (handler) => onRenderHold = handler,
+          onRenderSurfaceCallbacksChanged: (callbacks) =>
+              onRenderHold = callbacks?.onRenderHold,
         ),
       );
       terminal.onRenderHold = (held) => onRenderHold?.call(held: held);
@@ -430,15 +431,15 @@ void main() {
       final terminal = Terminal(cols: defaultCols, rows: defaultRows);
       addTearDown(terminal.dispose);
       RenderHoldCallback? onRenderHold;
-      void registerRenderHoldHandler(RenderHoldCallback? handler) {
-        onRenderHold = handler;
+      void registerRenderSurfaceCallbacks(RenderSurfaceCallbacks? callbacks) {
+        onRenderHold = callbacks?.onRenderHold;
       }
 
       await tester.pumpWidget(
         wrap(
           terminal,
           blinkVisible: false,
-          onRenderHoldHandlerChanged: registerRenderHoldHandler,
+          onRenderSurfaceCallbacksChanged: registerRenderSurfaceCallbacks,
         ),
       );
       terminal.onRenderHold = (held) => onRenderHold?.call(held: held);
@@ -454,7 +455,7 @@ void main() {
         wrap(
           terminal,
           theme: TerminalTheme.dark().copyWith(fontSize: 15),
-          onRenderHoldHandlerChanged: registerRenderHoldHandler,
+          onRenderSurfaceCallbacksChanged: registerRenderSurfaceCallbacks,
         ),
       );
       await tester.pump();
@@ -474,15 +475,15 @@ void main() {
       addTearDown(terminal.dispose);
       RenderHoldCallback? onRenderHold;
       var holdCaptured = false;
-      void registerRenderHoldHandler(RenderHoldCallback? handler) {
-        onRenderHold = handler;
+      void registerRenderSurfaceCallbacks(RenderSurfaceCallbacks? callbacks) {
+        onRenderHold = callbacks?.onRenderHold;
       }
 
       await tester.pumpWidget(
         wrap(
           terminal,
           blinkVisible: false,
-          onRenderHoldHandlerChanged: registerRenderHoldHandler,
+          onRenderSurfaceCallbacksChanged: registerRenderSurfaceCallbacks,
         ),
       );
       terminal.onRenderHold = (held) {
@@ -509,7 +510,10 @@ void main() {
         Uint8List.fromList(utf8.encode('\x1b[?2026h\x1b_Ga=d,d=I,i=1\x1b\\')),
       );
       await tester.pumpWidget(
-        wrap(terminal, onRenderHoldHandlerChanged: registerRenderHoldHandler),
+        wrap(
+          terminal,
+          onRenderSurfaceCallbacksChanged: registerRenderSurfaceCallbacks,
+        ),
       );
       await tester.pump();
 
@@ -533,7 +537,8 @@ void main() {
       await tester.pumpWidget(
         wrap(
           terminal,
-          onRenderHoldHandlerChanged: (handler) => onRenderHold = handler,
+          onRenderSurfaceCallbacksChanged: (callbacks) =>
+              onRenderHold = callbacks?.onRenderHold,
         ),
       );
       terminal.onRenderHold = (held) => onRenderHold?.call(held: held);

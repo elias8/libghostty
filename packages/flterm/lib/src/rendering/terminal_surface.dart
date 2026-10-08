@@ -69,6 +69,7 @@ final class TerminalSurface {
   var _needsTerminalSync = true;
   var _searchDirty = true;
   Picture? _renderHoldPicture;
+  var _isContentInteractionReady = true;
   var _disposed = false;
 
   TerminalSurface({
@@ -137,6 +138,8 @@ final class TerminalSurface {
 
   int get rows => _state.rows;
 
+  bool get isContentInteractionReady => _isContentInteractionReady;
+
   Rect get textInputCaretRect {
     final metrics = _state.metrics;
     final rows = _state.rows;
@@ -200,6 +203,7 @@ final class TerminalSurface {
     }
     _prepare(terminal, linkSnapshot: linkSnapshot);
     _paint(canvas);
+    _isContentInteractionReady = true;
   }
 
   bool captureRenderHold(
@@ -221,6 +225,7 @@ final class TerminalSurface {
     try {
       _paint(Canvas(recorder));
       _renderHoldPicture = recorder.endRecording();
+      _isContentInteractionReady = false;
       return true;
     } finally {
       if (recorder.isRecording) recorder.endRecording().dispose();

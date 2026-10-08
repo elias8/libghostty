@@ -21,6 +21,7 @@ final class TerminalSelectionHandles extends StatefulWidget {
   final ValueGetter<Mods> readVirtualMods;
   final ValueChanged<int> onViewportRowChanged;
   final ValueChanged<bool>? onDragStateChanged;
+  final ValueGetter<bool>? onContentInteraction;
   final GestureModifier? blockSelectionModifier;
   final TextMagnifierConfiguration? magnifierConfiguration;
 
@@ -30,6 +31,7 @@ final class TerminalSelectionHandles extends StatefulWidget {
     required this.metrics,
     required this.selection,
     this.onDragStateChanged,
+    this.onContentInteraction,
     this.magnifierConfiguration,
     required this.readVirtualMods,
     required this.terminalBackground,
@@ -52,6 +54,8 @@ final class _SelectionHandlesState extends State<TerminalSelectionHandles> {
   Offset _magnifierOverlayOrigin = .zero;
   SelectionEndpoint? _draggedEndpoint;
   SelectionMagnifier? _magnifier;
+  var _contentDragBlocked = false;
+  SelectionEndpoint? _blockedEndpoint;
 
   Mods get _currentMods => readPointerModifiers(widget.readVirtualMods());
 
@@ -130,6 +134,12 @@ final class _SelectionHandlesState extends State<TerminalSelectionHandles> {
   }
 
   void _applyDrag() {
+    if (_contentDragBlocked || (widget.onContentInteraction?.call() ?? false)) {
+      _contentDragBlocked = true;
+      _blockedEndpoint = _draggedEndpoint;
+      _stopAutoScroll();
+      return;
+    }
     final endpoint = _draggedEndpoint;
     final anchor = _dragAnchor;
     final gesture = _gesturePosition;
@@ -175,6 +185,12 @@ final class _SelectionHandlesState extends State<TerminalSelectionHandles> {
   }
 
   void _autoScrollTick() {
+    if (_contentDragBlocked || (widget.onContentInteraction?.call() ?? false)) {
+      _contentDragBlocked = true;
+      _blockedEndpoint = _draggedEndpoint;
+      _stopAutoScroll();
+      return;
+    }
     final direction = _autoScrollDirection();
     if (direction == 0) {
       _stopAutoScroll();
@@ -194,7 +210,11 @@ final class _SelectionHandlesState extends State<TerminalSelectionHandles> {
   }
 
   void _endDrag({SelectionEndpoint? endpoint, SelectionInteraction? owner}) {
-    if (endpoint != null && endpoint != _draggedEndpoint) return;
+    if (endpoint != null &&
+        endpoint != _draggedEndpoint &&
+        endpoint != _blockedEndpoint) {
+      return;
+    }
     final wasDragging = _draggedEndpoint != null;
     (owner ?? widget.selection).stopAutoscroll(.handle);
     if (wasDragging) {
@@ -202,6 +222,8 @@ final class _SelectionHandlesState extends State<TerminalSelectionHandles> {
     }
     _dragAnchor = null;
     _draggedEndpoint = null;
+    _contentDragBlocked = false;
+    _blockedEndpoint = null;
     _gesturePosition = null;
     _magnifier?.dispose();
     _magnifier = null;
@@ -215,6 +237,11 @@ final class _SelectionHandlesState extends State<TerminalSelectionHandles> {
 
   void _startDrag(SelectionHandleLayout layout, DragStartDetails details) {
     if (_draggedEndpoint != null) return;
+    if (widget.onContentInteraction?.call() ?? false) {
+      _contentDragBlocked = true;
+      _blockedEndpoint = layout.endpoint;
+      return;
+    }
     final box = context.findRenderObject()! as RenderBox;
     final overlayOrigin = box.localToGlobal(Offset.zero);
     if (overlayOrigin != _magnifierOverlayOrigin) {
@@ -247,6 +274,12 @@ final class _SelectionHandlesState extends State<TerminalSelectionHandles> {
 
   void _updateDrag(SelectionEndpoint endpoint, DragUpdateDetails details) {
     if (_draggedEndpoint != endpoint) return;
+    if (_contentDragBlocked || (widget.onContentInteraction?.call() ?? false)) {
+      _contentDragBlocked = true;
+      _blockedEndpoint = endpoint;
+      _stopAutoScroll();
+      return;
+    }
     final box = context.findRenderObject()! as RenderBox;
     _dragAnchor = box.globalToLocal(details.globalPosition) + _dragOffset;
     _gesturePosition = details.globalPosition;

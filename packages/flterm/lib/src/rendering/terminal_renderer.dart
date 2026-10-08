@@ -49,7 +49,7 @@ final class TerminalRenderer extends LeafRenderObjectWidget {
   /// Publishes frame changes after the owning session updates its state.
   final Listenable frameChanges;
 
-  final ValueChanged<RenderHoldCallback?>? onRenderHoldHandlerChanged;
+  final ValueChanged<RenderSurfaceCallbacks?>? onRenderSurfaceCallbacksChanged;
 
   /// Search matches intersecting the viewport.
   final List<Selection> searchMatches;
@@ -131,7 +131,7 @@ final class TerminalRenderer extends LeafRenderObjectWidget {
     super.key,
     required this.terminal,
     required this.frameChanges,
-    this.onRenderHoldHandlerChanged,
+    this.onRenderSurfaceCallbacksChanged,
     this.searchMatches = const [],
     this.selectedSearchMatch,
     required this.theme,
@@ -160,7 +160,7 @@ final class TerminalRenderer extends LeafRenderObjectWidget {
       surfacePadding: surfacePadding,
       terminal: terminal,
       frameChanges: frameChanges,
-      onRenderHoldHandlerChanged: onRenderHoldHandlerChanged,
+      onRenderSurfaceCallbacksChanged: onRenderSurfaceCallbacksChanged,
       searchMatches: searchMatches,
       selectedSearchMatch: selectedSearchMatch,
       atlasPool: atlasPool,
@@ -203,7 +203,7 @@ final class TerminalRenderer extends LeafRenderObjectWidget {
     renderObject
       ..terminal = terminal
       ..frameChanges = frameChanges
-      ..onRenderHoldHandlerChanged = onRenderHoldHandlerChanged
+      ..onRenderSurfaceCallbacksChanged = onRenderSurfaceCallbacksChanged
       ..searchMatches = searchMatches
       ..selectedSearchMatch = selectedSearchMatch
       ..theme = theme
@@ -248,7 +248,7 @@ final class TerminalRenderBox extends RenderBox
 
   Terminal _terminal;
   Listenable _frameChanges;
-  ValueChanged<RenderHoldCallback?>? _onRenderHoldHandlerChanged;
+  ValueChanged<RenderSurfaceCallbacks?>? _onRenderSurfaceCallbacksChanged;
   LinkInteraction? _links;
   var _mouseCursorHidden = false;
   TextInputGeometryChanged? _onTextInputGeometryChanged;
@@ -258,12 +258,17 @@ final class TerminalRenderBox extends RenderBox
   ValueChanged<int> _onViewportRowChanged;
   var _performingLayout = false;
 
+  late final RenderSurfaceCallbacks _renderSurfaceCallbacks = (
+    onRenderHold: _handleRenderHold,
+    isContentInteractionReady: () => _surface.isContentInteractionReady,
+  );
+
   var _surfacePadding = EdgeInsets.zero;
 
   TerminalRenderBox({
     required this._terminal,
     required this._frameChanges,
-    this._onRenderHoldHandlerChanged,
+    this._onRenderSurfaceCallbacksChanged,
     List<Selection> searchMatches = const [],
     Selection? selectedSearchMatch,
     required TerminalTheme theme,
@@ -312,7 +317,9 @@ final class TerminalRenderBox extends RenderBox
 
   @override
   MouseCursor get cursor {
-    return _mouseCursorHidden || _links?.highlighted == null
+    return _mouseCursorHidden ||
+            !_surface.isContentInteractionReady ||
+            _links?.highlighted == null
         ? MouseCursor.defer
         : SystemMouseCursors.click;
   }
@@ -393,11 +400,16 @@ final class TerminalRenderBox extends RenderBox
     markNeedsPaint();
   }
 
-  set onRenderHoldHandlerChanged(ValueChanged<RenderHoldCallback?>? value) {
-    if (_onRenderHoldHandlerChanged == value) return;
-    if (attached) _onRenderHoldHandlerChanged?.call(null);
-    _onRenderHoldHandlerChanged = value;
-    if (attached) _onRenderHoldHandlerChanged?.call(_handleRenderHold);
+  set onRenderSurfaceCallbacksChanged(
+    ValueChanged<RenderSurfaceCallbacks?>? value,
+  ) {
+    if (_onRenderSurfaceCallbacksChanged == value) return;
+    if (attached) _onRenderSurfaceCallbacksChanged?.call(null);
+
+    _onRenderSurfaceCallbacksChanged = value;
+    if (attached) {
+      _onRenderSurfaceCallbacksChanged?.call(_renderSurfaceCallbacks);
+    }
   }
 
   set onViewportRowChanged(ValueChanged<int> value) {
@@ -430,12 +442,14 @@ final class TerminalRenderBox extends RenderBox
 
   set terminal(Terminal value) {
     if (identical(_terminal, value)) return;
-    if (attached) _onRenderHoldHandlerChanged?.call(null);
+    if (attached) _onRenderSurfaceCallbacksChanged?.call(null);
     _surface.releaseRenderHold();
     _terminal = value;
     _viewport.reset(_terminal.activeScreen);
     _surface.invalidateGeometry();
-    if (attached) _onRenderHoldHandlerChanged?.call(_handleRenderHold);
+    if (attached) {
+      _onRenderSurfaceCallbacksChanged?.call(_renderSurfaceCallbacks);
+    }
     markNeedsLayout();
   }
 
@@ -470,7 +484,7 @@ final class TerminalRenderBox extends RenderBox
   @override
   void attach(PipelineOwner owner) {
     super.attach(owner);
-    _onRenderHoldHandlerChanged?.call(_handleRenderHold);
+    _onRenderSurfaceCallbacksChanged?.call(_renderSurfaceCallbacks);
     _viewport.offset.addListener(_onScroll);
     _frameChanges.addListener(_onFrameChanged);
     _links?.addListener(_onLinksChanged);
@@ -496,7 +510,7 @@ final class TerminalRenderBox extends RenderBox
 
   @override
   void detach() {
-    _onRenderHoldHandlerChanged?.call(null);
+    _onRenderSurfaceCallbacksChanged?.call(null);
     _cancelTextInputCompositionCallback?.call();
     _cancelTextInputCompositionCallback = null;
     _viewport.offset.removeListener(_onScroll);

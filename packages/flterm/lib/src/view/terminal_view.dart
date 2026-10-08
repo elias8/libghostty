@@ -25,6 +25,8 @@ part 'terminal_view_geometry.dart';
 /// DEC synchronized output (mode 2026) holds the last complete terminal frame
 /// until output releases the mode or a one-second safety deadline expires.
 /// Output received before a drawable frame exists is processed without a hold.
+/// The first content-dependent pointer or shortcut action during a hold is
+/// consumed. Repeat it after the released frame paints.
 ///
 /// Fills the available space and computes the grid dimensions (columns
 /// and rows) from the font metrics and pixel area. A controller can be attached
@@ -225,6 +227,8 @@ final class _TerminalViewState extends State<TerminalView>
                   selection: _attachment.selectionInput,
                   terminalBackground: _theme.background,
                   onLinkActivate: widget.linkSettings.onActivate,
+                  onContentInteraction:
+                      _attachment.interruptRenderHoldForInteraction,
                   onViewportRowChanged: _attachment.handleViewportRowChanged,
                   child: ListenableBuilder(
                     listenable: _controller.search,
@@ -241,8 +245,8 @@ final class _TerminalViewState extends State<TerminalView>
                           focused: _focusNode.hasFocus,
                           terminal: _attachment.terminal,
                           frameChanges: _attachment.frameChanges,
-                          onRenderHoldHandlerChanged:
-                              _attachment.setRenderSurfaceHoldHandler,
+                          onRenderSurfaceCallbacksChanged:
+                              _attachment.setRenderSurfaceCallbacks,
                           searchMatches: matches,
                           selectedSearchMatch: selected,
                           atlasPool: atlasPool,
@@ -294,6 +298,8 @@ final class _TerminalViewState extends State<TerminalView>
                     child: ShortcutScope(
                       onPaste: _handlePaste,
                       controller: _controller,
+                      onContentInteraction:
+                          _attachment.interruptRenderHoldForInteraction,
                       shortcuts: widget.shortcuts,
                       enableSelectAll: widget.gestureSettings.selectAllShortcut,
                       child: viewport,
@@ -460,6 +466,9 @@ final class _TerminalViewState extends State<TerminalView>
   }
 
   void _onControllerChanged() {
+    if (_attachment.renderHoldActive) {
+      stopTerminalScrollController(_scrollController);
+    }
     final resizeDeferred = _attachment.resizeDeferred;
     if (_resizeDeferred != resizeDeferred) {
       setState(() => _resizeDeferred = resizeDeferred);

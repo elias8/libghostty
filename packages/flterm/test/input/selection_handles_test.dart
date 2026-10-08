@@ -132,6 +132,42 @@ void main() {
           const Position(row: 1, col: 5),
         );
       });
+
+      testWidgets('consumes a held-frame drag and resets for the next drag', (
+        tester,
+      ) async {
+        var holdActive = true;
+        subject.select();
+        await subject.pump(
+          tester,
+          onContentInteraction: () {
+            if (!holdActive) return false;
+            holdActive = false;
+            return true;
+          },
+        );
+        final initialStart = subject.selection.selection!.start.positionIn(
+          .viewport,
+        );
+
+        final blocked = await subject.startDrag(tester, _Fixture.startHandle);
+        await blocked.moveBy(const Offset(-16, 0));
+        await blocked.end();
+        await tester.pump();
+        expect(
+          subject.selection.selection!.start.positionIn(.viewport),
+          initialStart,
+        );
+
+        final resumed = await subject.startDrag(tester, _Fixture.startHandle);
+        await resumed.moveBy(const Offset(-16, 0));
+        await resumed.end();
+        await tester.pump();
+        expect(
+          subject.selection.selection!.start.positionIn(.viewport),
+          isNot(initialStart),
+        );
+      });
     });
 
     group('selection shape', () {
@@ -474,6 +510,7 @@ final class _Fixture {
     TextMagnifierConfiguration? magnifierConfiguration,
     ScrollController? scrollController,
     Widget? foreground,
+    ValueGetter<bool>? onContentInteraction,
     Alignment terminalAlignment = Alignment.topLeft,
   }) async {
     final ownsScrollController = scrollController == null;
@@ -508,6 +545,7 @@ final class _Fixture {
                           metrics: metrics,
                           visible: visible,
                           magnifierConfiguration: magnifierConfiguration,
+                          onContentInteraction: onContentInteraction,
                           terminalBackground: const Color(0xFF1D1F21),
                         ),
                       ),

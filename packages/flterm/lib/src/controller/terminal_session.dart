@@ -47,7 +47,7 @@ final class TerminalSession extends TerminalController with ChangeNotifier {
   var _selectionChangeDepth = 0;
   var _renderHoldPhase = _RenderHoldPhase.released;
   Timer? _renderHoldTimeout;
-  RenderHoldCallback? _renderHoldHandler;
+  RenderSurfaceCallbacks? _renderSurfaceCallbacks;
   late _TerminalSessionState _state;
   ClipboardWriteCallback? _onClipboardWrite;
   ClipboardReadCallback? _onClipboardRead;
@@ -450,14 +450,14 @@ final class TerminalSession extends TerminalController with ChangeNotifier {
   void dispose() {
     if (_disposed) return;
     final releaseRenderHold = _renderHoldPhase != .released;
-    final renderHoldHandler = _renderHoldHandler;
+    final renderSurfaceCallbacks = _renderSurfaceCallbacks;
     _disposed = true;
     _renderHoldPhase = _RenderHoldPhase.released;
     _renderHoldTimeout?.cancel();
     _renderHoldTimeout = null;
-    _renderHoldHandler = null;
+    _renderSurfaceCallbacks = null;
     try {
-      if (releaseRenderHold) renderHoldHandler?.call(held: false);
+      if (releaseRenderHold) renderSurfaceCallbacks?.onRenderHold(held: false);
     } finally {
       final wasRestoring = _restorationState == .restoring;
       if (wasRestoring) {
@@ -540,11 +540,21 @@ final class TerminalSession extends TerminalController with ChangeNotifier {
     _publishState();
   }
 
-  void _setRenderHoldHandler(RenderHoldCallback? handler) {
+  void _setRenderSurfaceCallbacks(RenderSurfaceCallbacks? callbacks) {
     if (_disposed) return;
-    if (_renderHoldHandler == handler) return;
-    if (_renderHoldPhase != .released) _releaseRenderHold();
-    _renderHoldHandler = handler;
+    if (_renderSurfaceCallbacks == callbacks) return;
+    if (_renderHoldPhase != .released) _releaseRenderHold(notify: false);
+    _renderSurfaceCallbacks = callbacks;
+  }
+
+  bool get _renderHoldActive => _renderHoldPhase != .released;
+
+  bool _interruptRenderHoldForInteraction() {
+    if (_renderHoldActive) {
+      _releaseRenderHold();
+      return true;
+    }
+    return !(_renderSurfaceCallbacks?.isContentInteractionReady() ?? true);
   }
 
   @override
@@ -684,7 +694,8 @@ final class TerminalSession extends TerminalController with ChangeNotifier {
     _renderHoldPhase = .releaseAfterWrite;
     _renderHoldTimeout = Timer(const Duration(seconds: 1), _releaseRenderHold);
     try {
-      final captured = _renderHoldHandler?.call(held: true) ?? false;
+      final captured =
+          _renderSurfaceCallbacks?.onRenderHold(held: true) ?? false;
       if (_renderHoldPhase == .releaseAfterWrite && !_disposed && captured) {
         _renderHoldPhase = .captured;
       }
@@ -693,21 +704,27 @@ final class TerminalSession extends TerminalController with ChangeNotifier {
         _renderHoldPhase = .releaseAfterWrite;
       }
       rethrow;
+    } finally {
+      if (!_disposed) notifyListeners();
     }
   }
 
-  void _releaseRenderHold() {
+  void _releaseRenderHold({bool notify = true}) {
     if (_renderHoldPhase == .released) return;
     _terminal.modeSet(const TerminalMode.syncOutput(), value: false);
-    _finishRenderHold();
+    _finishRenderHold(notify: notify);
   }
 
-  void _finishRenderHold() {
+  void _finishRenderHold({bool notify = true}) {
     if (_renderHoldPhase == .released) return;
     _renderHoldTimeout?.cancel();
     _renderHoldTimeout = null;
     _renderHoldPhase = .released;
-    _renderHoldHandler?.call(held: false);
+    try {
+      _renderSurfaceCallbacks?.onRenderHold(held: false);
+    } finally {
+      if (notify && !_disposed) notifyListeners();
+    }
   }
 
   void _applyTerminalOptions() {
