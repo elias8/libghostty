@@ -68,6 +68,7 @@ final class TerminalSurface {
   var _submitGeometry = false;
   var _needsTerminalSync = true;
   var _searchDirty = true;
+  Picture? _renderHoldPicture;
   var _disposed = false;
 
   TerminalSurface({
@@ -173,6 +174,8 @@ final class TerminalSurface {
   void dispose() {
     if (_disposed) return;
     _disposed = true;
+    _renderHoldPicture?.dispose();
+    _renderHoldPicture = null;
     _kittyImageCache.dispose();
     _frameBuilder.dispose();
     _sprites.dispose();
@@ -190,8 +193,46 @@ final class TerminalSurface {
         _state.cols <= 0) {
       return;
     }
+    final renderHoldPicture = _renderHoldPicture;
+    if (renderHoldPicture != null) {
+      canvas.drawPicture(renderHoldPicture);
+      return;
+    }
     _prepare(terminal, linkSnapshot: linkSnapshot);
     _paint(canvas);
+  }
+
+  bool captureRenderHold(
+    Terminal terminal, {
+    LinkSnapshot linkSnapshot = .empty,
+  }) {
+    if (_disposed) return false;
+    if (_renderHoldPicture != null) return true;
+    if (_lastMeasuredRows <= 0 ||
+        _lastMeasuredCols <= 0 ||
+        _state.rows <= 0 ||
+        _state.cols <= 0) {
+      return false;
+    }
+
+    _needsTerminalSync = true;
+    _prepare(terminal, linkSnapshot: linkSnapshot);
+    final recorder = PictureRecorder();
+    try {
+      _paint(Canvas(recorder));
+      _renderHoldPicture = recorder.endRecording();
+      return true;
+    } finally {
+      if (recorder.isRecording) recorder.endRecording().dispose();
+    }
+  }
+
+  void releaseRenderHold() {
+    final picture = _renderHoldPicture;
+    if (picture == null) return;
+    _renderHoldPicture = null;
+    picture.dispose();
+    _needsTerminalSync = true;
   }
 
   void invalidateGeometry() {

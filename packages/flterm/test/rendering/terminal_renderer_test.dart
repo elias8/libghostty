@@ -45,6 +45,7 @@ void main() {
     bool focused = true,
     bool blinkVisible = true,
     double devicePixelRatio = 1,
+    ValueChanged<RenderHoldCallback?>? onRenderHoldHandlerChanged,
     ValueChanged<SurfaceMeasurement>? onGeometryChanged,
     ValueChanged<int>? onViewportRowChanged,
     AtlasPool? atlasPool,
@@ -68,48 +69,52 @@ void main() {
         alignment: Alignment.topLeft,
         child: ConstrainedBox(
           constraints: BoxConstraints(maxWidth: width, maxHeight: height),
-          child: TerminalRenderer(
-            terminal: terminal,
-            frameChanges: frameChanges,
-            theme: theme ?? TerminalTheme.dark(),
-            metrics: metrics,
-            surfacePadding: surfacePadding,
-            offset: offset ?? ViewportOffset.zero(),
-            atlasPool: atlasPool,
-            devicePixelRatio: devicePixelRatio,
-            focused: focused,
-            blinkVisible: blinkVisible,
-            resizeDeferred: resizeDeferred,
-            onGeometryChanged: (measurement) {
-              final current = terminal.geometry;
-              final accepted = SurfaceGeometry.tryFrom(
-                resizeDeferred
-                    ? SurfaceMeasurement(
-                        cols: current.cols,
-                        rows: current.rows,
-                        cellWidth: measurement.cellWidth,
-                        cellHeight: measurement.cellHeight,
-                        paddingLeft: measurement.paddingLeft,
-                        paddingRight: measurement.paddingRight,
-                        paddingTop: measurement.paddingTop,
-                        paddingBottom: measurement.paddingBottom,
-                        devicePixelRatio: measurement.devicePixelRatio,
-                      )
-                    : measurement,
-              );
-              if (accepted == null) return null;
-              if (!resizeDeferred) {
-                terminal.resize(
-                  cols: accepted.cols,
-                  rows: accepted.rows,
-                  cellWidthPx: accepted.cellWidthPx,
-                  cellHeightPx: accepted.cellHeightPx,
+          child: RepaintBoundary(
+            key: const ValueKey('terminal surface'),
+            child: TerminalRenderer(
+              terminal: terminal,
+              frameChanges: frameChanges,
+              onRenderHoldHandlerChanged: onRenderHoldHandlerChanged,
+              theme: theme ?? TerminalTheme.dark(),
+              metrics: metrics,
+              surfacePadding: surfacePadding,
+              offset: offset ?? ViewportOffset.zero(),
+              atlasPool: atlasPool,
+              devicePixelRatio: devicePixelRatio,
+              focused: focused,
+              blinkVisible: blinkVisible,
+              resizeDeferred: resizeDeferred,
+              onGeometryChanged: (measurement) {
+                final current = terminal.geometry;
+                final accepted = SurfaceGeometry.tryFrom(
+                  resizeDeferred
+                      ? SurfaceMeasurement(
+                          cols: current.cols,
+                          rows: current.rows,
+                          cellWidth: measurement.cellWidth,
+                          cellHeight: measurement.cellHeight,
+                          paddingLeft: measurement.paddingLeft,
+                          paddingRight: measurement.paddingRight,
+                          paddingTop: measurement.paddingTop,
+                          paddingBottom: measurement.paddingBottom,
+                          devicePixelRatio: measurement.devicePixelRatio,
+                        )
+                      : measurement,
                 );
-              }
-              onGeometryChanged?.call(measurement);
-              return accepted;
-            },
-            onViewportRowChanged: onViewportRowChanged ?? (_) {},
+                if (accepted == null) return null;
+                if (!resizeDeferred) {
+                  terminal.resize(
+                    cols: accepted.cols,
+                    rows: accepted.rows,
+                    cellWidthPx: accepted.cellWidthPx,
+                    cellHeightPx: accepted.cellHeightPx,
+                  );
+                }
+                onGeometryChanged?.call(measurement);
+                return accepted;
+              },
+              onViewportRowChanged: onViewportRowChanged ?? (_) {},
+            ),
           ),
         ),
       ),
@@ -382,6 +387,182 @@ void main() {
     });
   });
 
+  group('TerminalRenderBox synchronized output', () {
+    testWidgets('keeps the frame captured before the same-write tail', (
+      tester,
+    ) async {
+      final terminal = Terminal(cols: defaultCols, rows: defaultRows);
+      addTearDown(terminal.dispose);
+      RenderHoldCallback? onRenderHold;
+      await tester.pumpWidget(
+        wrap(
+          terminal,
+          onRenderHoldHandlerChanged: (handler) => onRenderHold = handler,
+        ),
+      );
+      terminal.onRenderHold = (held) => onRenderHold?.call(held: held);
+
+      terminal.write(Uint8List.fromList(utf8.encode('READY')));
+      await tester.pump();
+      final readyFrame = await _surfacePixels(tester);
+      terminal.write(Uint8List.fromList(utf8.encode('\x1b[2J\x1b[HOLD')));
+      await tester.pump();
+
+      terminal.write(
+        Uint8List.fromList(
+          utf8.encode('\x1b[2J\x1b[HREADY\x1b[?2026h\x1b[2J\x1b[HPARTIAL'),
+        ),
+      );
+      await tester.pump();
+
+      final held = await _surfacePixels(tester);
+      expect(held, orderedEquals(readyFrame));
+
+      terminal.write(Uint8List.fromList(utf8.encode('\x1b[?2026l')));
+      await tester.pump();
+
+      expect(await _surfacePixels(tester), isNot(orderedEquals(held)));
+    });
+
+    testWidgets('keeps the picture across a theme and atlas rebind', (
+      tester,
+    ) async {
+      final terminal = Terminal(cols: defaultCols, rows: defaultRows);
+      addTearDown(terminal.dispose);
+      RenderHoldCallback? onRenderHold;
+      void registerRenderHoldHandler(RenderHoldCallback? handler) {
+        onRenderHold = handler;
+      }
+
+      await tester.pumpWidget(
+        wrap(
+          terminal,
+          blinkVisible: false,
+          onRenderHoldHandlerChanged: registerRenderHoldHandler,
+        ),
+      );
+      terminal.onRenderHold = (held) => onRenderHold?.call(held: held);
+      terminal.write(
+        Uint8List.fromList(
+          utf8.encode('\x1b[?2026h\x1b[2J\x1b[HFROZEN\x1b[2J\x1b[HLIVE'),
+        ),
+      );
+      await tester.pump();
+      final heldFrame = await _surfacePixels(tester);
+
+      await tester.pumpWidget(
+        wrap(
+          terminal,
+          theme: TerminalTheme.dark().copyWith(fontSize: 15),
+          onRenderHoldHandlerChanged: registerRenderHoldHandler,
+        ),
+      );
+      await tester.pump();
+
+      expect(await _surfacePixels(tester), orderedEquals(heldFrame));
+
+      terminal.write(Uint8List.fromList(utf8.encode('\x1b[?2026l')));
+      await tester.pump();
+      expect(await _surfacePixels(tester), isNot(orderedEquals(heldFrame)));
+    });
+
+    testWidgets('keeps Kitty pixels after the live image is deleted', (
+      tester,
+    ) async {
+      final terminal = Terminal(cols: defaultCols, rows: defaultRows)
+        ..kittyImageStorageLimit = 1 << 20;
+      addTearDown(terminal.dispose);
+      RenderHoldCallback? onRenderHold;
+      var holdCaptured = false;
+      void registerRenderHoldHandler(RenderHoldCallback? handler) {
+        onRenderHold = handler;
+      }
+
+      await tester.pumpWidget(
+        wrap(
+          terminal,
+          blinkVisible: false,
+          onRenderHoldHandlerChanged: registerRenderHoldHandler,
+        ),
+      );
+      terminal.onRenderHold = (held) {
+        final captured = onRenderHold?.call(held: held) ?? false;
+        if (held) holdCaptured = captured;
+      };
+      terminal.write(
+        Uint8List.fromList(
+          utf8.encode(
+            '\x1b_Ga=t,f=24,s=1,v=1,i=1,m=0;/wAA\x1b\\'
+            '\x1b_Ga=p,i=1,c=1,r=1\x1b\\',
+          ),
+        ),
+      );
+      var redImageFrame = await _surfacePixels(tester);
+      for (var attempt = 0; attempt < 5; attempt++) {
+        await tester.pump();
+        redImageFrame = await _surfacePixels(tester);
+        if (_containsRgba(redImageFrame, 0xff, 0, 0, 0xff)) break;
+      }
+      expect(_containsRgba(redImageFrame, 0xff, 0, 0, 0xff), isTrue);
+
+      terminal.write(
+        Uint8List.fromList(utf8.encode('\x1b[?2026h\x1b_Ga=d,d=I,i=1\x1b\\')),
+      );
+      await tester.pumpWidget(
+        wrap(terminal, onRenderHoldHandlerChanged: registerRenderHoldHandler),
+      );
+      await tester.pump();
+
+      expect(holdCaptured, isTrue);
+      expect(await _surfacePixels(tester), orderedEquals(redImageFrame));
+
+      terminal.write(Uint8List.fromList(utf8.encode('\x1b[?2026l')));
+      await tester.pump();
+      expect(
+        _containsRgba(await _surfacePixels(tester), 0xff, 0, 0, 0xff),
+        isFalse,
+      );
+    });
+
+    testWidgets('replaces the held frame at each start in one write', (
+      tester,
+    ) async {
+      final terminal = Terminal(cols: defaultCols, rows: defaultRows);
+      addTearDown(terminal.dispose);
+      RenderHoldCallback? onRenderHold;
+      await tester.pumpWidget(
+        wrap(
+          terminal,
+          onRenderHoldHandlerChanged: (handler) => onRenderHold = handler,
+        ),
+      );
+      terminal.onRenderHold = (held) => onRenderHold?.call(held: held);
+
+      terminal.write(Uint8List.fromList(utf8.encode('COMPLETE')));
+      await tester.pump();
+      final completeFrame = await _surfacePixels(tester);
+      terminal.write(Uint8List.fromList(utf8.encode('\x1b[2J\x1b[HOLD')));
+      await tester.pump();
+
+      terminal.write(
+        Uint8List.fromList(
+          utf8.encode(
+            '\x1b[?2026h\x1b[2J\x1b[HPARTIAL1'
+            '\x1b[?2026l\x1b[2J\x1b[HCOMPLETE'
+            '\x1b[?2026h\x1b[2J\x1b[HPARTIAL2',
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(await _surfacePixels(tester), orderedEquals(completeFrame));
+
+      terminal.write(Uint8List.fromList(utf8.encode('\x1b[?2026l')));
+      await tester.pump();
+      expect(await _surfacePixels(tester), isNot(orderedEquals(completeFrame)));
+    });
+  });
+
   group('TerminalRenderBox blink visibility', () {
     late Terminal terminal;
 
@@ -436,6 +617,36 @@ void main() {
       expect(requestedRows, [0]);
     });
   });
+}
+
+Future<Uint8List> _surfacePixels(WidgetTester tester) async {
+  final boundary = tester.renderObject<RenderRepaintBoundary>(
+    find.byKey(const ValueKey('terminal surface')),
+  );
+  final pixels = await tester.runAsync(() async {
+    final image = await boundary.toImage();
+    try {
+      final data = await image.toByteData();
+      return Uint8List.fromList(
+        data!.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
+      );
+    } finally {
+      image.dispose();
+    }
+  });
+  return pixels!;
+}
+
+bool _containsRgba(Uint8List pixels, int red, int green, int blue, int alpha) {
+  for (var index = 0; index + 3 < pixels.length; index += 4) {
+    if (pixels[index] == red &&
+        pixels[index + 1] == green &&
+        pixels[index + 2] == blue &&
+        pixels[index + 3] == alpha) {
+      return true;
+    }
+  }
+  return false;
 }
 
 class _TrackingAtlasPool extends AtlasPool {
