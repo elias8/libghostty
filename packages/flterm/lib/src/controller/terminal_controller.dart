@@ -147,9 +147,9 @@ sealed class TerminalController implements Listenable {
   /// Replaces the configuration.
   ///
   /// Applies every entry in [TerminalConfig.modes] and updates the terminal's
-  /// resource limits, cursor defaults, query responses, and input policies
-  /// without recreating the terminal. Modes omitted from the new map retain
-  /// their live values.
+  /// resource limits, resize policy, cursor defaults, query responses, and
+  /// input policies without recreating the terminal. Modes omitted from the
+  /// new map retain their live values.
   ///
   /// [TerminalConfig.cols] and [TerminalConfig.rows] are creation-only; a
   /// connected [TerminalView] controls the live grid size. Lowering scrollback
@@ -169,6 +169,14 @@ sealed class TerminalController implements Listenable {
   /// mouse reports. When active, pointer events are encoded and sent to the
   /// program instead of performing selection. Hold Shift to bypass tracking.
   MouseTracking get mouseTracking;
+
+  /// The mouse pointer shape most recently requested by the terminal program.
+  ///
+  /// Programs set this value with OSC 22. It is the terminal's requested
+  /// shape; [TerminalView] maps it to the closest cursor supported by Flutter.
+  /// The initial and explicit text shape share the same value, so the view
+  /// keeps its existing text or basic cursor choice based on mouse tracking.
+  MouseShape get mouseShape;
 
   /// Sets the callback invoked when the terminal receives BEL (0x07).
   ///

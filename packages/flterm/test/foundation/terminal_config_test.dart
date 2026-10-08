@@ -12,6 +12,7 @@ void main() {
         expect(config.rows, 24);
         expect(config.scrollbackMaxBytes, 10000);
         expect(config.scrollbackMaxLines, isNull);
+        expect(config.resizePullScrollback, isTrue);
         expect(config.continuationMaxBytes, 0);
         expect(config.unknownSequenceMaxBytes, 0);
         expect(config.cursorStyle, CursorShape.block);
@@ -139,6 +140,16 @@ void main() {
           32,
         );
       });
+
+      test('copies resize pull-scrollback policy', () {
+        const original = TerminalConfig();
+
+        expect(
+          original.copyWith(resizePullScrollback: false).resizePullScrollback,
+          isFalse,
+        );
+        expect(original.copyWith().resizePullScrollback, isTrue);
+      });
     });
 
     group('equality', () {
@@ -174,6 +185,13 @@ void main() {
 
         const glyphProtocol = TerminalConfig(glyphProtocol: true);
         expect(a, isNot(equals(glyphProtocol)));
+
+        const keepBackendHistory = TerminalConfig(resizePullScrollback: false);
+        expect(keepBackendHistory, isNot(equals(a)));
+        expect(
+          keepBackendHistory.toString(),
+          contains('resizePullScrollback: false'),
+        );
 
         const byteLimited = TerminalConfig(scrollbackMaxBytes: 1024);
         const lineLimited = TerminalConfig(scrollbackMaxLines: 1024);

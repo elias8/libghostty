@@ -1274,6 +1274,22 @@ void main() {
       );
     });
 
+    group('mouseShape', () {
+      test('exposes OSC 22 state through the public controller API', () {
+        expect(controller.mouseShape, flterm.MouseShape.text);
+
+        writeControllerUtf8(controller, '\x1b]22;pointer\x07');
+
+        expect(controller.mouseShape, flterm.MouseShape.pointer);
+      });
+
+      test('throws after the controller is disposed', () {
+        controller.dispose();
+
+        expect(() => controller.mouseShape, throwsStateError);
+      });
+    });
+
     group('handleTerminalScroll', () {
       test('uses the last pointer position for tracked scroll', () {
         enableMouseTracking(controller);
@@ -2163,6 +2179,18 @@ void main() {
     });
 
     group('config', () {
+      SurfaceMeasurement measurement(int cols, int rows) => SurfaceMeasurement(
+        cols: cols,
+        rows: rows,
+        cellWidth: 8,
+        cellHeight: 16,
+        paddingLeft: 0,
+        paddingRight: 0,
+        paddingTop: 0,
+        paddingBottom: 0,
+        devicePixelRatio: 1,
+      );
+
       Uint8List transmitRedPixel({int id = 42}) {
         return .fromList('\x1b_Gf=24,s=1,v=1,a=t,i=$id;/wAA\x1b\\'.codeUnits);
       }
@@ -2211,6 +2239,43 @@ void main() {
 
         expect(renderState.cursor.visualStyle, CursorShape.underline);
         expect(renderState.cursor.blinking, isTrue);
+      });
+
+      test('initial config keeps backend scrollback out of a grown grid', () {
+        final custom = TerminalController(
+          config: const TerminalConfig(
+            cols: 5,
+            rows: 3,
+            resizePullScrollback: false,
+          ),
+        );
+        addTearDown(custom.dispose);
+
+        custom.write(Uint8List.fromList(utf8.encode('1\r\n2\r\n3\r\n4\r\n5')));
+        expect(custom.scrollbackRows, 2);
+
+        access(custom).handleResize(measurement(5, 5));
+
+        expect(custom.scrollbackRows, 2);
+      });
+
+      test('live config enables pulling scrollback into a grown grid', () {
+        final custom = TerminalController(
+          config: const TerminalConfig(
+            cols: 5,
+            rows: 3,
+            resizePullScrollback: false,
+          ),
+        );
+        addTearDown(custom.dispose);
+
+        custom.write(Uint8List.fromList(utf8.encode('1\r\n2\r\n3\r\n4\r\n5')));
+        expect(custom.scrollbackRows, 2);
+
+        custom.config = custom.config.copyWith(resizePullScrollback: true);
+        access(custom).handleResize(measurement(5, 5));
+
+        expect(custom.scrollbackRows, 0);
       });
 
       test('setter applies scrollback limits', () {

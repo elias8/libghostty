@@ -68,6 +68,11 @@ class TerminalView extends StatefulWidget {
   final bool showKeyboard;
 
   /// When to auto-hide the mouse cursor.
+  ///
+  /// The view follows OSC 22 pointer shapes when visible. It keeps the text
+  /// cursor when mouse tracking is disabled and the basic cursor while tracking
+  /// is enabled if the reported shape is text. Auto-hide takes precedence over
+  /// the requested shape, and a hovered link keeps its click cursor.
   final MouseAutoHide mouseAutoHide;
 
   /// Controls which selection gestures are enabled and how they behave.
