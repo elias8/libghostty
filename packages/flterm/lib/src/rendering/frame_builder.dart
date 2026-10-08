@@ -15,6 +15,7 @@ import 'paint_state.dart';
 
 part 'frame_cursor.dart';
 part 'frame_preedit.dart';
+part 'frame_row_cache.dart';
 part 'frame_rows.dart';
 part 'frame_style.dart';
 
@@ -31,6 +32,9 @@ class FrameBuilder {
   final SpriteBuffer _sprites;
   final RenderState _renderState;
   final RowDirtyTracker _dirtyRows;
+  final Map<RenderRowId, _DecodedRow> _decodedRows = {};
+  var _slotIds = <RenderRowId?>[];
+  Terminal? _terminal;
   var _blinkRows = Uint8List(0);
 
   late final _RowBuilder _rowBuilder;
@@ -55,11 +59,16 @@ class FrameBuilder {
   void configure(int rows, int cols) {
     _sprites.configure(rows, cols);
     _dirtyRows.resize(rows);
+    _decodedRows.clear();
+    _slotIds = List<RenderRowId?>.filled(rows, null);
     _blinkRows = Uint8List(rows);
   }
 
   /// Releases the owned libghostty iterators.
   void dispose() {
+    _decodedRows.clear();
+    _slotIds = [];
+    _terminal = null;
     _cells.dispose();
     _rows.dispose();
     _renderState.dispose();
@@ -97,6 +106,7 @@ class FrameBuilder {
     LinkSnapshot linkSnapshot = .empty,
   }) {
     var dirty = DirtyState.clean;
+    final terminalChanged = _bindTerminal(terminal);
 
     if (searchDirty) {
       _rowBuilder.updateSearch(
@@ -107,8 +117,9 @@ class FrameBuilder {
       );
     }
 
-    if (terminalDirty) {
+    if (terminalDirty || terminalChanged) {
       dirty = _renderState.update(terminal);
+      if (terminalChanged) dirty = .full;
       final scrollbar = terminal.scrollbar;
       final terminalColorsChanged = _state.updateTerminalColors(
         _renderState.colors,
@@ -118,7 +129,10 @@ class FrameBuilder {
       // RenderState updates colors even when its dirty result is clean.
       // Since sprite buffers cache resolved ARGB values, color changes need
       // the same full rebuild as other global terminal-state changes.
-      if (terminalColorsChanged) dirty = .full;
+      if (terminalColorsChanged) {
+        _decodedRows.clear();
+        dirty = .full;
+      }
 
       _syncCursor(terminal, scrollbar);
     }
@@ -136,7 +150,7 @@ class FrameBuilder {
 
     if (dirty == .clean && !_dirtyRows.anyDirty) return;
     _build(dirty == .clean ? .partial : dirty, linkSnapshot);
-    if (terminalDirty) _renderState.clean();
+    if (terminalDirty || terminalChanged) _renderState.clean();
   }
 
   void _build(DirtyState dirty, LinkSnapshot links) {
@@ -149,20 +163,69 @@ class FrameBuilder {
         (dirty != .partial || !_dirtyRows.anyDirty);
     _rows.reset(_renderState);
 
-    while ((useDirtyIterator ? _rows.nextDirty() : _rows.next()) &&
-        _rows.index < _state.rows) {
-      final row = _rows.index;
+    while (useDirtyIterator ? _rows.nextDirty() : _rows.next()) {
+      final row = _rows.viewportY;
+      if (row < 0 || row >= _state.rows) continue;
+      final id = _rows.id;
+      _slotIds[row] = id;
       if (useDirtyIterator ||
           rebuildAll ||
           _rows.dirty ||
           _dirtyRows.isDirty(row)) {
-        _blinkRows[row] = _rowBuilder.rebuildRow(row, _rows, _cells) ? 1 : 0;
+        final decoded = _decodedRow(id, _rows);
+        _blinkRows[row] =
+            _rowBuilder.rebuildRow(row, decoded, selection: _rows.selection)
+            ? 1
+            : 0;
       }
     }
+
+    final visibleIds = _slotIds.whereType<RenderRowId>().toSet();
+    _decodedRows.removeWhere((id, _) => !visibleIds.contains(id));
 
     _dirtyRows._clear();
     _atlas.ensureImage();
     _sprites.seal();
+  }
+
+  bool _bindTerminal(Terminal terminal) {
+    final changed = _terminal != null && !identical(_terminal, terminal);
+    if (changed) {
+      _decodedRows.clear();
+      _slotIds.fillRange(0, _slotIds.length, null);
+    }
+    _terminal = terminal;
+    return changed;
+  }
+
+  _DecodedRow _decodedRow(RenderRowId id, RowIterator rows) {
+    final cached = _decodedRows[id];
+    if (!rows.dirty && cached != null) return cached;
+
+    _cells.reset(rows);
+    final cells = List<_DecodedCell>.generate(
+      _state.cols,
+      (_) => const _DecodedCell.empty(),
+      growable: false,
+    );
+    while (_cells.next() && _cells.col < _state.cols) {
+      final col = _cells.col;
+      final graphemeLength = _cells.graphemeLength;
+      cells[col] = _DecodedCell(
+        codepoint: _cells.codepoint,
+        graphemeLength: graphemeLength,
+        content: graphemeLength > 1 ? _cells.content : null,
+        wide: _cells.wide,
+        styleId: _cells.styleId,
+        style: _cells.style,
+        backgroundArgb: _cells.hasText ? null : _cells.backgroundArgb,
+        hasText: _cells.hasText,
+        hasStyling: _cells.hasStyling,
+      );
+    }
+    final decoded = _DecodedRow(cells);
+    _decodedRows[id] = decoded;
+    return decoded;
   }
 
   void _syncCursor(Terminal terminal, Scrollbar scrollbar) {

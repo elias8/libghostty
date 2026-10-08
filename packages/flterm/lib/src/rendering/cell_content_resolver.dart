@@ -19,16 +19,16 @@ final class CellContentResolver {
 
   CellContentResolver(this._atlas);
 
-  AtlasEntry? resolveCell(
-    CellIterator cell, {
+  AtlasEntry? resolveCell({
+    required String? content,
+    required int codepoint,
+    required int graphemeLength,
     required Style style,
     required int span,
     bool borrowedCell = false,
   }) {
-    final graphemeLength = cell.graphemeLength;
     if (graphemeLength == 0) return null;
 
-    final codepoint = cell.codepoint;
     if (borrowedCell && graphemeLength == 1) {
       return resolveCodepoint(
         codepoint,
@@ -48,11 +48,11 @@ final class CellContentResolver {
       }
     }
 
-    final content = cell.content;
-    if (content.isEmpty || content == ' ') return null;
+    final cellContent = content ?? String.fromCharCode(codepoint);
+    if (cellContent.isEmpty || cellContent == ' ') return null;
 
     return resolve(
-      content: content,
+      content: cellContent,
       codepoint: codepoint,
       graphemeLength: graphemeLength,
       style: style,

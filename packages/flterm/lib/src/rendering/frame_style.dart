@@ -75,7 +75,7 @@ final class _StyleCache {
   void beginFrame() => _generation++;
 
   (int foreground, int background, Style style, bool explicitBg) resolve(
-    CellIterator cell, {
+    _DecodedCell cell, {
     required int? backgroundArgb,
   }) {
     final id = cell.styleId;
