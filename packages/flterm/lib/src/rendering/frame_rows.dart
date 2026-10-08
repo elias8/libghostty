@@ -87,6 +87,7 @@ final class _RowBuilder {
   int? _backgroundRunArgb;
   var _preeditEmitted = false;
   var _previousSymbol = false;
+  late _DecodedRow _row;
 
   _RowBuilder({
     required this._atlas,
@@ -117,8 +118,13 @@ final class _RowBuilder {
     _styles.beginFrame();
   }
 
-  bool rebuildRow(int rowIndex, RowIterator rows, CellIterator cells) {
+  bool rebuildRow(
+    int rowIndex,
+    _DecodedRow row, {
+    required RowSelectionRange? selection,
+  }) {
     _sprites.beginRow(rowIndex);
+    _row = row;
     _rowIndex = rowIndex;
     _y = rowIndex * _metrics.cellHeight;
     _column = 0;
@@ -130,10 +136,8 @@ final class _RowBuilder {
     _backgroundRunArgb = null;
     _preeditEmitted = false;
     _previousSymbol = false;
-    cells.reset(rows);
-
-    while (cells.next() && _column < _state.cols) {
-      _writeCell(cells);
+    while (_column < _state.cols) {
+      _writeCell(_row.cells[_column], selection: selection);
     }
 
     _flushForeground();
@@ -283,7 +287,7 @@ final class _RowBuilder {
   }
 
   void _emitForeground(
-    CellIterator cell, {
+    _DecodedCell cell, {
     required int span,
     required int glyphSpan,
   }) {
@@ -309,7 +313,9 @@ final class _RowBuilder {
 
     _flushForeground();
     final entry = _content.resolveCell(
-      cell,
+      content: cell.content,
+      codepoint: cell.codepoint,
+      graphemeLength: cell.graphemeLength,
       style: style,
       span: glyphSpan,
       borrowedCell: glyphSpan != span,
@@ -428,7 +434,7 @@ final class _RowBuilder {
     _operatorCodepoints.clear();
   }
 
-  int _glyphSpan(CellIterator cell, int span) {
+  int _glyphSpan(_DecodedCell cell, int span) {
     if (span > 1) {
       _previousSymbol = false;
       return span;
@@ -448,10 +454,7 @@ final class _RowBuilder {
 
     // Symbol glyphs may borrow a following blank cell without changing the
     // terminal's logical cursor or decoration span.
-    final currentCol = cell.col;
-    cell.select(currentCol + 1);
-    final nextCodepoint = cell.codepoint;
-    cell.select(currentCol);
+    final nextCodepoint = _row.cells[_column + 1].codepoint;
     return nextCodepoint == 0 ||
             nextCodepoint == 0x20 ||
             nextCodepoint == 0x2002
@@ -469,7 +472,7 @@ final class _RowBuilder {
   }
 
   void _resolveStyle(
-    CellIterator cell, {
+    _DecodedCell cell, {
     required int? backgroundArgb,
     required _CellHighlight highlight,
     required HyperlinkStyle? linkStyle,
@@ -534,7 +537,7 @@ final class _RowBuilder {
     _prevLinkStyle = linkStyle;
   }
 
-  void _skipPreeditCell(CellIterator cell, _PreeditRange range, int span) {
+  void _skipPreeditCell(_PreeditRange range, int span) {
     if (!_preeditEmitted) {
       // Emit the overlay once at the first covered terminal cell, after
       // closing real background/text runs up to the overlay boundary.
@@ -546,7 +549,6 @@ final class _RowBuilder {
       _preeditEmitted = true;
     }
 
-    if (span == 2) cell.next();
     _column += span;
     _x += _metrics.cellWidth * span;
   }
@@ -592,20 +594,23 @@ final class _RowBuilder {
     return _lastTextStyle = textStyle;
   }
 
-  void _writeCell(CellIterator cell) {
+  void _writeCell(_DecodedCell cell, {required RowSelectionRange? selection}) {
     final span = cell.wide == .wide ? 2 : 1;
     final glyphSpan = _glyphSpan(cell, span);
     final preedit = _preeditRange;
     if (preedit != null && preedit.overlaps(_rowIndex, _column, span)) {
       _previousSymbol = false;
-      _skipPreeditCell(cell, preedit, span);
+      _skipPreeditCell(preedit, span);
       return;
     }
 
     final highlight = _searchHighlights.at(
       _rowIndex,
       _column,
-      selected: cell.isSelected,
+      selected:
+          selection != null &&
+          _column >= selection.startCol &&
+          _column <= selection.endCol,
     );
     final linkStyle = _linkStyle();
     final backgroundArgb = cell.hasText ? null : cell.backgroundArgb;
@@ -635,7 +640,6 @@ final class _RowBuilder {
 
     if (span == 2) {
       _closeBackgroundSpan(span);
-      cell.next();
     }
     _column += span;
     _x += _metrics.cellWidth * span;
