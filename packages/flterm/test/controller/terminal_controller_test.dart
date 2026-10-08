@@ -1274,6 +1274,22 @@ void main() {
       );
     });
 
+    group('mouseShape', () {
+      test('exposes OSC 22 state through the public controller API', () {
+        expect(controller.mouseShape, flterm.MouseShape.text);
+
+        writeControllerUtf8(controller, '\x1b]22;pointer\x07');
+
+        expect(controller.mouseShape, flterm.MouseShape.pointer);
+      });
+
+      test('throws after the controller is disposed', () {
+        controller.dispose();
+
+        expect(() => controller.mouseShape, throwsStateError);
+      });
+    });
+
     group('handleTerminalScroll', () {
       test('uses the last pointer position for tracked scroll', () {
         enableMouseTracking(controller);

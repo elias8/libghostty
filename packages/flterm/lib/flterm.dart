@@ -24,6 +24,7 @@ export 'package:libghostty/libghostty.dart'
         GridRef,
         Key,
         Mods,
+        MouseShape,
         MouseTracking,
         OscTerminator,
         PointTag,

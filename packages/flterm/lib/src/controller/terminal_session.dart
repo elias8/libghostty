@@ -2,6 +2,7 @@ part of 'terminal_controller.dart';
 
 typedef _TerminalSessionState = ({
   TerminalScreen activeScreen,
+  MouseShape mouseShape,
   MouseTracking mouseTracking,
   bool alternateScroll,
   bool cursorKeyApplication,
@@ -178,6 +179,12 @@ final class TerminalSession extends TerminalController with ChangeNotifier {
   MouseTracking get mouseTracking {
     _checkNotDisposed();
     return _state.mouseTracking;
+  }
+
+  @override
+  MouseShape get mouseShape {
+    _checkNotDisposed();
+    return _state.mouseShape;
   }
 
   @override
@@ -853,6 +860,7 @@ final class TerminalSession extends TerminalController with ChangeNotifier {
 
   _TerminalSessionState _readState() => (
     activeScreen: _terminal.activeScreen,
+    mouseShape: _terminal.mouseShape,
     mouseTracking: _terminal.mouseTracking,
     alternateScroll: _terminal.modeGet(const .alternateScroll()),
     cursorKeyApplication: _terminal.modeGet(const .cursorKeys()),
