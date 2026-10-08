@@ -435,6 +435,9 @@ sealed class TerminalController implements Listenable {
   /// a VT mode sequence. When the alternate screen returns to the primary
   /// screen, every mode present in [TerminalConfig.modes] is reapplied and can
   /// overwrite this value.
+  ///
+  /// Setting synchronized output directly does not start a render hold.
+  /// Disabling it releases any hold started by terminal output.
   void modeSet(TerminalMode mode, {required bool value});
 
   /// Sends paste data to the terminal via [onOutput].

@@ -208,6 +208,11 @@ final class ViewAttachment extends ChangeNotifier {
     _syncBlink();
   }
 
+  void setRenderSurfaceHoldHandler(RenderHoldCallback? handler) {
+    if (_controller.isDisposed) return;
+    _controller._setRenderHoldHandler(handler);
+  }
+
   @override
   void dispose() {
     if (_disposed) return;
@@ -216,6 +221,7 @@ final class ViewAttachment extends ChangeNotifier {
     if (!_controller.isDisposed) {
       _controller.removeListener(_handleControllerChanged);
       _controller._frameChanges.removeListener(_handleTerminalChanged);
+      _controller._setRenderHoldHandler(null);
     }
     _scrollController?.removeListener(_handleScrollChanged);
     links.dispose();

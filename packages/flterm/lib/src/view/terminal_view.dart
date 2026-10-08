@@ -22,6 +22,10 @@ part 'terminal_view_geometry.dart';
 /// controller owns the terminal state; the view handles rendering,
 /// scrolling, gestures, focus, and keyboard shortcuts.
 ///
+/// DEC synchronized output (mode 2026) holds the last complete terminal frame
+/// until output releases the mode or a one-second safety deadline expires.
+/// Output received before a drawable frame exists is processed without a hold.
+///
 /// Fills the available space and computes the grid dimensions (columns
 /// and rows) from the font metrics and pixel area. A controller can be attached
 /// to only one view at a time. The view releases that attachment when removed
@@ -237,6 +241,8 @@ final class _TerminalViewState extends State<TerminalView>
                           focused: _focusNode.hasFocus,
                           terminal: _attachment.terminal,
                           frameChanges: _attachment.frameChanges,
+                          onRenderHoldHandlerChanged:
+                              _attachment.setRenderSurfaceHoldHandler,
                           searchMatches: matches,
                           selectedSearchMatch: selected,
                           atlasPool: atlasPool,

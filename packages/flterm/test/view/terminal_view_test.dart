@@ -16,6 +16,7 @@ import 'package:flutter/foundation.dart'
         debugDefaultTargetPlatformOverride,
         defaultTargetPlatform;
 import 'package:flutter/gestures.dart';
+import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:libghostty/libghostty.dart'
@@ -3442,6 +3443,132 @@ void main() {
         expect(box.color.r, theme.background.r);
         expect(box.color.g, theme.background.g);
         expect(box.color.b, theme.background.b);
+      });
+    });
+
+    group('synchronized output', () {
+      const syncOutput = TerminalMode.syncOutput();
+
+      Future<Uint8List> surfacePixels(WidgetTester tester) async {
+        final boundary = tester.renderObject<RenderRepaintBoundary>(
+          find.byKey(const ValueKey('synchronized output surface')),
+        );
+        final pixels = await tester.runAsync(() async {
+          final image = await boundary.toImage();
+          try {
+            final data = await image.toByteData();
+            return Uint8List.fromList(
+              data!.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
+            );
+          } finally {
+            image.dispose();
+          }
+        });
+        return pixels!;
+      }
+
+      Widget wrappedPixelSurface() => MaterialApp(
+        home: Scaffold(
+          body: RepaintBoundary(
+            key: const ValueKey('synchronized output surface'),
+            child: SizedBox(
+              width: 800,
+              height: 480,
+              child: TerminalView(controller: controller),
+            ),
+          ),
+        ),
+      );
+
+      testWidgets('shows the captured frame until the deadline', (
+        tester,
+      ) async {
+        await tester.pumpWidget(wrappedPixelSurface());
+        writeUtf8(controller, 'READY');
+        await tester.pump();
+        final readyFrame = await surfacePixels(tester);
+
+        writeUtf8(controller, '\x1b[?2026h\x1b[2J\x1b[HPARTIAL');
+        await tester.pump();
+        expect(await surfacePixels(tester), orderedEquals(readyFrame));
+
+        await tester.pump(const Duration(seconds: 1));
+
+        expect(controller.modeGet(syncOutput), isFalse);
+        expect(await surfacePixels(tester), isNot(orderedEquals(readyFrame)));
+      });
+
+      testWidgets('releases when the controller disables the mode', (
+        tester,
+      ) async {
+        await tester.pumpWidget(wrapInApp(controller: controller));
+        writeUtf8(controller, 'READY');
+        writeUtf8(controller, '\x1b[?2026h\x1b[2J\x1b[HPARTIAL');
+
+        expect(controller.modeGet(syncOutput), isTrue);
+
+        controller.modeSet(syncOutput, value: false);
+        await tester.pump();
+
+        expect(controller.modeGet(syncOutput), isFalse);
+      });
+
+      testWidgets('times out once even when another start is received', (
+        tester,
+      ) async {
+        await tester.pumpWidget(wrapInApp(controller: controller));
+        writeUtf8(controller, '\x1b[?2026hFIRST');
+        await tester.pump(const Duration(milliseconds: 700));
+        writeUtf8(controller, '\x1b[?2026hSECOND');
+
+        expect(controller.modeGet(syncOutput), isTrue);
+        await tester.pump(const Duration(milliseconds: 300));
+
+        expect(controller.modeGet(syncOutput), isFalse);
+      });
+
+      testWidgets('resets an unrenderable hold after the write', (
+        tester,
+      ) async {
+        writeUtf8(controller, '\x1b[?2026hPARTIAL');
+
+        expect(controller.modeGet(syncOutput), isFalse);
+      });
+
+      testWidgets('releases when its view detaches', (tester) async {
+        await tester.pumpWidget(wrapInApp(controller: controller));
+        writeUtf8(controller, '\x1b[?2026hPARTIAL');
+        expect(controller.modeGet(syncOutput), isTrue);
+
+        await tester.pumpWidget(const SizedBox());
+
+        expect(controller.modeGet(syncOutput), isFalse);
+      });
+
+      testWidgets('releases when the terminal resets', (tester) async {
+        await tester.pumpWidget(wrapInApp(controller: controller));
+        writeUtf8(controller, '\x1b[?2026hPARTIAL');
+        expect(controller.modeGet(syncOutput), isTrue);
+
+        writeUtf8(controller, '\x1bc');
+
+        expect(controller.modeGet(syncOutput), isFalse);
+      });
+
+      testWidgets('releases when the terminal resizes', (tester) async {
+        await tester.pumpWidget(wrapInApp(controller: controller));
+        writeUtf8(controller, '\x1b[?2026hPARTIAL');
+        expect(controller.modeGet(syncOutput), isTrue);
+        final currentGeometry = terminal(controller).geometry;
+
+        terminal(controller).resize(
+          cols: currentGeometry.cols + 1,
+          rows: currentGeometry.rows,
+          cellWidthPx: 8,
+          cellHeightPx: 16,
+        );
+
+        expect(controller.modeGet(syncOutput), isFalse);
       });
     });
   });
