@@ -4,6 +4,7 @@ export 'foundation/color_palette.dart';
 export 'foundation/dynamic_color.dart';
 export 'foundation/input_types.dart';
 export 'foundation/platform_map.dart';
+export 'foundation/render_hold.dart';
 export 'foundation/surface_geometry.dart';
 export 'foundation/terminal_config.dart';
 export 'foundation/terminal_gesture_settings.dart';

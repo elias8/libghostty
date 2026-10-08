@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart' show ValueListenable;
+import 'package:flutter/foundation.dart' show ValueGetter, ValueListenable;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
@@ -52,11 +52,13 @@ final class InteractionRegion extends StatefulWidget {
   final ValueChanged<int> onViewportRowChanged;
   final ValueChanged<ScrollInput> onScrollInput;
   final ValueChanged<ActivatedLink>? onLinkActivate;
+  final ValueGetter<bool>? onContentInteraction;
   final ValueListenable<TerminalInteractionState> interaction;
 
   const InteractionRegion({
     super.key,
     this.onLinkActivate,
+    this.onContentInteraction,
     required this.child,
     required this.links,
     required this.metrics,
@@ -102,35 +104,49 @@ final class _InteractionRegionState extends State<InteractionRegion> {
   var _selectionHandlesVisible = false;
   var _terminalDragActive = false;
   var _terminalOwnsInteraction = false;
+  var _consumeTap = false;
 
   Mods get _currentMods => readPointerModifiers(widget.readVirtualMods());
 
   @override
   Widget build(BuildContext context) {
-    final interaction = Listener(
-      behavior: HitTestBehavior.opaque,
-      onPointerDown: _handleTrackedDown,
-      onPointerMove: _handleTrackedMove,
-      onPointerHover: _handleTrackedHover,
-      onPointerUp: _handleTrackedUp,
-      onPointerCancel: _handleTrackedCancel,
-      child: ScrollGestureRegion(
-        metrics: widget.metrics,
-        readVirtualMods: widget.readVirtualMods,
-        onScrollInput: widget.onScrollInput,
-        physics: widget.scrollPhysics,
-        interaction: widget.interaction,
-        onScrollStart: _handleScrollStart,
-        child: PrimitiveGestureDetector(
-          onTapDown: _handleTapDown,
-          onTapUp: _handleTapUp,
-          onDragStart: _handleDragStart,
-          onDragUpdate: _handleDragUpdate,
-          onDragEnd: _endDrag,
-          onLongPressStart: _handleLongPressStart,
-          onLongPressMoveUpdate: _handleLongPressMoveUpdate,
-          onLongPressUp: _endDrag,
-          child: widget.child,
+    final interaction = RawGestureDetector(
+      gestures: {
+        _ContentInputGateRecognizer:
+            GestureRecognizerFactoryWithHandlers<_ContentInputGateRecognizer>(
+              () => _ContentInputGateRecognizer(
+                debugOwner: this,
+                consume: _consumeContentInteraction,
+              ),
+              (recognizer) => recognizer.consume = _consumeContentInteraction,
+            ),
+      },
+      child: Listener(
+        behavior: HitTestBehavior.opaque,
+        onPointerDown: _handleTrackedDown,
+        onPointerMove: _handleTrackedMove,
+        onPointerHover: _handleTrackedHover,
+        onPointerUp: _handleTrackedUp,
+        onPointerCancel: _handleTrackedCancel,
+        child: ScrollGestureRegion(
+          metrics: widget.metrics,
+          readVirtualMods: widget.readVirtualMods,
+          onScrollInput: widget.onScrollInput,
+          physics: widget.scrollPhysics,
+          interaction: widget.interaction,
+          onScrollStart: _handleScrollStart,
+          onContentInteraction: _consumeContentInteraction,
+          child: PrimitiveGestureDetector(
+            onTapDown: _handleTapDown,
+            onTapUp: _handleTapUp,
+            onDragStart: _handleDragStart,
+            onDragUpdate: _handleDragUpdate,
+            onDragEnd: _endDrag,
+            onLongPressStart: _handleLongPressStart,
+            onLongPressMoveUpdate: _handleLongPressMoveUpdate,
+            onLongPressUp: _endDrag,
+            child: widget.child,
+          ),
         ),
       ),
     );
@@ -149,6 +165,7 @@ final class _InteractionRegionState extends State<InteractionRegion> {
                 widget.settings.touchSelectionHandles,
             magnifierConfiguration: widget.settings.magnifierConfiguration,
             onDragStateChanged: (active) => _selectionHandleDragActive = active,
+            onContentInteraction: _consumeContentInteraction,
             terminalBackground: widget.terminalBackground,
             blockSelectionModifier: widget.settings.blockSelectionModifier,
           ),
@@ -213,6 +230,11 @@ final class _InteractionRegionState extends State<InteractionRegion> {
   }
 
   void _autoScrollTick() {
+    if (_consumeTap || _consumeContentInteraction()) {
+      _consumeTap = true;
+      _clearDrag();
+      return;
+    }
     if (Scrollable.maybeOf(context) == null) {
       _stopAutoScroll();
       return;
@@ -292,6 +314,12 @@ final class _InteractionRegionState extends State<InteractionRegion> {
   }
 
   void _handleDragStart(DragStartDetails details) {
+    if (_consumeTap || _consumeContentInteraction()) {
+      _consumeTap = true;
+      _cancelLinkPress();
+      _cancelSelectionInteraction(widget.selection, clearSelection: true);
+      return;
+    }
     Focus.maybeOf(context)?.requestFocus();
     _cancelLinkPress();
     if (_terminalOwnsInteraction) {
@@ -311,14 +339,29 @@ final class _InteractionRegionState extends State<InteractionRegion> {
   }
 
   void _handleDragUpdate(DragUpdateDetails details) {
+    if (_consumeTap || _consumeContentInteraction()) {
+      _consumeTap = true;
+      _clearDrag();
+      return;
+    }
     if (_drag != null) _updateDrag(details.localPosition);
   }
 
   void _handleLongPressMoveUpdate(LongPressMoveUpdateDetails details) {
+    if (_consumeTap || _consumeContentInteraction()) {
+      _consumeTap = true;
+      _clearDrag();
+      return;
+    }
     if (_drag != null) _updateDrag(details.localPosition);
   }
 
   void _handleLongPressStart(LongPressStartDetails details) {
+    if (_consumeTap || _consumeContentInteraction()) {
+      _consumeTap = true;
+      _cancelSelectionInteraction(widget.selection, clearSelection: true);
+      return;
+    }
     Focus.maybeOf(context)?.requestFocus();
     if (_terminalOwnsInteraction) return;
     if (!widget.settings.longPressSelection) {
@@ -354,6 +397,9 @@ final class _InteractionRegionState extends State<InteractionRegion> {
     }
   }
 
+  bool _consumeContentInteraction() =>
+      widget.onContentInteraction?.call() ?? false;
+
   void _handleSelectionChanged() {
     if (!_selectionHandlesVisible) return;
     final selectionSnapshot = _selectionSnapshotOf(widget.selection.selection);
@@ -387,6 +433,12 @@ final class _InteractionRegionState extends State<InteractionRegion> {
   }
 
   void _handleTapDown(TapDownDetails details, Duration timeStamp) {
+    if (_consumeTap || _consumeContentInteraction()) {
+      _consumeTap = true;
+      _cancelLinkPress();
+      _cancelSelectionInteraction(widget.selection, clearSelection: true);
+      return;
+    }
     _hideSelectionHandles();
     Focus.maybeOf(context)?.requestFocus();
     if (_terminalOwnsInteraction) return;
@@ -404,6 +456,13 @@ final class _InteractionRegionState extends State<InteractionRegion> {
   }
 
   void _handleTapUp(TapUpDetails details) {
+    if (_consumeTap || _consumeContentInteraction()) {
+      _consumeTap = false;
+      _cancelLinkPress();
+      _cancelSelectionInteraction(widget.selection, clearSelection: true);
+      _terminalOwnsInteraction = false;
+      return;
+    }
     if (_linkPressActive) {
       _linkPressActive = false;
       final link = widget.links.handleRelease(
@@ -425,9 +484,10 @@ final class _InteractionRegionState extends State<InteractionRegion> {
   }
 
   void _handleTrackedCancel(PointerCancelEvent event) {
+    _consumeTap = false;
     final pointer = _activePointers[event.pointer];
     if (pointer != null && pointer.kind != .touch) {
-      _releaseTrackedPointer(event.pointer, event.localPosition);
+      _cancelTrackedPointer(event.pointer, event.localPosition);
     } else {
       _activePointers.remove(event.pointer);
     }
@@ -443,6 +503,14 @@ final class _InteractionRegionState extends State<InteractionRegion> {
 
   void _handleTrackedDown(PointerDownEvent event) {
     if (_activePointers.containsKey(event.pointer)) return;
+    if (_consumeContentInteraction()) {
+      _consumeTap = true;
+      _interactionPointer = event.pointer;
+      _interactionTimeStamp = event.timeStamp;
+      _cancelLinkPress();
+      _cancelSelectionInteraction(widget.selection, clearSelection: true);
+      return;
+    }
     final tracked = _isMouseTracked();
     final button = tracked ? _buttonForDownEvent(event) : null;
     if (_interactionPointer == null) {
@@ -479,6 +547,13 @@ final class _InteractionRegionState extends State<InteractionRegion> {
   }
 
   void _handleTrackedMove(PointerMoveEvent event) {
+    if (_consumeTap || _consumeContentInteraction()) {
+      _consumeTap = true;
+      _cancelLinkPress();
+      _cancelSelectionInteraction(widget.selection, clearSelection: true);
+      _cancelTrackedPointer(event.pointer, event.localPosition);
+      return;
+    }
     final pointer = _activePointers[event.pointer];
     if (pointer == null) return;
     if (pointer.tapCandidate &&
@@ -505,6 +580,17 @@ final class _InteractionRegionState extends State<InteractionRegion> {
   }
 
   void _handleTrackedUp(PointerUpEvent event) {
+    if (_consumeTap || _consumeContentInteraction()) {
+      _consumeTap = false;
+      _cancelTrackedPointer(event.pointer, event.localPosition);
+      if (_interactionPointer == event.pointer) {
+        _interactionPointer = null;
+        _interactionTimeStamp = null;
+      }
+      _cancelLinkPress();
+      _cancelSelectionInteraction(widget.selection, clearSelection: true);
+      return;
+    }
     _releaseTrackedPointer(event.pointer, event.localPosition);
     if (_interactionPointer == event.pointer) {
       _interactionPointer = null;
@@ -570,6 +656,16 @@ final class _InteractionRegionState extends State<InteractionRegion> {
       );
     }
     _activePointers.remove(pointerId);
+  }
+
+  void _cancelTrackedPointer(int pointerId, Offset position) {
+    final pointer = _activePointers[pointerId];
+    if (pointer == null) return;
+    if (pointer.kind == .touch) {
+      _activePointers.remove(pointerId);
+    } else {
+      _releaseTrackedPointer(pointerId, position);
+    }
   }
 
   void _releaseTrackedPointers() {
@@ -650,6 +746,13 @@ final class _InteractionRegionState extends State<InteractionRegion> {
   }
 
   void _updateDrag(Offset position) {
+    if (_consumeTap || _consumeContentInteraction()) {
+      _consumeTap = true;
+      _cancelLinkPress();
+      _cancelSelectionInteraction(widget.selection, clearSelection: true);
+      _clearDrag();
+      return;
+    }
     final drag = _drag;
     if (drag == null) return;
     final cell = widget.metrics.cellAt(position);
@@ -768,6 +871,44 @@ final class _InteractionRegionState extends State<InteractionRegion> {
     }
     pointer.position = position;
   }
+}
+
+final class _ContentInputGateRecognizer extends OneSequenceGestureRecognizer {
+  _ContentInputGateRecognizer({
+    required Object debugOwner,
+    required this.consume,
+  }) : super(debugOwner: debugOwner);
+
+  ValueGetter<bool> consume;
+
+  @override
+  void addAllowedPointer(PointerDownEvent event) {
+    if (!consume()) return;
+    super.addAllowedPointer(event);
+    resolve(GestureDisposition.accepted);
+  }
+
+  @override
+  void addAllowedPointerPanZoom(PointerPanZoomStartEvent event) {
+    if (!consume()) return;
+    startTrackingPointer(event.pointer);
+    resolve(GestureDisposition.accepted);
+  }
+
+  @override
+  void handleEvent(PointerEvent event) {
+    if (event is PointerUpEvent ||
+        event is PointerCancelEvent ||
+        event is PointerPanZoomEndEvent) {
+      stopTrackingPointer(event.pointer);
+    }
+  }
+
+  @override
+  void didStopTrackingLastPointer(int pointer) {}
+
+  @override
+  String get debugDescription => 'content input gate';
 }
 
 final class _DragState {

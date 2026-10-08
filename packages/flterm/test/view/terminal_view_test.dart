@@ -16,6 +16,7 @@ import 'package:flutter/foundation.dart'
         debugDefaultTargetPlatformOverride,
         defaultTargetPlatform;
 import 'package:flutter/gestures.dart';
+import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:libghostty/libghostty.dart'
@@ -3100,6 +3101,51 @@ void main() {
       expect(controller.hasSelection, isFalse);
     });
 
+    testWidgets('disabled select-all stays disabled during a render hold', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        wrapInApp(
+          controller: controller,
+          autofocus: true,
+          gestureSettings: const TerminalGestureSettings(
+            selectAllShortcut: false,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      writeUtf8(controller, '\x1b[?2026hHIDDEN');
+
+      await sendSelectAllShortcut(tester);
+
+      expect(controller.modeGet(const TerminalMode.syncOutput()), isTrue);
+      expect(controller.hasSelection, isFalse);
+    });
+
+    testWidgets('Ctrl+C without selection reaches the terminal during a hold', (
+      tester,
+    ) async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+      try {
+        final output = <Uint8List>[];
+        controller.onOutput = output.add;
+        await tester.pumpWidget(
+          wrapInApp(controller: controller, autofocus: true),
+        );
+        await tester.pumpAndSettle();
+        writeUtf8(controller, '\x1b[?2026hHIDDEN');
+
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.control);
+        await tester.sendKeyEvent(LogicalKeyboardKey.keyC);
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.control);
+
+        expect(controller.modeGet(const TerminalMode.syncOutput()), isTrue);
+        expect(output.map(utf8.decode).join(), '\x03');
+      } finally {
+        debugDefaultTargetPlatformOverride = null;
+      }
+    });
+
     testWidgets('typing clears selection when selectionClearOnTyping is true', (
       tester,
     ) async {
@@ -3442,6 +3488,360 @@ void main() {
         expect(box.color.r, theme.background.r);
         expect(box.color.g, theme.background.g);
         expect(box.color.b, theme.background.b);
+      });
+    });
+
+    group('synchronized output', () {
+      const syncOutput = TerminalMode.syncOutput();
+
+      Future<Uint8List> surfacePixels(WidgetTester tester) async {
+        final boundary = tester.renderObject<RenderRepaintBoundary>(
+          find.byKey(const ValueKey('synchronized output surface')),
+        );
+        final pixels = await tester.runAsync(() async {
+          final image = await boundary.toImage();
+          try {
+            final data = await image.toByteData();
+            return Uint8List.fromList(
+              data!.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
+            );
+          } finally {
+            image.dispose();
+          }
+        });
+        return pixels!;
+      }
+
+      Widget wrappedPixelSurface() => MaterialApp(
+        home: Scaffold(
+          body: RepaintBoundary(
+            key: const ValueKey('synchronized output surface'),
+            child: SizedBox(
+              width: 800,
+              height: 480,
+              child: TerminalView(controller: controller),
+            ),
+          ),
+        ),
+      );
+
+      testWidgets('shows the captured frame until the deadline', (
+        tester,
+      ) async {
+        await tester.pumpWidget(wrappedPixelSurface());
+        writeUtf8(controller, 'READY');
+        await tester.pump();
+        final readyFrame = await surfacePixels(tester);
+
+        writeUtf8(controller, '\x1b[?2026h\x1b[2J\x1b[HPARTIAL');
+        await tester.pump();
+        expect(await surfacePixels(tester), orderedEquals(readyFrame));
+
+        await tester.pump(const Duration(seconds: 1));
+
+        expect(controller.modeGet(syncOutput), isFalse);
+        expect(await surfacePixels(tester), isNot(orderedEquals(readyFrame)));
+      });
+
+      testWidgets(
+        'consumes the click before activating a replaced OSC 8 link',
+        (tester) async {
+          final links = <ActivatedLink>[];
+          await tester.pumpWidget(
+            wrapInApp(
+              controller: controller,
+              width: 400,
+              height: 80,
+              linkSettings: LinkSettings(
+                modifier: .none,
+                types: const {LinkType.osc8},
+                onActivate: links.add,
+              ),
+            ),
+          );
+          writeUtf8(
+            controller,
+            '\x1b]8;;https://old.example\x07VISIBLE\x1b]8;;\x07',
+          );
+          await tester.pumpAndSettle();
+
+          final topLeft = tester.getTopLeft(find.byType(TerminalView));
+          await tester.tapAt(topLeft + const Offset(4, 8));
+          expect(links.single.uri, Uri.parse('https://old.example'));
+          links.clear();
+
+          writeUtf8(
+            controller,
+            '\x1b[?2026h\x1b[2J\x1b[H'
+            '\x1b]8;;https://new.example\x07HIDDEN\x1b]8;;\x07',
+          );
+          expect(controller.modeGet(syncOutput), isTrue);
+
+          final firstClick = await tester.startGesture(
+            topLeft + const Offset(4, 8),
+            kind: PointerDeviceKind.mouse,
+          );
+          await firstClick.up();
+          expect(links, isEmpty);
+          expect(controller.modeGet(syncOutput), isFalse);
+
+          final rapidClick = await tester.startGesture(
+            topLeft + const Offset(4, 8),
+            kind: PointerDeviceKind.mouse,
+          );
+          await rapidClick.up();
+          expect(links, isEmpty);
+
+          await tester.pump();
+          await tester.tapAt(topLeft + const Offset(4, 8));
+          expect(links, [
+            isA<ActivatedLink>().having(
+              (link) => link.uri,
+              'uri',
+              Uri.parse('https://new.example'),
+            ),
+          ]);
+        },
+      );
+
+      testWidgets('releases when the controller disables the mode', (
+        tester,
+      ) async {
+        await tester.pumpWidget(wrapInApp(controller: controller));
+        writeUtf8(controller, 'READY');
+        writeUtf8(controller, '\x1b[?2026h\x1b[2J\x1b[HPARTIAL');
+
+        expect(controller.modeGet(syncOutput), isTrue);
+
+        controller.modeSet(syncOutput, value: false);
+        await tester.pump();
+
+        expect(controller.modeGet(syncOutput), isFalse);
+      });
+
+      testWidgets('consumes the first primary screen wheel gesture', (
+        tester,
+      ) async {
+        final scrollController = TerminalScrollController();
+        addTearDown(scrollController.dispose);
+        await tester.pumpWidget(
+          wrapInApp(
+            controller: controller,
+            scrollController: scrollController,
+            width: 400,
+            height: 80,
+          ),
+        );
+        await tester.pumpAndSettle();
+        writeNumberedLines(80);
+        await tester.pumpAndSettle();
+        scrollController.jumpTo(scrollController.position.maxScrollExtent);
+        await tester.pump();
+        final initialPixels = scrollController.position.pixels;
+        expect(initialPixels, greaterThan(0));
+
+        writeUtf8(controller, '\x1b[?2026hPARTIAL');
+        expect(controller.modeGet(syncOutput), isTrue);
+        await tester.sendEventToBinding(
+          PointerScrollEvent(
+            position: tester.getCenter(find.byType(TerminalView)),
+            scrollDelta: const Offset(0, -100),
+          ),
+        );
+        expect(controller.modeGet(syncOutput), isFalse);
+        expect(scrollController.position.pixels, initialPixels);
+
+        await tester.pumpAndSettle();
+        await tester.sendEventToBinding(
+          PointerScrollEvent(
+            position: tester.getCenter(find.byType(TerminalView)),
+            scrollDelta: const Offset(0, -100),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(scrollController.position.pixels, isNot(initialPixels));
+      });
+
+      testWidgets('consumes a trackpad pan that starts during a hold', (
+        tester,
+      ) async {
+        final scrollController = TerminalScrollController();
+        addTearDown(scrollController.dispose);
+        await tester.pumpWidget(
+          wrapInApp(
+            controller: controller,
+            scrollController: scrollController,
+            width: 400,
+            height: 80,
+          ),
+        );
+        await tester.pumpAndSettle();
+        writeNumberedLines(80);
+        await tester.pumpAndSettle();
+        scrollController.jumpTo(scrollController.position.maxScrollExtent);
+        await tester.pump();
+        final initialPixels = scrollController.position.pixels;
+        expect(initialPixels, greaterThan(0));
+
+        writeUtf8(controller, '\x1b[?2026hPARTIAL');
+        final position = tester.getCenter(find.byType(TerminalView));
+        final heldPointer = TestPointer(101, PointerDeviceKind.trackpad);
+        await tester.sendEventToBinding(
+          heldPointer.panZoomStart(
+            position,
+            timeStamp: const Duration(milliseconds: 10),
+          ),
+        );
+        expect(controller.modeGet(syncOutput), isFalse);
+        await tester.pump();
+        await tester.sendEventToBinding(
+          heldPointer.panZoomUpdate(
+            position,
+            pan: const Offset(0, 100),
+            timeStamp: const Duration(milliseconds: 20),
+          ),
+        );
+        await tester.pump();
+        await tester.sendEventToBinding(
+          heldPointer.panZoomEnd(timeStamp: const Duration(milliseconds: 30)),
+        );
+        expect(scrollController.position.pixels, initialPixels);
+        await tester.pump();
+
+        await tester.pumpAndSettle();
+        final resumedPointer = TestPointer(102, PointerDeviceKind.trackpad);
+        await tester.sendEventToBinding(
+          resumedPointer.panZoomStart(
+            position,
+            timeStamp: const Duration(milliseconds: 40),
+          ),
+        );
+        await tester.pump();
+        await tester.sendEventToBinding(
+          resumedPointer.panZoomUpdate(
+            position,
+            pan: const Offset(0, 100),
+            timeStamp: const Duration(milliseconds: 50),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.sendEventToBinding(
+          resumedPointer.panZoomEnd(
+            timeStamp: const Duration(milliseconds: 60),
+          ),
+        );
+        await tester.pump();
+        expect(scrollController.position.pixels, isNot(initialPixels));
+      });
+
+      testWidgets('consumes select-all until the released frame paints', (
+        tester,
+      ) async {
+        await tester.pumpWidget(
+          wrapInApp(controller: controller, autofocus: true),
+        );
+        await tester.pumpAndSettle();
+        writeUtf8(controller, '\x1b[?2026hHIDDEN');
+
+        await sendSelectAllShortcut(tester);
+        expect(controller.modeGet(syncOutput), isFalse);
+        expect(controller.hasSelection, isFalse);
+
+        await sendSelectAllShortcut(tester);
+        expect(controller.hasSelection, isTrue);
+      });
+
+      testWidgets('stops an existing scroll fling when a hold begins', (
+        tester,
+      ) async {
+        final scrollController = TerminalScrollController();
+        addTearDown(scrollController.dispose);
+        await tester.pumpWidget(
+          wrapInApp(
+            controller: controller,
+            scrollController: scrollController,
+            width: 400,
+            height: 80,
+          ),
+        );
+        await tester.pumpAndSettle();
+        writeNumberedLines(80);
+        await tester.pumpAndSettle();
+        scrollController.jumpTo(0);
+        await tester.pump();
+
+        await tester.fling(
+          find.byType(TerminalView),
+          const Offset(0, -800),
+          1500,
+        );
+        await tester.pump(const Duration(milliseconds: 16));
+        final movingPixels = scrollController.position.pixels;
+        await tester.pump(const Duration(milliseconds: 16));
+        expect(scrollController.position.pixels, isNot(movingPixels));
+
+        writeUtf8(controller, '\x1b[?2026hHOLD');
+        final heldPixels = scrollController.position.pixels;
+        await tester.pump(const Duration(milliseconds: 32));
+        expect(scrollController.position.pixels, heldPixels);
+      });
+
+      testWidgets('times out once even when another start is received', (
+        tester,
+      ) async {
+        await tester.pumpWidget(wrapInApp(controller: controller));
+        writeUtf8(controller, '\x1b[?2026hFIRST');
+        await tester.pump(const Duration(milliseconds: 700));
+        writeUtf8(controller, '\x1b[?2026hSECOND');
+
+        expect(controller.modeGet(syncOutput), isTrue);
+        await tester.pump(const Duration(milliseconds: 300));
+
+        expect(controller.modeGet(syncOutput), isFalse);
+      });
+
+      testWidgets('resets an unrenderable hold after the write', (
+        tester,
+      ) async {
+        writeUtf8(controller, '\x1b[?2026hPARTIAL');
+
+        expect(controller.modeGet(syncOutput), isFalse);
+      });
+
+      testWidgets('releases when its view detaches', (tester) async {
+        await tester.pumpWidget(wrapInApp(controller: controller));
+        writeUtf8(controller, '\x1b[?2026hPARTIAL');
+        expect(controller.modeGet(syncOutput), isTrue);
+
+        await tester.pumpWidget(const SizedBox());
+
+        expect(controller.modeGet(syncOutput), isFalse);
+      });
+
+      testWidgets('releases when the terminal resets', (tester) async {
+        await tester.pumpWidget(wrapInApp(controller: controller));
+        writeUtf8(controller, '\x1b[?2026hPARTIAL');
+        expect(controller.modeGet(syncOutput), isTrue);
+
+        writeUtf8(controller, '\x1bc');
+
+        expect(controller.modeGet(syncOutput), isFalse);
+      });
+
+      testWidgets('releases when the terminal resizes', (tester) async {
+        await tester.pumpWidget(wrapInApp(controller: controller));
+        writeUtf8(controller, '\x1b[?2026hPARTIAL');
+        expect(controller.modeGet(syncOutput), isTrue);
+        final currentGeometry = terminal(controller).geometry;
+
+        terminal(controller).resize(
+          cols: currentGeometry.cols + 1,
+          rows: currentGeometry.rows,
+          cellWidthPx: 8,
+          cellHeightPx: 16,
+        );
+
+        expect(controller.modeGet(syncOutput), isFalse);
       });
     });
   });

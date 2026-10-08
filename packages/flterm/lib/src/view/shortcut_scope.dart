@@ -85,6 +85,7 @@ final class ShortcutScope extends StatelessWidget {
 
   /// Whether the select-all shortcut is active.
   final bool enableSelectAll;
+  final ValueGetter<bool>? onContentInteraction;
 
   /// Additional shortcut bindings merged over platform defaults.
   final Map<ShortcutActivator, Intent>? shortcuts;
@@ -95,6 +96,7 @@ final class ShortcutScope extends StatelessWidget {
     required this.controller,
     this.onPaste,
     this.enableSelectAll = true,
+    this.onContentInteraction,
     this.shortcuts,
   });
 
@@ -107,6 +109,7 @@ final class ShortcutScope extends StatelessWidget {
           CopyIntent: _ConditionalAction<CopyIntent>(
             isEnabledFn: () => controller.hasSelection,
             onInvokeFn: () {
+              if (onContentInteraction?.call() ?? false) return;
               final text = controller.selectedText();
               if (text.isNotEmpty) {
                 unawaited(Clipboard.setData(ClipboardData(text: text)));
@@ -118,10 +121,17 @@ final class ShortcutScope extends StatelessWidget {
           ),
           SelectAllIntent: _ConditionalAction<SelectAllIntent>(
             isEnabledFn: () => enableSelectAll,
-            onInvokeFn: controller.selectAll,
+            onInvokeFn: () {
+              if (onContentInteraction?.call() ?? false) return;
+              controller.selectAll();
+            },
           ),
           ClearIntent: CallbackAction<ClearIntent>(
-            onInvoke: (_) => controller.clear(),
+            onInvoke: (_) {
+              if (onContentInteraction?.call() ?? false) return null;
+              controller.clear();
+              return null;
+            },
           ),
         },
         child: child,
