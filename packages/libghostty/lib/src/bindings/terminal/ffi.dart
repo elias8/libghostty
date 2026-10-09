@@ -121,17 +121,18 @@ final class FfiTerminalBindings implements TerminalBindings {
     LibGhosttyHandle terminal,
     ContinuationWriter writer,
   ) {
-    final callable =
-        NativeCallable<
-          Bool Function(Pointer<Void>, Pointer<Uint8>, Size)
-        >.isolateLocal((Pointer<Void> _, Pointer<Uint8> data, int length) {
-          try {
-            return writer(Uint8List.fromList(data.asTypedList(length)));
-          } on Object catch (error, stackTrace) {
-            _captureCallbackError(error, stackTrace);
-            return false;
-          }
-        }, exceptionalReturn: false);
+    final callable = NativeCallable<native.WriterFnFunction>.isolateLocal((
+      Pointer<Void> _,
+      Pointer<Uint8> data,
+      int length,
+    ) {
+      try {
+        return writer(Uint8List.fromList(data.asTypedList(length)));
+      } on Object catch (error, stackTrace) {
+        _captureCallbackError(error, stackTrace);
+        return false;
+      }
+    }, exceptionalReturn: false);
     Object? resultError;
     StackTrace? resultStackTrace;
     try {
@@ -475,23 +476,18 @@ final class FfiTerminalBindings implements TerminalBindings {
       mimes.ref
         ..ptr = mimeBytes
         ..len = mimeData.length;
-      final reader =
-          NativeCallable<
-            Bool Function(Pointer<Void>, native.String, native.Writer)
-          >.isolateLocal((
-            Pointer<Void> _,
-            native.String mime,
-            native.Writer writer,
-          ) {
-            if (_readString(mime) != 'text/plain') {
-              return false;
-            }
-            final write = writer.write
-                .asFunction<
-                  bool Function(Pointer<Void>, Pointer<Uint8>, int)
-                >();
-            return write(writer.userdata, data, encoded.length);
-          }, exceptionalReturn: false);
+      final reader = NativeCallable<native.MimeReaderFnFunction>.isolateLocal((
+        Pointer<Void> _,
+        native.String mime,
+        native.Writer writer,
+      ) {
+        if (_readString(mime) != 'text/plain') {
+          return false;
+        }
+        final write = writer.write
+            .asFunction<bool Function(Pointer<Void>, Pointer<Uint8>, int)>();
+        return write(writer.userdata, data, encoded.length);
+      }, exceptionalReturn: false);
       try {
         final readerStruct = native.MimeReader.$allocate(
           arena,
@@ -685,9 +681,10 @@ final class FfiTerminalBindings implements TerminalBindings {
   void terminalSetOnBell(LibGhosttyHandle terminal, VoidCallback? callback) {
     final callable = callback == null
         ? null
-        : NativeCallable<
-            Void Function(native.Terminal, Pointer<Void>)
-          >.isolateLocal((native.Terminal terminal, Pointer<Void> userdata) {
+        : NativeCallable<native.TerminalBellFnFunction>.isolateLocal((
+            native.Terminal terminal,
+            Pointer<Void> userdata,
+          ) {
             try {
               callback();
             } on Object catch (error, stackTrace) {
@@ -704,13 +701,7 @@ final class FfiTerminalBindings implements TerminalBindings {
   ) {
     final callable = callback == null
         ? null
-        : NativeCallable<
-            Void Function(
-              native.Terminal,
-              Pointer<Void>,
-              Pointer<native.ClipboardRead>,
-            )
-          >.isolateLocal((
+        : NativeCallable<native.TerminalClipboardReadFnFunction>.isolateLocal((
             native.Terminal terminal,
             Pointer<Void> userdata,
             Pointer<native.ClipboardRead> pointer,
@@ -747,13 +738,7 @@ final class FfiTerminalBindings implements TerminalBindings {
   ) {
     final callable = callback == null
         ? null
-        : NativeCallable<
-            Void Function(
-              native.Terminal,
-              Pointer<Void>,
-              Pointer<native.ClipboardWrite>,
-            )
-          >.isolateLocal((
+        : NativeCallable<native.TerminalClipboardWriteFnFunction>.isolateLocal((
             native.Terminal terminal,
             Pointer<Void> userdata,
             Pointer<native.ClipboardWrite> pointer,
@@ -824,9 +809,7 @@ final class FfiTerminalBindings implements TerminalBindings {
   ) {
     final callable = callback == null
         ? null
-        : NativeCallable<
-            Bool Function(native.Terminal, Pointer<Void>, Pointer<UnsignedInt>)
-          >.isolateLocal((
+        : NativeCallable<native.TerminalColorSchemeFnFunction>.isolateLocal((
             native.Terminal terminal,
             Pointer<Void> userdata,
             Pointer<UnsignedInt> output,
@@ -852,11 +835,7 @@ final class FfiTerminalBindings implements TerminalBindings {
     final callable = callback == null
         ? null
         : NativeCallable<
-            Void Function(
-              native.Terminal,
-              Pointer<Void>,
-              Pointer<native.TerminalDesktopNotification>,
-            )
+            native.TerminalDesktopNotificationFnFunction
           >.isolateLocal((
             native.Terminal terminal,
             Pointer<Void> userdata,
@@ -889,11 +868,7 @@ final class FfiTerminalBindings implements TerminalBindings {
     final callable = callback == null
         ? null
         : NativeCallable<
-            Bool Function(
-              native.Terminal,
-              Pointer<Void>,
-              Pointer<native.DeviceAttributes>,
-            )
+            native.TerminalDeviceAttributesFnFunction
           >.isolateLocal((
             native.Terminal terminal,
             Pointer<Void> userdata,
@@ -936,9 +911,10 @@ final class FfiTerminalBindings implements TerminalBindings {
     }
     final buffer = _stringBuffer(terminal.value, option);
     final callable =
-        NativeCallable<
-          native.String Function(native.Terminal, Pointer<Void>)
-        >.isolateLocal((native.Terminal terminal, Pointer<Void> userdata) {
+        NativeCallable<native.TerminalEnquiryFnFunction>.isolateLocal((
+          native.Terminal terminal,
+          Pointer<Void> userdata,
+        ) {
           try {
             final bytes = callback();
             _replaceStringData(buffer, bytes);
@@ -961,13 +937,7 @@ final class FfiTerminalBindings implements TerminalBindings {
   ) {
     final callable = callback == null
         ? null
-        : NativeCallable<
-            Void Function(
-              native.Terminal,
-              Pointer<Void>,
-              Pointer<native.TerminalProgressReport>,
-            )
-          >.isolateLocal((
+        : NativeCallable<native.TerminalProgressReportFnFunction>.isolateLocal((
             native.Terminal terminal,
             Pointer<Void> userdata,
             Pointer<native.TerminalProgressReport> pointer,
@@ -995,13 +965,7 @@ final class FfiTerminalBindings implements TerminalBindings {
   ) {
     final callable = callback == null
         ? null
-        : NativeCallable<
-            Void Function(
-              native.Terminal,
-              Pointer<Void>,
-              Pointer<native.TerminalProgramStatus>,
-            )
-          >.isolateLocal((
+        : NativeCallable<native.TerminalProgramStatusFnFunction>.isolateLocal((
             native.Terminal terminal,
             Pointer<Void> userdata,
             Pointer<native.TerminalProgramStatus> pointer,
@@ -1034,13 +998,7 @@ final class FfiTerminalBindings implements TerminalBindings {
   ) {
     final callable = callback == null
         ? null
-        : NativeCallable<
-            Void Function(
-              native.Terminal,
-              Pointer<Void>,
-              Pointer<native.TerminalSemanticPrompt>,
-            )
-          >.isolateLocal((
+        : NativeCallable<native.TerminalSemanticPromptFnFunction>.isolateLocal((
             native.Terminal terminal,
             Pointer<Void> userdata,
             Pointer<native.TerminalSemanticPrompt> pointer,
@@ -1071,9 +1029,7 @@ final class FfiTerminalBindings implements TerminalBindings {
   ) {
     final callable = callback == null
         ? null
-        : NativeCallable<
-            Void Function(native.Terminal, Pointer<Void>, Bool)
-          >.isolateLocal((
+        : NativeCallable<native.TerminalRenderHoldFnFunction>.isolateLocal((
             native.Terminal terminal,
             Pointer<Void> userdata,
             bool held,
@@ -1104,13 +1060,7 @@ final class FfiTerminalBindings implements TerminalBindings {
   ) {
     final callable = callback == null
         ? null
-        : NativeCallable<
-            Bool Function(
-              native.Terminal,
-              Pointer<Void>,
-              Pointer<native.SizeReportSize>,
-            )
-          >.isolateLocal((
+        : NativeCallable<native.TerminalSizeFnFunction>.isolateLocal((
             native.Terminal terminal,
             Pointer<Void> userdata,
             Pointer<native.SizeReportSize> output,
@@ -1145,43 +1095,39 @@ final class FfiTerminalBindings implements TerminalBindings {
   ) {
     final callable = callback == null
         ? null
-        : NativeCallable<
-            Void Function(
-              native.Terminal,
-              Pointer<Void>,
-              Pointer<native.TerminalUnknownSequence>,
-            )
-          >.isolateLocal((
-            native.Terminal terminal,
-            Pointer<Void> userdata,
-            Pointer<native.TerminalUnknownSequence> pointer,
-          ) {
-            try {
-              final sequence = pointer.ref;
-              final payload = switch (sequence.tag) {
-                .apc => (
-                  content: _readBytes(sequence.value.apc.content),
-                  truncated: sequence.value.apc.truncated,
-                  terminator: null,
-                ),
-                .osc => (
-                  content: _readBytes(sequence.value.osc.content),
-                  truncated: sequence.value.osc.truncated,
-                  terminator: sequence.value.osc.terminator,
-                ),
-              };
-              callback(
-                TerminalUnknownSequence(
-                  tag: sequence.tag,
-                  content: payload.content,
-                  truncated: payload.truncated,
-                  terminator: payload.terminator,
-                ),
-              );
-            } on Object catch (error, stackTrace) {
-              _captureCallbackError(error, stackTrace);
-            }
-          });
+        : NativeCallable<native.TerminalUnknownSequenceFnFunction>.isolateLocal(
+            (
+              native.Terminal terminal,
+              Pointer<Void> userdata,
+              Pointer<native.TerminalUnknownSequence> pointer,
+            ) {
+              try {
+                final sequence = pointer.ref;
+                final payload = switch (sequence.tag) {
+                  .apc => (
+                    content: _readBytes(sequence.value.apc.content),
+                    truncated: sequence.value.apc.truncated,
+                    terminator: null,
+                  ),
+                  .osc => (
+                    content: _readBytes(sequence.value.osc.content),
+                    truncated: sequence.value.osc.truncated,
+                    terminator: sequence.value.osc.terminator,
+                  ),
+                };
+                callback(
+                  TerminalUnknownSequence(
+                    tag: sequence.tag,
+                    content: payload.content,
+                    truncated: payload.truncated,
+                    terminator: payload.terminator,
+                  ),
+                );
+              } on Object catch (error, stackTrace) {
+                _captureCallbackError(error, stackTrace);
+              }
+            },
+          );
     _replaceCallback(terminal, .unknownSequence, callable);
   }
 
@@ -1192,9 +1138,7 @@ final class FfiTerminalBindings implements TerminalBindings {
   ) {
     final callable = callback == null
         ? null
-        : NativeCallable<
-            Void Function(native.Terminal, Pointer<Void>, Pointer<Uint8>, Size)
-          >.isolateLocal((
+        : NativeCallable<native.TerminalWritePtyFnFunction>.isolateLocal((
             native.Terminal terminal,
             Pointer<Void> userdata,
             Pointer<Uint8> data,
@@ -1222,9 +1166,10 @@ final class FfiTerminalBindings implements TerminalBindings {
     }
     final buffer = _stringBuffer(terminal.value, option);
     final callable =
-        NativeCallable<
-          native.String Function(native.Terminal, Pointer<Void>)
-        >.isolateLocal((native.Terminal terminal, Pointer<Void> userdata) {
+        NativeCallable<native.TerminalXtversionFnFunction>.isolateLocal((
+          native.Terminal terminal,
+          Pointer<Void> userdata,
+        ) {
           try {
             _replaceStringData(buffer, utf8.encode(callback()));
             return buffer.string.ref;
