@@ -737,6 +737,8 @@ final class TerminalSession extends TerminalController with ChangeNotifier {
     _terminal.unknownSequenceMaxBytes = _config.unknownSequenceMaxBytes;
     _terminal.setApcBufferLimit(_config.apcBufferLimit);
     _terminal.setGlyphProtocol(enabled: _config.glyphProtocol);
+    _terminal.xtChecksumReport = _config.xtChecksumReport;
+    _terminal.xtChecksumExtension = _config.xtChecksumExtension;
     _terminal.defaultCursorShape = .fromValue(_config.cursorStyle.value);
     _terminal.defaultCursorBlink = _config.cursorBlink;
   }

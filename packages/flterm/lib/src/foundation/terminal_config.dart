@@ -151,6 +151,30 @@ class TerminalConfig {
   /// addition to Kitty graphics.
   final bool glyphProtocol;
 
+  /// Whether the terminal answers DECRQCRA checksum requests.
+  ///
+  /// Defaults to false because checksum requests can reveal terminal screen
+  /// contents. While disabled, XTCHECKSUM requests cannot change the
+  /// calculation.
+  final bool xtChecksumReport;
+
+  /// DECRQCRA checksum calculation flags and the default restored by RIS.
+  ///
+  /// Defaults to 0, which uses the DEC calculation. Values range from 0 to
+  /// 31. Combine these bit flags to change the calculation:
+  ///
+  /// - `1`: do not negate the result.
+  /// - `2`: do not add each cell's video attributes.
+  /// - `4`: do not omit blank cells.
+  /// - `8`: count cells never written to as spaces.
+  /// - `16`: use full codepoints instead of DEC 8-bit values.
+  ///
+  /// A running program can change the current calculation with XTCHECKSUM
+  /// when [xtChecksumReport] is enabled. Applying a configuration or performing
+  /// a RIS reset restores the configured calculation. Set
+  /// `xtChecksumExtension: 0` in [copyWith] to restore the DEC calculation.
+  final int xtChecksumExtension;
+
   /// Initial cursor shape. Terminal programs can override via DECSCUSR.
   final CursorShape cursorStyle;
 
@@ -200,6 +224,8 @@ class TerminalConfig {
     this.continuationMaxBytes = 0,
     this.cursorBlink,
     this.glyphProtocol = false,
+    this.xtChecksumReport = false,
+    this.xtChecksumExtension = 0,
     this.apcBufferLimit = defaultApcBufferLimit,
     this.unknownSequenceMaxBytes = 0,
     this.clipboardWriteMaxBytes,
@@ -222,6 +248,10 @@ class TerminalConfig {
        assert(
          continuationMaxBytes <= 0xffffffff,
          'continuationMaxBytes must fit an unsigned 32-bit integer',
+       ),
+       assert(
+         xtChecksumExtension >= 0 && xtChecksumExtension <= 31,
+         'xtChecksumExtension must be between 0 and 31',
        ),
        assert(
          scrollbackMaxBytes == null || scrollbackMaxBytes >= 0,
@@ -262,6 +292,8 @@ class TerminalConfig {
     unknownSequenceMaxBytes,
     clipboardWriteMaxBytes,
     glyphProtocol,
+    xtChecksumReport,
+    xtChecksumExtension,
     cursorStyle,
     cursorBlink,
     .hashAllUnordered(modes.entries.map((e) => .hash(e.key, e.value))),
@@ -286,6 +318,8 @@ class TerminalConfig {
           unknownSequenceMaxBytes == other.unknownSequenceMaxBytes &&
           clipboardWriteMaxBytes == other.clipboardWriteMaxBytes &&
           glyphProtocol == other.glyphProtocol &&
+          xtChecksumReport == other.xtChecksumReport &&
+          xtChecksumExtension == other.xtChecksumExtension &&
           cursorStyle == other.cursorStyle &&
           cursorBlink == other.cursorBlink &&
           mapEquals(modes, other.modes) &&
@@ -307,6 +341,8 @@ class TerminalConfig {
     int? unknownSequenceMaxBytes,
     int? clipboardWriteMaxBytes,
     bool? glyphProtocol,
+    bool? xtChecksumReport,
+    int? xtChecksumExtension,
     CursorShape? cursorStyle,
     bool? cursorBlink,
     Map<TerminalMode, bool>? modes,
@@ -330,6 +366,8 @@ class TerminalConfig {
       clipboardWriteMaxBytes:
           clipboardWriteMaxBytes ?? this.clipboardWriteMaxBytes,
       glyphProtocol: glyphProtocol ?? this.glyphProtocol,
+      xtChecksumReport: xtChecksumReport ?? this.xtChecksumReport,
+      xtChecksumExtension: xtChecksumExtension ?? this.xtChecksumExtension,
       cursorStyle: cursorStyle ?? this.cursorStyle,
       cursorBlink: cursorBlink ?? this.cursorBlink,
       modes: modes ?? this.modes,
@@ -347,6 +385,8 @@ class TerminalConfig {
       'cols: $cols, rows: $rows, '
       'continuationMaxBytes: $continuationMaxBytes, '
       'unknownSequenceMaxBytes: $unknownSequenceMaxBytes, '
+      'xtChecksumReport: $xtChecksumReport, '
+      'xtChecksumExtension: $xtChecksumExtension, '
       'scrollbackMaxBytes: $scrollbackMaxBytes, '
       'scrollbackMaxLines: $scrollbackMaxLines, '
       'resizePullScrollback: $resizePullScrollback, '
