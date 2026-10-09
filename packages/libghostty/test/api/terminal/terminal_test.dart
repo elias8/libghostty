@@ -33,6 +33,8 @@ void main() {
         terminal.dispose();
 
         expect(() => terminal.title, throwsStateError);
+        expect(() => terminal.scrollToPrompt(0), throwsStateError);
+        expect(() => terminal.scrollToPrompt(1), throwsStateError);
         expect(
           () => terminal.write(Uint8List.fromList([0x61])),
           throwsStateError,
@@ -119,6 +121,108 @@ void main() {
       test('returns zero when already in ground', () {
         expect(terminal.writeUntilGround(Uint8List.fromList([0x41])), 0);
         expect(terminal.isVtGround, isTrue);
+      });
+    });
+
+    group('prompt navigation', () {
+      test('scrolls by signed OSC 133 prompt groups', () {
+        terminal.resize(cols: 80, rows: 2);
+        terminal.write(
+          Uint8List.fromList(
+            utf8.encode(
+              '\x1b]133;P;k=i\x07p1\r\n'
+              '\x1b]133;B\x07cmd1\r\n'
+              '\x1b]133;C\x07out1\r\n'
+              '\x1b]133;P;k=i\x07p2\r\n'
+              '\x1b]133;B\x07cmd2\r\n'
+              '\x1b]133;C\x07out2\r\n'
+              '\x1b]133;P;k=i\x07p3\r\n'
+              '\x1b]133;B\x07cmd3\r\n'
+              '\x1b]133;C\x07out3\r\n'
+              '\x1b]133;P;k=i\x07p4',
+            ),
+          ),
+        );
+
+        expect(terminal.scrollToPrompt(-1), isTrue);
+        expect(terminal.scrollbar.offset, 6);
+        expect(terminal.scrollToPrompt(-1), isTrue);
+        expect(terminal.scrollbar.offset, 3);
+        expect(terminal.scrollToPrompt(1), isTrue);
+        expect(terminal.scrollbar.offset, 6);
+        expect(terminal.scrollToPrompt(0), isFalse);
+        expect(terminal.scrollbar.offset, 6);
+
+        expect(terminal.scrollToPrompt(100), isTrue);
+        expect(terminal.scrollbar.offset, 8);
+        expect(terminal.scrollToPrompt(1), isFalse);
+        expect(terminal.scrollbar.offset, 8);
+      });
+
+      test('scrolls to the active area past a final prompt continuation', () {
+        terminal.resize(cols: 80, rows: 3);
+        terminal.write(
+          Uint8List.fromList(
+            utf8.encode(
+              '\x1b]133;P;k=i\x07prompt\r\n'
+              '\x1b]133;P;k=c\x07continued\r\n'
+              'continued\r\ncontinued\r\ncontinued\r\ncontinued\r\ncontinued',
+            ),
+          ),
+        );
+        terminal.scrollToRow(1);
+
+        expect(terminal.scrollbar.offset, 1);
+        expect(terminal.scrollToPrompt(1), isTrue);
+        expect(terminal.scrollbar.offset, 4);
+        expect(terminal.isViewportActive, isTrue);
+      });
+
+      test('returns false without retained prompt markers', () {
+        terminal.resize(cols: 80, rows: 2);
+        terminal.write(
+          Uint8List.fromList(utf8.encode('one\r\ntwo\r\nthree\r\nfour')),
+        );
+        terminal.scrollToRow(0);
+
+        expect(terminal.scrollToPrompt(1), isFalse);
+        expect(terminal.scrollbar.offset, 0);
+      });
+
+      test('saturates oversized counts without wrapping direction', () {
+        terminal.resize(cols: 80, rows: 2);
+        terminal.write(
+          Uint8List.fromList(
+            utf8.encode(
+              '\x1b]133;P;k=i\x07p1\r\n'
+              '\x1b]133;B\x07cmd1\r\n'
+              '\x1b]133;C\x07out1\r\n'
+              '\x1b]133;P;k=i\x07p2\r\n'
+              '\x1b]133;B\x07cmd2\r\n'
+              '\x1b]133;C\x07out2\r\n'
+              '\x1b]133;P;k=i\x07p3\r\n'
+              '\x1b]133;B\x07cmd3\r\n'
+              '\x1b]133;C\x07out3\r\n'
+              '\x1b]133;P;k=i\x07p4',
+            ),
+          ),
+        );
+
+        terminal.scrollToTop();
+        expect(terminal.scrollToPrompt(0x80000000), isTrue);
+        expect(terminal.scrollbar.offset, 8);
+
+        terminal.scrollToTop();
+        expect(terminal.scrollToPrompt(0x100000000), isTrue);
+        expect(terminal.scrollbar.offset, 8);
+
+        terminal.scrollToBottom();
+        expect(terminal.scrollToPrompt(-0x80000000), isTrue);
+        expect(terminal.scrollbar.offset, 0);
+
+        terminal.scrollToBottom();
+        expect(terminal.scrollToPrompt(-0x100000000), isTrue);
+        expect(terminal.scrollbar.offset, 0);
       });
     });
 
