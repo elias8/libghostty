@@ -1797,6 +1797,46 @@ void main() {
       });
     });
 
+    group('scrollToPrompt', () {
+      test('notifies on movement and rejects calls after disposal', () {
+        final custom = TerminalController(
+          config: const TerminalConfig(rows: 2),
+        );
+        addTearDown(custom.dispose);
+        writeControllerUtf8(
+          custom,
+          '\x1b]133;P;k=i\x07p1\r\n'
+          '\x1b]133;B\x07cmd1\r\n'
+          '\x1b]133;C\x07out1\r\n'
+          '\x1b]133;P;k=i\x07p2\r\n'
+          '\x1b]133;B\x07cmd2\r\n'
+          '\x1b]133;C\x07out2\r\n'
+          '\x1b]133;P;k=i\x07p3\r\n'
+          '\x1b]133;B\x07cmd3\r\n'
+          '\x1b]133;C\x07out3\r\n'
+          '\x1b]133;P;k=i\x07p4',
+        );
+
+        var notifications = 0;
+        access(custom).viewportChanges.addListener(() => notifications++);
+
+        expect(custom.scrollToPrompt(-1), isTrue);
+        expect(custom.scrollbar.offset, 6);
+        expect(notifications, 1);
+        expect(custom.scrollToPrompt(0), isFalse);
+        expect(custom.scrollbar.offset, 6);
+        expect(notifications, 1);
+        expect(custom.scrollToPrompt(100), isTrue);
+        expect(custom.scrollbar.offset, 8);
+        expect(notifications, 2);
+        expect(custom.scrollToPrompt(1), isFalse);
+        expect(notifications, 2);
+
+        custom.dispose();
+        expect(() => custom.scrollToPrompt(1), throwsStateError);
+      });
+    });
+
     group('scrollToBottom policy', () {
       TerminalController outputFollowController() {
         final target = TerminalController(
