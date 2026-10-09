@@ -291,11 +291,11 @@ const int PTYX_TERM_MODE_SIGNALS_VALID = 4;
 
 /// Environment handling mode for a spawned child process.
 typedef env_mode = ffi.Uint32;
-typedef Dartenv_mode = int;
+typedef Dartptyx_env_mode_t = int;
 
 /// Bitset used for option flags and validity masks.
 typedef flags = ffi.Uint32;
-typedef Dartflags = int;
+typedef Dartptyx_flags_t = int;
 
 /// Opaque caller-filled buffer used by ptyx_write_owned().
 typedef owned_buffer = ptyx_owned_buffer;
@@ -468,6 +468,6 @@ typedef size = ptyx_size;
 
 /// Status code returned by fallible ABI functions.
 typedef status = ffi.Uint32;
-typedef Dartstatus = int;
+typedef Dartptyx_status_t = int;
 typedef string = ptyx_string;
 typedef term_mode = ptyx_term_mode;

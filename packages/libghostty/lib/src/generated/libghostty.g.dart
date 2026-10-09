@@ -71,7 +71,7 @@ Result ghostty_build_info(BuildInfo data, ffi.Pointer<ffi.Void> out) {
 external int _ghostty_cell_get(int cell, int data, ffi.Pointer<ffi.Void> out);
 
 Result ghostty_cell_get(
-  DartCell cell,
+  DartGhosttyCell cell,
   CellData data,
   ffi.Pointer<ffi.Void> out,
 ) {
@@ -115,7 +115,7 @@ external int _ghostty_cell_get_multi(
 );
 
 Result ghostty_cell_get_multi(
-  DartCell cell,
+  DartGhosttyCell cell,
   int count,
   ffi.Pointer<ffi.UnsignedInt> keys,
   ffi.Pointer<ffi.Pointer<ffi.Void>> values,
@@ -1945,7 +1945,7 @@ external int _ghostty_mode_report_encode(
 );
 
 Result ghostty_mode_report_encode(
-  DartMode mode,
+  DartGhosttyMode mode,
   ModeReportState state,
   ffi.Pointer<ffi.Char> buf,
   int buf_len,
@@ -3159,7 +3159,11 @@ Result ghostty_render_state_update(RenderState state, Terminal terminal) {
 )
 external int _ghostty_row_get(int row, int data, ffi.Pointer<ffi.Void> out);
 
-Result ghostty_row_get(DartRow row, RowData data, ffi.Pointer<ffi.Void> out) {
+Result ghostty_row_get(
+  DartGhosttyRow row,
+  RowData data,
+  ffi.Pointer<ffi.Void> out,
+) {
   return Result.fromValue(_ghostty_row_get(row, data.value, out));
 }
 
@@ -3200,7 +3204,7 @@ external int _ghostty_row_get_multi(
 );
 
 Result ghostty_row_get_multi(
-  DartRow row,
+  DartGhosttyRow row,
   int count,
   ffi.Pointer<ffi.UnsignedInt> keys,
   ffi.Pointer<ffi.Pointer<ffi.Void>> values,
@@ -6454,7 +6458,7 @@ final class Buffer extends ffi.Struct {
 ///
 /// @ingroup screen
 typedef Cell = ffi.Uint64;
-typedef DartCell = int;
+typedef DartGhosttyCell = int;
 
 /// A borrowed view of contiguous raw cell values.
 ///
@@ -6642,14 +6646,17 @@ final class ClipboardReadReply extends ffi.Struct {
 ///
 /// @ingroup terminal
 typedef ClipboardReadReplyFn =
-    ffi.Pointer<
-      ffi.NativeFunction<
-        ffi.Void Function(
-          ffi.Pointer<ClipboardRead> read,
-          ffi.Pointer<ClipboardReadReply> reply,
-        )
-      >
-    >;
+    ffi.Pointer<ffi.NativeFunction<ClipboardReadReplyFnFunction>>;
+typedef ClipboardReadReplyFnFunction =
+    ffi.Void Function(
+      ffi.Pointer<ClipboardRead> read,
+      ffi.Pointer<ClipboardReadReply> reply,
+    );
+typedef DartGhosttyClipboardReadReplyFnFunction =
+    void Function(
+      ffi.Pointer<ClipboardRead> read,
+      ffi.Pointer<ClipboardReadReply> reply,
+    );
 
 /// A synchronous request to write clipboard contents.
 ///
@@ -6761,14 +6768,17 @@ final class ClipboardWriteReply extends ffi.Struct {
 ///
 /// @ingroup terminal
 typedef ClipboardWriteReplyFn =
-    ffi.Pointer<
-      ffi.NativeFunction<
-        ffi.Void Function(
-          ffi.Pointer<ClipboardWrite> write,
-          ffi.Pointer<ClipboardWriteReply> reply,
-        )
-      >
-    >;
+    ffi.Pointer<ffi.NativeFunction<ClipboardWriteReplyFnFunction>>;
+typedef ClipboardWriteReplyFnFunction =
+    ffi.Void Function(
+      ffi.Pointer<ClipboardWrite> write,
+      ffi.Pointer<ClipboardWriteReply> reply,
+    );
+typedef DartGhosttyClipboardWriteReplyFnFunction =
+    void Function(
+      ffi.Pointer<ClipboardWrite> write,
+      ffi.Pointer<ClipboardWriteReply> reply,
+    );
 
 /// A borrowed list of Unicode scalar values.
 ///
@@ -6798,7 +6808,7 @@ final class Codepoints extends ffi.Struct {
 ///
 /// @ingroup color
 typedef ColorPaletteIndex = ffi.Uint8;
-typedef DartColorPaletteIndex = int;
+typedef DartGhosttyColorPaletteIndex = int;
 
 /// A 256-bit mask of palette indices.
 ///
@@ -7248,7 +7258,7 @@ final class KittyGraphicsPlacementRenderInfo extends ffi.Struct {
 ///
 /// @ingroup key
 typedef KittyKeyFlags = ffi.Uint8;
-typedef DartKittyKeyFlags = int;
+typedef DartGhosttyKittyKeyFlags = int;
 
 /// A MIME-typed content source callback and its opaque context.
 ///
@@ -7293,16 +7303,15 @@ final class MimeReader extends ffi.Struct {
 /// @param writer Where to write the data; valid only during this call
 /// @return true once all the data was written, false if it could not
 /// be read or the writer refused a write
-typedef MimeReaderFn =
-    ffi.Pointer<
-      ffi.NativeFunction<
-        ffi.Bool Function(
-          ffi.Pointer<ffi.Void> userdata,
-          String mime,
-          Writer writer,
-        )
-      >
-    >;
+typedef MimeReaderFn = ffi.Pointer<ffi.NativeFunction<MimeReaderFnFunction>>;
+typedef MimeReaderFnFunction =
+    ffi.Bool Function(
+      ffi.Pointer<ffi.Void> userdata,
+      String mime,
+      Writer writer,
+    );
+typedef DartGhosttyMimeReaderFnFunction =
+    bool Function(ffi.Pointer<ffi.Void> userdata, String mime, Writer writer);
 
 /// A packed 16-bit terminal mode.
 ///
@@ -7310,7 +7319,7 @@ typedef MimeReaderFn =
 /// single 16-bit integer. Use the inline helper functions to construct
 /// and inspect modes rather than manipulating bits directly.
 typedef Mode = ffi.Uint16;
-typedef DartMode = int;
+typedef DartGhosttyMode = int;
 
 /// Keyboard modifier keys bitmask.
 ///
@@ -7327,7 +7336,7 @@ typedef DartMode = int;
 ///
 /// @ingroup key
 typedef Mods = ffi.Uint16;
-typedef DartMods = int;
+typedef DartGhosttyMods = int;
 
 /// Opaque handle to a mouse encoder instance.
 ///
@@ -7593,17 +7602,21 @@ final class Reader extends ffi.Struct {
 /// @param capacity Writable capacity of @p buffer; always greater than zero
 /// @param[out] out_read Number of bytes read when returning true; non-NULL
 /// @return true for a successful read or end-of-file, false for a fatal error
-typedef ReaderFn =
-    ffi.Pointer<
-      ffi.NativeFunction<
-        ffi.Bool Function(
-          ffi.Pointer<ffi.Void> userdata,
-          ffi.Pointer<ffi.Uint8> buffer,
-          ffi.Size capacity,
-          ffi.Pointer<ffi.Size> out_read,
-        )
-      >
-    >;
+typedef ReaderFn = ffi.Pointer<ffi.NativeFunction<ReaderFnFunction>>;
+typedef ReaderFnFunction =
+    ffi.Bool Function(
+      ffi.Pointer<ffi.Void> userdata,
+      ffi.Pointer<ffi.Uint8> buffer,
+      ffi.Size capacity,
+      ffi.Pointer<ffi.Size> out_read,
+    );
+typedef DartGhosttyReaderFnFunction =
+    bool Function(
+      ffi.Pointer<ffi.Void> userdata,
+      ffi.Pointer<ffi.Uint8> buffer,
+      int capacity,
+      ffi.Pointer<ffi.Size> out_read,
+    );
 
 /// Opaque handle to a render state instance.
 ///
@@ -7828,7 +7841,7 @@ final class RenderStateRowSelection extends ffi.Struct {
 ///
 /// @ingroup screen
 typedef Row = ffi.Uint64;
-typedef DartRow = int;
+typedef DartGhosttyRow = int;
 
 /// Opaque handle to a terminal search.
 ///
@@ -8267,7 +8280,7 @@ final class StyleColorValue extends ffi.Union {
 ///
 /// @ingroup style
 typedef StyleId = ffi.Uint16;
-typedef DartStyleId = int;
+typedef DartGhosttyStyleId = int;
 
 /// A surface-space position in pixels.
 ///
@@ -8341,17 +8354,23 @@ final class SurfacePosition extends ffi.Struct {
 /// @return true if the image was decoded and @p out was filled in,
 /// false on failure
 typedef SysDecodePngFn =
-    ffi.Pointer<
-      ffi.NativeFunction<
-        ffi.Bool Function(
-          ffi.Pointer<ffi.Void> userdata,
-          ffi.Pointer<Allocator> allocator,
-          ffi.Pointer<ffi.Uint8> data,
-          ffi.Size data_len,
-          ffi.Pointer<SysImage> out,
-        )
-      >
-    >;
+    ffi.Pointer<ffi.NativeFunction<SysDecodePngFnFunction>>;
+typedef SysDecodePngFnFunction =
+    ffi.Bool Function(
+      ffi.Pointer<ffi.Void> userdata,
+      ffi.Pointer<Allocator> allocator,
+      ffi.Pointer<ffi.Uint8> data,
+      ffi.Size data_len,
+      ffi.Pointer<SysImage> out,
+    );
+typedef DartGhosttySysDecodePngFnFunction =
+    bool Function(
+      ffi.Pointer<ffi.Void> userdata,
+      ffi.Pointer<Allocator> allocator,
+      ffi.Pointer<ffi.Uint8> data,
+      int data_len,
+      ffi.Pointer<SysImage> out,
+    );
 
 /// A decoded image, filled in by a decode callback such as
 /// SysDecodePngFn.
@@ -8413,19 +8432,25 @@ final class SysImage extends ffi.Struct {
 /// @param scope_len   Length of the scope name in bytes
 /// @param message     Pointer to the log message bytes
 /// @param message_len Length of the log message in bytes
-typedef SysLogFn =
-    ffi.Pointer<
-      ffi.NativeFunction<
-        ffi.Void Function(
-          ffi.Pointer<ffi.Void> userdata,
-          ffi.UnsignedInt level,
-          ffi.Pointer<ffi.Uint8> scope,
-          ffi.Size scope_len,
-          ffi.Pointer<ffi.Uint8> message,
-          ffi.Size message_len,
-        )
-      >
-    >;
+typedef SysLogFn = ffi.Pointer<ffi.NativeFunction<SysLogFnFunction>>;
+typedef SysLogFnFunction =
+    ffi.Void Function(
+      ffi.Pointer<ffi.Void> userdata,
+      ffi.UnsignedInt level,
+      ffi.Pointer<ffi.Uint8> scope,
+      ffi.Size scope_len,
+      ffi.Pointer<ffi.Uint8> message,
+      ffi.Size message_len,
+    );
+typedef DartGhosttySysLogFnFunction =
+    void Function(
+      ffi.Pointer<ffi.Void> userdata,
+      SysLogLevel level,
+      ffi.Pointer<ffi.Uint8> scope,
+      int scope_len,
+      ffi.Pointer<ffi.Uint8> message,
+      int message_len,
+    );
 
 /// Callback type for secure random bytes.
 ///
@@ -8439,15 +8464,19 @@ typedef SysLogFn =
 /// @param len      Number of bytes to fill
 /// @return true if the buffer was filled, false if no entropy is available
 typedef SysRandomSecureFn =
-    ffi.Pointer<
-      ffi.NativeFunction<
-        ffi.Bool Function(
-          ffi.Pointer<ffi.Void> userdata,
-          ffi.Pointer<ffi.Uint8> buf,
-          ffi.Size len,
-        )
-      >
-    >;
+    ffi.Pointer<ffi.NativeFunction<SysRandomSecureFnFunction>>;
+typedef SysRandomSecureFnFunction =
+    ffi.Bool Function(
+      ffi.Pointer<ffi.Void> userdata,
+      ffi.Pointer<ffi.Uint8> buf,
+      ffi.Size len,
+    );
+typedef DartGhosttySysRandomSecureFnFunction =
+    bool Function(
+      ffi.Pointer<ffi.Void> userdata,
+      ffi.Pointer<ffi.Uint8> buf,
+      int len,
+    );
 
 /// Opaque handle to a terminal instance.
 ///
@@ -8463,11 +8492,11 @@ typedef Terminal = ffi.Pointer<TerminalImpl>;
 ///
 /// @ingroup terminal
 typedef TerminalBellFn =
-    ffi.Pointer<
-      ffi.NativeFunction<
-        ffi.Void Function(Terminal terminal, ffi.Pointer<ffi.Void> userdata)
-      >
-    >;
+    ffi.Pointer<ffi.NativeFunction<TerminalBellFnFunction>>;
+typedef TerminalBellFnFunction =
+    ffi.Void Function(Terminal terminal, ffi.Pointer<ffi.Void> userdata);
+typedef DartGhosttyTerminalBellFnFunction =
+    void Function(Terminal terminal, ffi.Pointer<ffi.Void> userdata);
 
 /// Callback function type for clipboard_read.
 ///
@@ -8501,15 +8530,19 @@ typedef TerminalBellFn =
 ///
 /// @ingroup terminal
 typedef TerminalClipboardReadFn =
-    ffi.Pointer<
-      ffi.NativeFunction<
-        ffi.Void Function(
-          Terminal terminal,
-          ffi.Pointer<ffi.Void> userdata,
-          ffi.Pointer<ClipboardRead> read,
-        )
-      >
-    >;
+    ffi.Pointer<ffi.NativeFunction<TerminalClipboardReadFnFunction>>;
+typedef TerminalClipboardReadFnFunction =
+    ffi.Void Function(
+      Terminal terminal,
+      ffi.Pointer<ffi.Void> userdata,
+      ffi.Pointer<ClipboardRead> read,
+    );
+typedef DartGhosttyTerminalClipboardReadFnFunction =
+    void Function(
+      Terminal terminal,
+      ffi.Pointer<ffi.Void> userdata,
+      ffi.Pointer<ClipboardRead> read,
+    );
 
 /// Callback function type for clipboard_write.
 ///
@@ -8536,15 +8569,19 @@ typedef TerminalClipboardReadFn =
 ///
 /// @ingroup terminal
 typedef TerminalClipboardWriteFn =
-    ffi.Pointer<
-      ffi.NativeFunction<
-        ffi.Void Function(
-          Terminal terminal,
-          ffi.Pointer<ffi.Void> userdata,
-          ffi.Pointer<ClipboardWrite> write,
-        )
-      >
-    >;
+    ffi.Pointer<ffi.NativeFunction<TerminalClipboardWriteFnFunction>>;
+typedef TerminalClipboardWriteFnFunction =
+    ffi.Void Function(
+      Terminal terminal,
+      ffi.Pointer<ffi.Void> userdata,
+      ffi.Pointer<ClipboardWrite> write,
+    );
+typedef DartGhosttyTerminalClipboardWriteFnFunction =
+    void Function(
+      Terminal terminal,
+      ffi.Pointer<ffi.Void> userdata,
+      ffi.Pointer<ClipboardWrite> write,
+    );
 
 /// Callback function type for color scheme queries (CSI ? 996 n).
 ///
@@ -8559,15 +8596,19 @@ typedef TerminalClipboardWriteFn =
 ///
 /// @ingroup terminal
 typedef TerminalColorSchemeFn =
-    ffi.Pointer<
-      ffi.NativeFunction<
-        ffi.Bool Function(
-          Terminal terminal,
-          ffi.Pointer<ffi.Void> userdata,
-          ffi.Pointer<ffi.UnsignedInt> out_scheme,
-        )
-      >
-    >;
+    ffi.Pointer<ffi.NativeFunction<TerminalColorSchemeFnFunction>>;
+typedef TerminalColorSchemeFnFunction =
+    ffi.Bool Function(
+      Terminal terminal,
+      ffi.Pointer<ffi.Void> userdata,
+      ffi.Pointer<ffi.UnsignedInt> out_scheme,
+    );
+typedef DartGhosttyTerminalColorSchemeFnFunction =
+    bool Function(
+      Terminal terminal,
+      ffi.Pointer<ffi.Void> userdata,
+      ffi.Pointer<ffi.UnsignedInt> out_scheme,
+    );
 
 /// A request to show a desktop notification.
 ///
@@ -8598,15 +8639,19 @@ final class TerminalDesktopNotification extends ffi.Struct {
 ///
 /// @ingroup terminal
 typedef TerminalDesktopNotificationFn =
-    ffi.Pointer<
-      ffi.NativeFunction<
-        ffi.Void Function(
-          Terminal terminal,
-          ffi.Pointer<ffi.Void> userdata,
-          ffi.Pointer<TerminalDesktopNotification> notification,
-        )
-      >
-    >;
+    ffi.Pointer<ffi.NativeFunction<TerminalDesktopNotificationFnFunction>>;
+typedef TerminalDesktopNotificationFnFunction =
+    ffi.Void Function(
+      Terminal terminal,
+      ffi.Pointer<ffi.Void> userdata,
+      ffi.Pointer<TerminalDesktopNotification> notification,
+    );
+typedef DartGhosttyTerminalDesktopNotificationFnFunction =
+    void Function(
+      Terminal terminal,
+      ffi.Pointer<ffi.Void> userdata,
+      ffi.Pointer<TerminalDesktopNotification> notification,
+    );
 
 /// Callback function type for device attributes queries (DA1/DA2/DA3).
 ///
@@ -8624,15 +8669,19 @@ typedef TerminalDesktopNotificationFn =
 ///
 /// @ingroup terminal
 typedef TerminalDeviceAttributesFn =
-    ffi.Pointer<
-      ffi.NativeFunction<
-        ffi.Bool Function(
-          Terminal terminal,
-          ffi.Pointer<ffi.Void> userdata,
-          ffi.Pointer<DeviceAttributes> out_attrs,
-        )
-      >
-    >;
+    ffi.Pointer<ffi.NativeFunction<TerminalDeviceAttributesFnFunction>>;
+typedef TerminalDeviceAttributesFnFunction =
+    ffi.Bool Function(
+      Terminal terminal,
+      ffi.Pointer<ffi.Void> userdata,
+      ffi.Pointer<DeviceAttributes> out_attrs,
+    );
+typedef DartGhosttyTerminalDeviceAttributesFnFunction =
+    bool Function(
+      Terminal terminal,
+      ffi.Pointer<ffi.Void> userdata,
+      ffi.Pointer<DeviceAttributes> out_attrs,
+    );
 
 /// Callback function type for enquiry (ENQ, 0x05).
 ///
@@ -8647,11 +8696,9 @@ typedef TerminalDeviceAttributesFn =
 ///
 /// @ingroup terminal
 typedef TerminalEnquiryFn =
-    ffi.Pointer<
-      ffi.NativeFunction<
-        String Function(Terminal terminal, ffi.Pointer<ffi.Void> userdata)
-      >
-    >;
+    ffi.Pointer<ffi.NativeFunction<TerminalEnquiryFnFunction>>;
+typedef TerminalEnquiryFnFunction =
+    String Function(Terminal terminal, ffi.Pointer<ffi.Void> userdata);
 
 final class TerminalImpl extends ffi.Opaque {}
 
@@ -8986,15 +9033,19 @@ final class TerminalProgramStatus extends ffi.Struct {
 ///
 /// @ingroup terminal
 typedef TerminalProgramStatusFn =
-    ffi.Pointer<
-      ffi.NativeFunction<
-        ffi.Void Function(
-          Terminal terminal,
-          ffi.Pointer<ffi.Void> userdata,
-          ffi.Pointer<TerminalProgramStatus> report,
-        )
-      >
-    >;
+    ffi.Pointer<ffi.NativeFunction<TerminalProgramStatusFnFunction>>;
+typedef TerminalProgramStatusFnFunction =
+    ffi.Void Function(
+      Terminal terminal,
+      ffi.Pointer<ffi.Void> userdata,
+      ffi.Pointer<TerminalProgramStatus> report,
+    );
+typedef DartGhosttyTerminalProgramStatusFnFunction =
+    void Function(
+      Terminal terminal,
+      ffi.Pointer<ffi.Void> userdata,
+      ffi.Pointer<TerminalProgramStatus> report,
+    );
 
 /// A progress report emitted by the running program.
 ///
@@ -9040,15 +9091,19 @@ final class TerminalProgressReport extends ffi.Struct {
 ///
 /// @ingroup terminal
 typedef TerminalProgressReportFn =
-    ffi.Pointer<
-      ffi.NativeFunction<
-        ffi.Void Function(
-          Terminal terminal,
-          ffi.Pointer<ffi.Void> userdata,
-          ffi.Pointer<TerminalProgressReport> report,
-        )
-      >
-    >;
+    ffi.Pointer<ffi.NativeFunction<TerminalProgressReportFnFunction>>;
+typedef TerminalProgressReportFnFunction =
+    ffi.Void Function(
+      Terminal terminal,
+      ffi.Pointer<ffi.Void> userdata,
+      ffi.Pointer<TerminalProgressReport> report,
+    );
+typedef DartGhosttyTerminalProgressReportFnFunction =
+    void Function(
+      Terminal terminal,
+      ffi.Pointer<ffi.Void> userdata,
+      ffi.Pointer<TerminalProgressReport> report,
+    );
 
 /// Callback function type for pwd_changed.
 ///
@@ -9071,11 +9126,11 @@ typedef TerminalProgressReportFn =
 ///
 /// @ingroup terminal
 typedef TerminalPwdChangedFn =
-    ffi.Pointer<
-      ffi.NativeFunction<
-        ffi.Void Function(Terminal terminal, ffi.Pointer<ffi.Void> userdata)
-      >
-    >;
+    ffi.Pointer<ffi.NativeFunction<TerminalPwdChangedFnFunction>>;
+typedef TerminalPwdChangedFnFunction =
+    ffi.Void Function(Terminal terminal, ffi.Pointer<ffi.Void> userdata);
+typedef DartGhosttyTerminalPwdChangedFnFunction =
+    void Function(Terminal terminal, ffi.Pointer<ffi.Void> userdata);
 
 /// Callback function type for render_hold.
 ///
@@ -9192,15 +9247,15 @@ typedef TerminalPwdChangedFn =
 ///
 /// @ingroup terminal
 typedef TerminalRenderHoldFn =
-    ffi.Pointer<
-      ffi.NativeFunction<
-        ffi.Void Function(
-          Terminal terminal,
-          ffi.Pointer<ffi.Void> userdata,
-          ffi.Bool held,
-        )
-      >
-    >;
+    ffi.Pointer<ffi.NativeFunction<TerminalRenderHoldFnFunction>>;
+typedef TerminalRenderHoldFnFunction =
+    ffi.Void Function(
+      Terminal terminal,
+      ffi.Pointer<ffi.Void> userdata,
+      ffi.Bool held,
+    );
+typedef DartGhosttyTerminalRenderHoldFnFunction =
+    void Function(Terminal terminal, ffi.Pointer<ffi.Void> userdata, bool held);
 
 /// Callback function type for reset.
 ///
@@ -9227,11 +9282,11 @@ typedef TerminalRenderHoldFn =
 ///
 /// @ingroup terminal
 typedef TerminalResetFn =
-    ffi.Pointer<
-      ffi.NativeFunction<
-        ffi.Void Function(Terminal terminal, ffi.Pointer<ffi.Void> userdata)
-      >
-    >;
+    ffi.Pointer<ffi.NativeFunction<TerminalResetFnFunction>>;
+typedef TerminalResetFnFunction =
+    ffi.Void Function(Terminal terminal, ffi.Pointer<ffi.Void> userdata);
+typedef DartGhosttyTerminalResetFnFunction =
+    void Function(Terminal terminal, ffi.Pointer<ffi.Void> userdata);
 
 /// Tagged union for scroll viewport behavior.
 ///
@@ -9523,15 +9578,19 @@ final class TerminalSemanticPrompt extends ffi.Struct {
 ///
 /// @ingroup terminal
 typedef TerminalSemanticPromptFn =
-    ffi.Pointer<
-      ffi.NativeFunction<
-        ffi.Void Function(
-          Terminal terminal,
-          ffi.Pointer<ffi.Void> userdata,
-          ffi.Pointer<TerminalSemanticPrompt> event,
-        )
-      >
-    >;
+    ffi.Pointer<ffi.NativeFunction<TerminalSemanticPromptFnFunction>>;
+typedef TerminalSemanticPromptFnFunction =
+    ffi.Void Function(
+      Terminal terminal,
+      ffi.Pointer<ffi.Void> userdata,
+      ffi.Pointer<TerminalSemanticPrompt> event,
+    );
+typedef DartGhosttyTerminalSemanticPromptFnFunction =
+    void Function(
+      Terminal terminal,
+      ffi.Pointer<ffi.Void> userdata,
+      ffi.Pointer<TerminalSemanticPrompt> event,
+    );
 
 /// Callback function type for terminal size reports.
 ///
@@ -9548,15 +9607,19 @@ typedef TerminalSemanticPromptFn =
 ///
 /// @ingroup terminal
 typedef TerminalSizeFn =
-    ffi.Pointer<
-      ffi.NativeFunction<
-        ffi.Bool Function(
-          Terminal terminal,
-          ffi.Pointer<ffi.Void> userdata,
-          ffi.Pointer<SizeReportSize> out_size,
-        )
-      >
-    >;
+    ffi.Pointer<ffi.NativeFunction<TerminalSizeFnFunction>>;
+typedef TerminalSizeFnFunction =
+    ffi.Bool Function(
+      Terminal terminal,
+      ffi.Pointer<ffi.Void> userdata,
+      ffi.Pointer<SizeReportSize> out_size,
+    );
+typedef DartGhosttyTerminalSizeFnFunction =
+    bool Function(
+      Terminal terminal,
+      ffi.Pointer<ffi.Void> userdata,
+      ffi.Pointer<SizeReportSize> out_size,
+    );
 
 /// Callback function type for title_changed.
 ///
@@ -9569,11 +9632,11 @@ typedef TerminalSizeFn =
 ///
 /// @ingroup terminal
 typedef TerminalTitleChangedFn =
-    ffi.Pointer<
-      ffi.NativeFunction<
-        ffi.Void Function(Terminal terminal, ffi.Pointer<ffi.Void> userdata)
-      >
-    >;
+    ffi.Pointer<ffi.NativeFunction<TerminalTitleChangedFnFunction>>;
+typedef TerminalTitleChangedFnFunction =
+    ffi.Void Function(Terminal terminal, ffi.Pointer<ffi.Void> userdata);
+typedef DartGhosttyTerminalTitleChangedFnFunction =
+    void Function(Terminal terminal, ffi.Pointer<ffi.Void> userdata);
 
 /// An OSC sequence whose number libghostty-vt does not implement.
 ///
@@ -9655,15 +9718,19 @@ final class TerminalUnknownSequence extends ffi.Struct {
 ///
 /// @ingroup terminal
 typedef TerminalUnknownSequenceFn =
-    ffi.Pointer<
-      ffi.NativeFunction<
-        ffi.Void Function(
-          Terminal terminal,
-          ffi.Pointer<ffi.Void> userdata,
-          ffi.Pointer<TerminalUnknownSequence> sequence,
-        )
-      >
-    >;
+    ffi.Pointer<ffi.NativeFunction<TerminalUnknownSequenceFnFunction>>;
+typedef TerminalUnknownSequenceFnFunction =
+    ffi.Void Function(
+      Terminal terminal,
+      ffi.Pointer<ffi.Void> userdata,
+      ffi.Pointer<TerminalUnknownSequence> sequence,
+    );
+typedef DartGhosttyTerminalUnknownSequenceFnFunction =
+    void Function(
+      Terminal terminal,
+      ffi.Pointer<ffi.Void> userdata,
+      ffi.Pointer<TerminalUnknownSequence> sequence,
+    );
 
 /// Unsupported terminal sequence value.
 ///
@@ -9714,16 +9781,21 @@ final class TerminalUnknownStringSequence extends ffi.Struct {
 ///
 /// @ingroup terminal
 typedef TerminalWritePtyFn =
-    ffi.Pointer<
-      ffi.NativeFunction<
-        ffi.Void Function(
-          Terminal terminal,
-          ffi.Pointer<ffi.Void> userdata,
-          ffi.Pointer<ffi.Uint8> data,
-          ffi.Size len,
-        )
-      >
-    >;
+    ffi.Pointer<ffi.NativeFunction<TerminalWritePtyFnFunction>>;
+typedef TerminalWritePtyFnFunction =
+    ffi.Void Function(
+      Terminal terminal,
+      ffi.Pointer<ffi.Void> userdata,
+      ffi.Pointer<ffi.Uint8> data,
+      ffi.Size len,
+    );
+typedef DartGhosttyTerminalWritePtyFnFunction =
+    void Function(
+      Terminal terminal,
+      ffi.Pointer<ffi.Void> userdata,
+      ffi.Pointer<ffi.Uint8> data,
+      int len,
+    );
 
 /// Callback function type for XTVERSION.
 ///
@@ -9738,11 +9810,9 @@ typedef TerminalWritePtyFn =
 ///
 /// @ingroup terminal
 typedef TerminalXtversionFn =
-    ffi.Pointer<
-      ffi.NativeFunction<
-        String Function(Terminal terminal, ffi.Pointer<ffi.Void> userdata)
-      >
-    >;
+    ffi.Pointer<ffi.NativeFunction<TerminalXtversionFnFunction>>;
+typedef TerminalXtversionFnFunction =
+    String Function(Terminal terminal, ffi.Pointer<ffi.Void> userdata);
 
 /// Opaque handle to a tracked grid reference.
 ///
@@ -9793,13 +9863,16 @@ final class Writer extends ffi.Struct {
 /// @param data Source bytes; always non-NULL
 /// @param len Number of source bytes; always greater than zero
 /// @return true if the complete slice was accepted, false on fatal error
-typedef WriterFn =
-    ffi.Pointer<
-      ffi.NativeFunction<
-        ffi.Bool Function(
-          ffi.Pointer<ffi.Void> userdata,
-          ffi.Pointer<ffi.Uint8> data,
-          ffi.Size len,
-        )
-      >
-    >;
+typedef WriterFn = ffi.Pointer<ffi.NativeFunction<WriterFnFunction>>;
+typedef WriterFnFunction =
+    ffi.Bool Function(
+      ffi.Pointer<ffi.Void> userdata,
+      ffi.Pointer<ffi.Uint8> data,
+      ffi.Size len,
+    );
+typedef DartGhosttyWriterFnFunction =
+    bool Function(
+      ffi.Pointer<ffi.Void> userdata,
+      ffi.Pointer<ffi.Uint8> data,
+      int len,
+    );
