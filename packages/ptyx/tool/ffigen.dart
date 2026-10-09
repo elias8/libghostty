@@ -11,9 +11,18 @@ import 'package:ffigen/ffigen.dart';
 import 'package:logging/logging.dart';
 
 const _nativeOutput = 'lib/src/ffi/ptyx.g.dart';
+const _headerPath = 'include/ptyx.h';
 
 Future<void> main() async {
   Logger.root.onRecord.listen((record) => stderr.writeln(record));
+
+  if (!File(_headerPath).existsSync()) {
+    stderr.writeln(
+      'Missing ffigen entry-point header: $_headerPath. '
+      'Run this command from packages/ptyx.',
+    );
+    exit(1);
+  }
 
   try {
     await _createGenerator().generate(logger: Logger.root);
@@ -45,10 +54,9 @@ FfiGenerator _createGenerator() => FfiGenerator(
     style: const NativeExternalBindings(assetId: 'package:ptyx/ptyx.dart'),
   ),
   input: Input(
-    entryPoints: [Uri.file('include/ptyx.h')],
+    entryPoints: [Uri.file(_headerPath)],
     include: (header) =>
-        header.path.endsWith('/include/ptyx.h') ||
-        header.path == 'include/ptyx.h',
+        header.path.endsWith('/$_headerPath') || header.path == _headerPath,
     compilerOptions: ['-Iinclude'],
     appendCompilerOptions: true,
   ),

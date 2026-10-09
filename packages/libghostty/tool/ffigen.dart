@@ -17,11 +17,20 @@ import 'ffigen/wasm_exports.dart';
 const _nativeOutput = 'lib/src/generated/libghostty.g.dart';
 const _enumsOutput = 'lib/src/generated/libghostty_enums.g.dart';
 const _wasmOutput = 'lib/src/generated/libghostty_wasm.g.dart';
+const _headerPath = '../../ghostty/include/ghostty/vt.h';
 
 const _compilerOpts = ['-I../../ghostty/include'];
 
 Future<void> main() async {
   Logger.root.onRecord.listen((r) => stderr.writeln(r));
+
+  if (!File(_headerPath).existsSync()) {
+    stderr.writeln(
+      'Missing ffigen entry-point header: $_headerPath. '
+      'Run this command from packages/libghostty with the Ghostty checkout at ../../ghostty.',
+    );
+    exit(1);
+  }
 
   try {
     await _createGenerator().generate(logger: Logger.root);
@@ -62,7 +71,7 @@ Future<void> main() async {
 }
 
 Input _headers({List<String> compilerOpts = const []}) => Input(
-  entryPoints: [Uri.file('../../ghostty/include/ghostty/vt.h')],
+  entryPoints: [Uri.file(_headerPath)],
   include: (header) {
     final path = header.path;
     return path.contains('ghostty/vt.h') || path.contains('ghostty/vt/');

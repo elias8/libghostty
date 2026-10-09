@@ -88,16 +88,7 @@ final class FfiSystemBindings implements SystemBindings {
   @override
   void sysSetLogToStderr() {
     final callable = _sysStderrCallable ??=
-        NativeCallable<
-          Void Function(
-            Pointer<Void>,
-            UnsignedInt,
-            Pointer<Uint8>,
-            Size,
-            Pointer<Uint8>,
-            Size,
-          )
-        >.isolateGroupBound(_writeNativeStderr);
+        NativeCallable<SysLogFnFunction>.isolateGroupBound(_writeNativeStderr);
     final result = ghostty_sys_set(.log, callable.nativeFunction.cast());
     checkResultCode(result.value, operation: 'ghostty_sys_set(log)');
     _sysLogCallback = null;
@@ -125,9 +116,7 @@ final class FfiSystemBindings implements SystemBindings {
   void sysSetRandomSecure(SysRandomSecureCallback callback) {
     _sysRandomSecure = callback;
     final callable = _sysRandomSecureCallable ??=
-        NativeCallable<
-          Bool Function(Pointer<Void>, Pointer<Uint8>, Size)
-        >.isolateLocal((
+        NativeCallable<SysRandomSecureFnFunction>.isolateLocal((
           ffi.Pointer<ffi.Void> _,
           ffi.Pointer<ffi.Uint8> buffer,
           int length,
@@ -152,15 +141,7 @@ final class FfiSystemBindings implements SystemBindings {
   }
 
   NativeCallable _createPngCallable() {
-    return NativeCallable<
-      Bool Function(
-        Pointer<Void>,
-        Pointer<Allocator>,
-        Pointer<Uint8>,
-        Size,
-        Pointer<SysImage>,
-      )
-    >.isolateLocal((
+    return NativeCallable<SysDecodePngFnFunction>.isolateLocal((
       Pointer<Void> userdata,
       Pointer<Allocator> allocator,
       Pointer<Uint8> pngData,
@@ -220,33 +201,23 @@ final class FfiSystemBindings implements SystemBindings {
     final port = ReceivePort();
     port.listen(_deliverLog);
     final sendPort = port.sendPort;
-    _sysLogTransport =
-        NativeCallable<
-          Void Function(
-            Pointer<Void>,
-            UnsignedInt,
-            Pointer<Uint8>,
-            Size,
-            Pointer<Uint8>,
-            Size,
-          )
-        >.isolateGroupBound((
-          Pointer<Void> userdata,
-          int level,
-          Pointer<Uint8> scope,
-          int scopeLen,
-          Pointer<Uint8> message,
-          int messageLen,
-        ) {
-          try {
-            sendPort.send(<Object?>[
-              level,
-              Uint8List.fromList(scope.asTypedList(scopeLen)),
-              Uint8List.fromList(message.asTypedList(messageLen)),
-            ]);
-          } on Object {
-            // The native callback cannot report a Dart dispatch failure.
-          }
-        });
+    _sysLogTransport = NativeCallable<SysLogFnFunction>.isolateGroupBound((
+      Pointer<Void> userdata,
+      int level,
+      Pointer<Uint8> scope,
+      int scopeLen,
+      Pointer<Uint8> message,
+      int messageLen,
+    ) {
+      try {
+        sendPort.send(<Object?>[
+          level,
+          Uint8List.fromList(scope.asTypedList(scopeLen)),
+          Uint8List.fromList(message.asTypedList(messageLen)),
+        ]);
+      } on Object {
+        // The native callback cannot report a Dart dispatch failure.
+      }
+    });
   }
 }
