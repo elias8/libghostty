@@ -659,6 +659,11 @@ final class WasmTerminalBindings implements TerminalBindings {
           _memory.writeU32(pointer + _layout.scrollViewportDelta, delta);
         case .delta:
           _memory.writeI32(pointer + _layout.scrollViewportDelta, delta);
+        case .deltaPrompt:
+          _memory.writeI32(
+            pointer + _layout.scrollViewportDelta,
+            delta.clamp(-0x80000000, 0x7fffffff),
+          );
         case .top || .bottom:
           _memory.writeI32(pointer + _layout.scrollViewportDelta, 0);
       }

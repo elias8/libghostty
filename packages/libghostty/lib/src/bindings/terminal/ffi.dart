@@ -567,6 +567,10 @@ final class FfiTerminalBindings implements TerminalBindings {
           viewport.ref.value.row = delta;
         case .delta:
           viewport.ref.value.delta = delta;
+        case .deltaPrompt:
+          viewport.ref.value.delta_prompt = sizeOf<IntPtr>() == 4
+              ? delta.clamp(-0x80000000, 0x7fffffff)
+              : delta;
         case .top || .bottom:
           viewport.ref.value.delta = 0;
       }

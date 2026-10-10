@@ -4088,7 +4088,7 @@ enum TerminalOption {
   /// Set the reset default for a terminal mode.
   ///
   /// This unconditionally updates both the current value and the value restored
-  /// by a full terminal reset (RIS).
+  /// by a terminal reset. RIS restores every mode, and DECSTR only a subset.
   ///
   /// Some recognized modes represent transitions or mirror additional terminal
   /// state and cannot safely be configured as reset defaults. Those modes return
@@ -4100,7 +4100,7 @@ enum TerminalOption {
 
   /// Set the current value of a terminal mode.
   ///
-  /// This does not change the value restored by a full terminal reset (RIS).
+  /// This does not change the value restored by a reset (RIS or DECSTR).
   /// A NULL value pointer or unknown mode returns GHOSTTY_INVALID_VALUE.
   ///
   /// Input type: TerminalModeConfig*
@@ -4239,7 +4239,7 @@ enum TerminalOption {
   /// Input type: bool*
   xtChecksumReport(44),
 
-  /// Set how the DECRQCRA checksum is calculated after a full reset (RIS).
+  /// Set how the DECRQCRA checksum is calculated after a reset (RIS or DECSTR).
   /// This also changes the current calculation.
   ///
   /// The value holds the same bits as XTCHECKSUM (CSI Ps # y) and xterm's
@@ -4261,11 +4261,20 @@ enum TerminalOption {
   /// Callback invoked when the running program sends a program status
   /// report via OSC 7501. Set to NULL to ignore these reports.
   ///
-  /// Programs check for support before sending reports by sending
-  /// `OSC 7501 ; ?`. While this callback is set, the terminal answers that
-  /// query through GHOSTTY_TERMINAL_OPT_WRITE_PTY. While it is NULL, the
-  /// query gets no reply, so programs know the protocol isn't supported.
-  /// Set a write_pty callback too, or programs never see the reply.
+  /// Programs may ask whether the terminal supports the protocol by
+  /// sending `OSC 7501 ; ?`. While this callback is set, the terminal
+  /// answers through GHOSTTY_TERMINAL_OPT_WRITE_PTY with `?` followed by
+  /// the states and kinds it accepts:
+  ///
+  /// @code
+  /// program:  ESC ] 7501 ; ? ST
+  /// terminal: ESC ] 7501 ; ?:states=idle,working,done,blocked,error:kinds=permission,question,auth ST
+  /// @endcode
+  ///
+  /// While this callback is NULL, the query gets no reply, so a program
+  /// that asks sees the protocol as unsupported. Asking is optional, so
+  /// programs may send reports anyway. Those are dropped. Set a write_pty
+  /// callback too, or programs never see the reply.
   ///
   /// Input type: TerminalProgramStatusFn
   programStatus(46);
@@ -4403,7 +4412,17 @@ enum TerminalScrollViewportTag {
   /// This is the same row space as the offset field of
   /// TerminalScrollbar, so a scrollbar position obtained from
   /// GHOSTTY_TERMINAL_DATA_SCROLLBAR round-trips cleanly.
-  row(3);
+  row(3),
+
+  /// Scroll by a number of prompts relative to the viewport top. Negative
+  /// values move backward and positive values move forward. Requires semantic
+  /// prompt markers from the shell. Zero or no matching prompt is a no-op.
+  /// If fewer prompts remain than requested, move to the last matching prompt,
+  /// clamped to the active area.
+  ///
+  /// Moving forward through a final prompt continuation can snap to the active
+  /// area even when there is no newer prompt.
+  deltaPrompt(4);
 
   final int value;
   const TerminalScrollViewportTag(this.value);
@@ -4413,6 +4432,7 @@ enum TerminalScrollViewportTag {
     1 => bottom,
     2 => delta,
     3 => row,
+    4 => deltaPrompt,
     _ => throw ArgumentError(
       'Unknown value for TerminalScrollViewportTag: $value',
     ),

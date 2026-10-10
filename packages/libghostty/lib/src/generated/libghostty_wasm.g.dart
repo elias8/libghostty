@@ -3229,7 +3229,10 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// for up, positive for down). When using GHOSTTY_SCROLL_VIEWPORT_ROW,
   /// set the row field to the absolute row offset from the top of the
   /// scrollable area (the same row space as the offset field of
-  /// GhosttyTerminalScrollbar). For other behaviors, the value is ignored.
+  /// GhosttyTerminalScrollbar). When using
+  /// GHOSTTY_SCROLL_VIEWPORT_DELTA_PROMPT, set delta_prompt to the signed
+  /// number of prompts to move. See GHOSTTY_SCROLL_VIEWPORT_DELTA_PROMPT for
+  /// the navigation behavior. For other behaviors, the value is ignored.
   ///
   /// @param terminal The terminal handle (may be NULL, in which case this is a no-op)
   /// @param behavior The scroll behavior as a tagged union
