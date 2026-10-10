@@ -608,6 +608,14 @@ final class TerminalSession extends TerminalController with ChangeNotifier {
   }
 
   @override
+  bool scrollToPrompt(int delta) {
+    _checkNotDisposed();
+    final moved = _terminal.scrollToPrompt(delta);
+    if (moved) _publishViewportChange();
+    return moved;
+  }
+
+  @override
   void selectAll() {
     _checkNotDisposed();
     _selection.selectAll();

@@ -459,6 +459,26 @@ sealed class TerminalController implements Listenable {
   /// Scrolls the viewport to the top of the scrollback history.
   void scrollToTop();
 
+  /// Scrolls between retained shell prompts relative to the viewport top.
+  ///
+  /// Negative [delta] values move toward older prompts and positive values move
+  /// toward newer prompts. Zero leaves the viewport unchanged. Counts outside
+  /// the target's signed integer range are clamped without changing direction.
+  ///
+  /// Requires OSC 133 semantic prompt markers from the shell. If fewer prompts
+  /// remain than requested, this moves to the last matching prompt, clamped to
+  /// the active area. Moving forward through a final prompt continuation can
+  /// scroll to the active area even when there is no newer prompt.
+  ///
+  /// Returns true and notifies viewport listeners only when the viewport offset
+  /// changes.
+  ///
+  /// ```dart
+  /// controller.scrollToPrompt(-1); // Previous, older prompt.
+  /// controller.scrollToPrompt(1); // Next, newer prompt.
+  /// ```
+  bool scrollToPrompt(int delta);
+
   /// Selects all selectable content in the active screen.
   ///
   /// This includes scrollback while the primary screen is active.

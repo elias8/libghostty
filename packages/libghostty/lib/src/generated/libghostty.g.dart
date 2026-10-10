@@ -5194,7 +5194,10 @@ Result ghostty_terminal_resize(
 /// for up, positive for down). When using GHOSTTY_SCROLL_VIEWPORT_ROW,
 /// set the row field to the absolute row offset from the top of the
 /// scrollable area (the same row space as the offset field of
-/// TerminalScrollbar). For other behaviors, the value is ignored.
+/// TerminalScrollbar). When using
+/// GHOSTTY_SCROLL_VIEWPORT_DELTA_PROMPT, set delta_prompt to the signed
+/// number of prompts to move. See GHOSTTY_SCROLL_VIEWPORT_DELTA_PROMPT for
+/// the navigation behavior. For other behaviors, the value is ignored.
 ///
 /// @param terminal The terminal handle (may be NULL, in which case this is a no-op)
 /// @param behavior The scroll behavior as a tagged union
@@ -8893,7 +8896,8 @@ final class TerminalModeConfig extends ffi.Struct {
 ///
 /// - `state`: GHOSTTY_PROGRAM_STATUS_STATE_BLOCKED
 /// - `kind`: GHOSTTY_PROGRAM_STATUS_KIND_PERMISSION
-/// - `progress`: -1, because the program didn't send one
+/// - `progress`: -1, because the program didn't send one, so the work is
+/// indeterminate
 /// - `id`: empty, because this is the root record
 /// - `app`: "terraform"
 /// - `title`: empty
@@ -8931,10 +8935,12 @@ final class TerminalProgramStatus extends ffi.Struct {
   ProgramStatusKind get kind => ProgramStatusKind.fromValue(kindAsInt);
   set kind(ProgramStatusKind value) => kindAsInt = value.value;
 
-  /// How far along the work is, from 0 through 100. Only set for
-  /// GHOSTTY_PROGRAM_STATUS_STATE_WORKING and
-  /// GHOSTTY_PROGRAM_STATUS_STATE_BLOCKED. It is -1 for other states, when
-  /// the program didn't say, or when it sent a value outside that range.
+  /// How far along the work is, from 0 through 100, or -1 when there is
+  /// no percentage. Only set for GHOSTTY_PROGRAM_STATUS_STATE_WORKING and
+  /// GHOSTTY_PROGRAM_STATUS_STATE_BLOCKED. For those states, -1 means the
+  /// work is indeterminate: the program is busy but has no percentage to
+  /// report. It is also -1 for other states and when the program sent a
+  /// value outside that range.
   @ffi.Int8()
   external int progress;
 
@@ -8948,7 +8954,11 @@ final class TerminalProgramStatus extends ffi.Struct {
   external String id;
 
   /// A stable name for the program that a machine can match on, such as
-  /// "cargo" or "terraform".
+  /// "cargo", "terraform", or "claude-code". Use it as a key for grouping,
+  /// filtering, or choosing an icon. It is not a label. The label is
+  /// `title`. Empty when the report didn't include one. See
+  /// TerminalProgramStatusFn for how an empty app is filled in from
+  /// a parent record.
   external String app;
 
   /// A short label for the record, meant for people. Programs that report
@@ -8976,6 +8986,9 @@ final class TerminalProgramStatus extends ffi.Struct {
 /// - A GHOSTTY_PROGRAM_STATUS_STATE_CLEAR report removes the record with
 /// its id and every record beneath it, so clearing "build" also removes
 /// "build/test". A clear report with an empty id removes every record.
+/// - A record without an app takes it from its nearest ancestor that has
+/// one. If the root record has app "deploy" and the record "us-east"
+/// has none, show "us-east" with app "deploy" too.
 /// - When a new shell prompt starts (GHOSTTY_SEMANTIC_PROMPT_PROMPT_START
 /// from the GHOSTTY_TERMINAL_OPT_SEMANTIC_PROMPT callback) or the program
 /// running in the terminal exits, remove `working` and `blocked` records.
@@ -9274,8 +9287,8 @@ typedef DartGhosttyTerminalRenderHoldFnFunction =
 /// GHOSTTY_TERMINAL_OPT_PROGRAM_STATUS, those callbacks are called before
 /// this one.
 ///
-/// A soft reset (DECSTR, `CSI ! p`) only resets a few modes and doesn't
-/// call this.
+/// A soft reset (DECSTR, `CSI ! p`) keeps the screen, title and working
+/// directory, and doesn't call this.
 ///
 /// @param terminal The terminal handle
 /// @param userdata The userdata pointer set via GHOSTTY_TERMINAL_OPT_USERDATA
@@ -9313,6 +9326,10 @@ final class TerminalScrollViewportValue extends ffi.Union {
   /// Absolute row offset (only used with GHOSTTY_SCROLL_VIEWPORT_ROW).
   @ffi.Size()
   external int row;
+
+  /// Prompt delta (only used with GHOSTTY_SCROLL_VIEWPORT_DELTA_PROMPT).
+  @ffi.IntPtr()
+  external int delta_prompt;
 
   /// Padding for ABI compatibility. Do not use.
   @ffi.Array.multi([2])

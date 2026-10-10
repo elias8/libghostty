@@ -939,6 +939,27 @@ final class Terminal with ChangeNotifier {
     bindings.terminal.terminalScrollViewport(_terminalHandle, .row, row);
   }
 
+  /// Scrolls between retained shell prompts relative to the viewport top.
+  ///
+  /// Negative [delta] values move toward older prompts and positive values move
+  /// toward newer prompts. Zero leaves the viewport unchanged. Counts outside
+  /// the target's signed integer range are clamped without changing direction.
+  ///
+  /// Requires OSC 133 semantic prompt markers from the shell. If fewer prompts
+  /// remain than requested, this moves to the last matching prompt, clamped to
+  /// the active area. Moving forward through a final prompt continuation can
+  /// scroll to the active area even when there is no newer prompt.
+  ///
+  /// Returns true only when the viewport offset changes.
+  bool scrollToPrompt(int delta) {
+    final handle = _terminalHandle;
+    if (delta == 0) return false;
+
+    final initialOffset = scrollbar.offset;
+    bindings.terminal.terminalScrollViewport(handle, .deltaPrompt, delta);
+    return scrollbar.offset != initialOffset;
+  }
+
   /// Scrolls the viewport to the top of the scrollback history.
   void scrollToTop() {
     bindings.terminal.terminalScrollViewport(_terminalHandle, .top, 0);
