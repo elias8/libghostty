@@ -146,7 +146,7 @@ jobs:
           FILENAME="libghostty-${{ matrix.target }}.${{ matrix.ext }}"
           cp ghostty-src/zig-out/*/*ghostty-vt.${{ matrix.ext }} "$FILENAME"
           echo "filename=$FILENAME" >> "$GITHUB_OUTPUT"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ steps.artifact.outputs.filename }}
           path: ${{ steps.artifact.outputs.filename }}
@@ -189,7 +189,7 @@ jobs:
           FILENAME="libghostty-wasm32-freestanding.wasm"
           cp ghostty-src/zig-out/bin/ghostty-vt.wasm "$FILENAME"
           echo "filename=$FILENAME" >> "$GITHUB_OUTPUT"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ steps.artifact.outputs.filename }}
           path: ${{ steps.artifact.outputs.filename }}
@@ -336,7 +336,7 @@ jobs:
           FILENAME="libptyx-${{ matrix.target }}.$EXT"
           cp "target/ptyx/${{ matrix.target }}/${{ matrix.rust_target }}/release/${{ matrix.library }}" "$FILENAME"
           echo "filename=$FILENAME" >> "$GITHUB_OUTPUT"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ steps.artifact.outputs.filename }}
           path: ${{ steps.artifact.outputs.filename }}
@@ -375,7 +375,7 @@ jobs:
           flutter pub get
           dart run tool/generate_binary_hash.dart ../../artifacts
       - name: upload asset hashes
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: asset-hashes
           path: packages/libghostty/lib/src/hook/asset_hashes.dart
