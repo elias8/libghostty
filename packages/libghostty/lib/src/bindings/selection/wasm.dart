@@ -225,16 +225,22 @@ final class WasmSelectionBindings implements SelectionBindings {
     LibGhosttyHandle event,
     List<int> codepoints,
   ) {
-    final values = _allocCodepoints(codepoints);
-    final ptr = _allocateBytes(_layout.codepointsSize);
+    final frame = _scratch.acquire(const []);
     try {
-      _zero(ptr, _layout.codepointsSize);
-      _memory.writeU32(ptr + _layout.codepointsPtr, values.ptr);
-      _memory.writeU32(ptr + _layout.codepointsLen, codepoints.length);
-      _setEvent(event, .wordBoundaryCodepoints, ptr);
+      final values = frame.variableAddress(
+        0,
+        (codepoints.isEmpty ? 1 : codepoints.length) * 4,
+      );
+      final pointer = frame.variableAddress(1, _layout.codepointsSize);
+      for (var i = 0; i < codepoints.length; i++) {
+        _memory.writeU32(values + i * 4, codepoints[i]);
+      }
+      _zero(pointer, _layout.codepointsSize);
+      _memory.writeU32(pointer + _layout.codepointsPtr, values);
+      _memory.writeU32(pointer + _layout.codepointsLen, codepoints.length);
+      _setEvent(event, .wordBoundaryCodepoints, pointer);
     } finally {
-      _freeCodepoints(values);
-      _freeBytes(ptr, _layout.codepointsSize);
+      frame.release();
     }
   }
 
@@ -429,10 +435,13 @@ final class WasmSelectionBindings implements SelectionBindings {
     PointTag pointTag,
     Position position,
   ) {
-    final sel = _allocSelection(selection);
-    final point = _allocateBytes(_layout.pointSize);
-    final out = _allocateBytes(1);
+    final frame = _scratch.acquire(const []);
     try {
+      final sel = frame.variableAddress(0, _layout.selectionSize);
+      final point = frame.variableAddress(1, _layout.pointSize);
+      final out = frame.variableAddress(2, 1);
+      _zero(sel, _layout.selectionSize);
+      _writeSelection(sel, selection);
       _writePoint(point, pointTag, position);
       final result = Result.fromValue(
         _exports.ghostty_terminal_selection_contains(
@@ -445,9 +454,7 @@ final class WasmSelectionBindings implements SelectionBindings {
       _check(result, 'ghostty_terminal_selection_contains');
       return _memory.readU8(out) != 0;
     } finally {
-      _freeBytes(sel, _layout.selectionSize);
-      _freeBytes(point, _layout.pointSize);
-      _freeBytes(out, 1);
+      frame.release();
     }
   }
 
@@ -457,10 +464,15 @@ final class WasmSelectionBindings implements SelectionBindings {
     RawSelection a,
     RawSelection b,
   ) {
-    final first = _allocSelection(a);
-    final second = _allocSelection(b);
-    final out = _allocateBytes(1);
+    final frame = _scratch.acquire(const []);
     try {
+      final first = frame.variableAddress(0, _layout.selectionSize);
+      final second = frame.variableAddress(1, _layout.selectionSize);
+      final out = frame.variableAddress(2, 1);
+      _zero(first, _layout.selectionSize);
+      _writeSelection(first, a);
+      _zero(second, _layout.selectionSize);
+      _writeSelection(second, b);
       final result = Result.fromValue(
         _exports.ghostty_terminal_selection_equal(
           terminal.value,
@@ -472,9 +484,7 @@ final class WasmSelectionBindings implements SelectionBindings {
       _check(result, 'ghostty_terminal_selection_equal');
       return _memory.readU8(out) != 0;
     } finally {
-      _freeBytes(first, _layout.selectionSize);
-      _freeBytes(second, _layout.selectionSize);
-      _freeBytes(out, 1);
+      frame.release();
     }
   }
 
@@ -539,17 +549,19 @@ final class WasmSelectionBindings implements SelectionBindings {
     LibGhosttyHandle terminal,
     RawSelection selection,
   ) {
-    final sel = _allocSelection(selection);
-    final out = _allocateBytes(4);
+    final frame = _scratch.acquire(const []);
     try {
+      final sel = frame.variableAddress(0, _layout.selectionSize);
+      final out = frame.variableAddress(1, 4);
+      _zero(sel, _layout.selectionSize);
+      _writeSelection(sel, selection);
       final result = Result.fromValue(
         _exports.ghostty_terminal_selection_order(terminal.value, sel, out),
       );
       _check(result, 'ghostty_terminal_selection_order');
       return SelectionOrder.fromValue(_memory.readU32(out));
     } finally {
-      _freeBytes(sel, _layout.selectionSize);
-      _freeBytes(out, 4);
+      frame.release();
     }
   }
 
@@ -559,9 +571,13 @@ final class WasmSelectionBindings implements SelectionBindings {
     RawSelection selection,
     SelectionOrder desired,
   ) {
-    final sel = _allocSelection(selection);
-    final out = _allocSelection();
+    final frame = _scratch.acquire(const []);
     try {
+      final sel = frame.variableAddress(0, _layout.selectionSize);
+      final out = frame.variableAddress(1, _layout.selectionSize);
+      _zero(sel, _layout.selectionSize);
+      _writeSelection(sel, selection);
+      _zero(out, _layout.selectionSize);
       final result = Result.fromValue(
         _exports.ghostty_terminal_selection_ordered(
           terminal.value,
@@ -573,8 +589,7 @@ final class WasmSelectionBindings implements SelectionBindings {
       _check(result, 'ghostty_terminal_selection_ordered');
       return _readSelection(out);
     } finally {
-      _freeBytes(sel, _layout.selectionSize);
-      _freeBytes(out, _layout.selectionSize);
+      frame.release();
     }
   }
 
@@ -585,17 +600,27 @@ final class WasmSelectionBindings implements SelectionBindings {
     List<int>? whitespace,
     bool semanticPromptBoundary = false,
   }) {
-    final options = _allocateBytes(_layout.selectLineSize);
-    final out = _allocSelection();
-    final codepoints = _allocCodepoints(whitespace);
+    final codepoints = whitespace ?? const <int>[];
+    final frame = _scratch.acquire(const []);
     try {
+      final options = frame.variableAddress(0, _layout.selectLineSize);
+      final out = frame.variableAddress(1, _layout.selectionSize);
+      final whitespaceBytes = whitespace != null
+          ? frame.variableAddress(
+              2,
+              (codepoints.isEmpty ? 1 : codepoints.length) * 4,
+            )
+          : 0;
+      for (var i = 0; i < codepoints.length; i++) {
+        _memory.writeU32(whitespaceBytes + i * 4, codepoints[i]);
+      }
       _zero(options, _layout.selectLineSize);
       _memory.writeU32(options, _layout.selectLineSize);
       _writeGridRef(options + _layout.selectLineRef, ref);
-      _memory.writeU32(options + _layout.selectLineWhitespace, codepoints.ptr);
+      _memory.writeU32(options + _layout.selectLineWhitespace, whitespaceBytes);
       _memory.writeU32(
         options + _layout.selectLineWhitespaceLen,
-        whitespace?.length ?? 0,
+        codepoints.length,
       );
       _memory.writeU8(
         options + _layout.selectLineSemanticPromptBoundary,
@@ -608,9 +633,7 @@ final class WasmSelectionBindings implements SelectionBindings {
       _check(result, 'ghostty_terminal_select_line');
       return _readSelection(out);
     } finally {
-      _freeCodepoints(codepoints);
-      _freeBytes(options, _layout.selectLineSize);
-      _freeBytes(out, _layout.selectionSize);
+      frame.release();
     }
   }
 
@@ -640,20 +663,30 @@ final class WasmSelectionBindings implements SelectionBindings {
     RawGridRef ref, {
     List<int>? boundaryCodepoints,
   }) {
-    final options = _allocateBytes(_layout.selectWordSize);
-    final out = _allocSelection();
-    final codepoints = _allocCodepoints(boundaryCodepoints);
+    final boundaries = boundaryCodepoints ?? const <int>[];
+    final frame = _scratch.acquire(const []);
     try {
+      final options = frame.variableAddress(0, _layout.selectWordSize);
+      final out = frame.variableAddress(1, _layout.selectionSize);
+      final codepoints = boundaryCodepoints != null
+          ? frame.variableAddress(
+              2,
+              (boundaries.isEmpty ? 1 : boundaries.length) * 4,
+            )
+          : 0;
+      for (var i = 0; i < boundaries.length; i++) {
+        _memory.writeU32(codepoints + i * 4, boundaries[i]);
+      }
       _zero(options, _layout.selectWordSize);
       _memory.writeU32(options, _layout.selectWordSize);
       _writeGridRef(options + _layout.selectWordRef, ref);
       _memory.writeU32(
         options + _layout.selectWordBoundaryCodepoints,
-        codepoints.ptr,
+        codepoints,
       );
       _memory.writeU32(
         options + _layout.selectWordBoundaryCodepointsLen,
-        boundaryCodepoints?.length ?? 0,
+        boundaries.length,
       );
       final result = Result.fromValue(
         _exports.ghostty_terminal_select_word(terminal.value, options, out),
@@ -662,9 +695,7 @@ final class WasmSelectionBindings implements SelectionBindings {
       _check(result, 'ghostty_terminal_select_word');
       return _readSelection(out);
     } finally {
-      _freeCodepoints(codepoints);
-      _freeBytes(options, _layout.selectWordSize);
-      _freeBytes(out, _layout.selectionSize);
+      frame.release();
     }
   }
 
@@ -675,21 +706,31 @@ final class WasmSelectionBindings implements SelectionBindings {
     RawGridRef end, {
     List<int>? boundaryCodepoints,
   }) {
-    final options = _allocateBytes(_layout.selectWordBetweenSize);
-    final out = _allocSelection();
-    final codepoints = _allocCodepoints(boundaryCodepoints);
+    final boundaries = boundaryCodepoints ?? const <int>[];
+    final frame = _scratch.acquire(const []);
     try {
+      final options = frame.variableAddress(0, _layout.selectWordBetweenSize);
+      final out = frame.variableAddress(1, _layout.selectionSize);
+      final codepoints = boundaryCodepoints != null
+          ? frame.variableAddress(
+              2,
+              (boundaries.isEmpty ? 1 : boundaries.length) * 4,
+            )
+          : 0;
+      for (var i = 0; i < boundaries.length; i++) {
+        _memory.writeU32(codepoints + i * 4, boundaries[i]);
+      }
       _zero(options, _layout.selectWordBetweenSize);
       _memory.writeU32(options, _layout.selectWordBetweenSize);
       _writeGridRef(options + _layout.selectWordBetweenStart, start);
       _writeGridRef(options + _layout.selectWordBetweenEnd, end);
       _memory.writeU32(
         options + _layout.selectWordBetweenBoundaryCodepoints,
-        codepoints.ptr,
+        codepoints,
       );
       _memory.writeU32(
         options + _layout.selectWordBetweenBoundaryCodepointsLen,
-        boundaryCodepoints?.length ?? 0,
+        boundaries.length,
       );
       final result = Result.fromValue(
         _exports.ghostty_terminal_select_word_between(
@@ -702,9 +743,7 @@ final class WasmSelectionBindings implements SelectionBindings {
       _check(result, 'ghostty_terminal_select_word_between');
       return _readSelection(out);
     } finally {
-      _freeCodepoints(codepoints);
-      _freeBytes(options, _layout.selectWordBetweenSize);
-      _freeBytes(out, _layout.selectionSize);
+      frame.release();
     }
   }
 
@@ -757,16 +796,6 @@ final class WasmSelectionBindings implements SelectionBindings {
     return ptr;
   }
 
-  ({int ptr, int bytes}) _allocCodepoints(List<int>? codepoints) {
-    if (codepoints == null) return (ptr: 0, bytes: 0);
-    final bytes = (codepoints.isEmpty ? 1 : codepoints.length) * 4;
-    final ptr = _allocateBytes(bytes);
-    for (var i = 0; i < codepoints.length; i++) {
-      _memory.writeU32(ptr + i * 4, codepoints[i]);
-    }
-    return (ptr: ptr, bytes: bytes);
-  }
-
   int _allocGridRef(RawGridRef ref) {
     final ptr = _allocateBytes(_layout.gridRefSize);
     _writeGridRef(ptr, ref);
@@ -787,10 +816,6 @@ final class WasmSelectionBindings implements SelectionBindings {
 
   void _freeBytes(int ptr, int size) {
     if (ptr != 0) _exports.freeBytes(ptr, size);
-  }
-
-  void _freeCodepoints(({int ptr, int bytes}) value) {
-    if (value.ptr != 0) _freeBytes(value.ptr, value.bytes);
   }
 
   void _freeGridRef(int ptr) => _freeBytes(ptr, _layout.gridRefSize);
@@ -848,7 +873,7 @@ final class WasmSelectionBindings implements SelectionBindings {
   void _growFormatBuffer(int required) {
     if (required <= _formatBufferCapacity) return;
     final replacement = _allocateBytes(required);
-    _freeBytes(_formatBuffer, _formatBufferCapacity);
+    _exports.freeBytes(_formatBuffer, _formatBufferCapacity);
     _formatBuffer = replacement;
     _formatBufferCapacity = required;
   }

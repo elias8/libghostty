@@ -13,10 +13,18 @@ void main() {
       bindings = FfiKittyGraphicsBindings();
     });
 
-    test('returns a null image handle for an invalid graphics handle', () {
-      final image = bindings.kittyGraphicsImage(const .fromAddress(0), 1);
+    test('propagates errors when reading storage from an invalid terminal', () {
+      expect(
+        () => bindings.kittyGraphicsGet(const .fromAddress(0)),
+        throwsA(isA<InvalidValueException>()),
+      );
+    });
 
-      expect(image.value, 0);
+    test('rejects an invalid graphics handle when looking up images', () {
+      expect(
+        () => bindings.kittyGraphicsImage(const .fromAddress(0), 1),
+        throwsA(isA<InvalidValueException>()),
+      );
     });
 
     test('rejects an invalid graphics handle before native access', () {

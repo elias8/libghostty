@@ -5,14 +5,14 @@ import '../../types/types.dart';
 import '../types.dart';
 
 abstract interface class KittyGraphicsBindings {
-  LibGhosttyHandle kittyGraphicsGet(LibGhosttyHandle terminal);
+  LibGhosttyHandle? kittyGraphicsGet(LibGhosttyHandle terminal);
   int kittyGraphicsGetGeneration(LibGhosttyHandle graphics);
   void kittyGraphicsGetPlacements(
     LibGhosttyHandle graphics,
     LibGhosttyHandle iterator,
   );
 
-  LibGhosttyHandle kittyGraphicsImage(LibGhosttyHandle graphics, int imageId);
+  LibGhosttyHandle? kittyGraphicsImage(LibGhosttyHandle graphics, int imageId);
   KittyImageCompression kittyGraphicsImageGetCompression(
     LibGhosttyHandle image,
   );

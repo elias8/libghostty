@@ -118,6 +118,27 @@ void main() {
         expect(terminal.writeUntilGround(Uint8List.fromList([0xa2, 0x41])), 1);
       });
 
+      test('runs callbacks while completing input through ground', () {
+        final error = StateError('status reply failed');
+        terminal.onWritePty = (_) => throw error;
+        terminal.write(Uint8List.fromList([0x1b, 0x5b]));
+
+        expect(
+          () => terminal.writeUntilGround(Uint8List.fromList('5n'.codeUnits)),
+          throwsA(same(error)),
+        );
+        expect(terminal.isVtGround, isTrue);
+
+        final output = <int>[];
+        terminal.onWritePty = output.addAll;
+        terminal.write(Uint8List.fromList([0x1b, 0x5b]));
+        expect(
+          terminal.writeUntilGround(Uint8List.fromList('5n'.codeUnits)),
+          2,
+        );
+        expect(utf8.decode(output), '\x1b[0n');
+      });
+
       test('returns zero when already in ground', () {
         expect(terminal.writeUntilGround(Uint8List.fromList([0x41])), 0);
         expect(terminal.isVtGround, isTrue);
@@ -388,6 +409,43 @@ void main() {
         expect(chunks, [0x1b, 0x5d]);
       });
 
+      for (final fails in [false, true]) {
+        test(
+          'isolates nested continuation failure when writer fails $fails',
+          () {
+            final inner = Terminal(cols: 10, rows: 3);
+            addTearDown(inner.dispose);
+            inner.continuationMaxBytes = 128;
+            inner.write(Uint8List.fromList([0x1b, 0x5d]));
+            final outerError = StateError('outer bell failed');
+            final innerError = StateError('inner writer failed');
+            final chunks = <int>[];
+            Object? nestedError;
+            terminal.onBell = () => throw outerError;
+            terminal.onTitleChanged = () {
+              try {
+                inner.writeContinuation((chunk) {
+                  chunks.addAll(chunk);
+                  if (fails) throw innerError;
+                  return true;
+                });
+              } on Object catch (error) {
+                nestedError = error;
+              }
+            };
+
+            expect(
+              () => terminal.write(
+                Uint8List.fromList('\x07\x1b]2;title\x07'.codeUnits),
+              ),
+              throwsA(same(outerError)),
+            );
+            expect(chunks, [0x1b, 0x5d]);
+            expect(nestedError, fails ? same(innerError) : isNull);
+          },
+        );
+      }
+
       test('maps a rejected chunk to an IO exception', () {
         terminal.continuationMaxBytes = 128;
         terminal.write(Uint8List.fromList([0x1b, 0x5d]));
@@ -508,6 +566,23 @@ void main() {
     });
 
     group('onRenderHold', () {
+      test('rethrows release callback failures during explicit reset', () {
+        final error = StateError('hold release failed');
+        final events = <bool>[];
+        terminal.onRenderHold = (held) {
+          events.add(held);
+          if (!held) throw error;
+        };
+        terminal.write(Uint8List.fromList('\x1b[?2026h'.codeUnits));
+
+        expect(terminal.reset, throwsA(same(error)));
+        expect(events, [true, false]);
+
+        terminal.onRenderHold = events.add;
+        terminal.write(Uint8List.fromList('\x1b[?2026h\x1b[?2026l'.codeUnits));
+        expect(events, [true, false, true, false]);
+      });
+
       test('reports synchronized output start and end', () {
         final events = <bool>[];
         terminal.onRenderHold = events.add;
@@ -722,6 +797,50 @@ void main() {
           () => terminal.write(Uint8List.fromList('\x1b[c'.codeUnits)),
           throwsA(same(error)),
         );
+      });
+
+      test('preserves an outer callback failure across a successful reset', () {
+        final inner = Terminal(cols: 80, rows: 24);
+        addTearDown(inner.dispose);
+        final outerError = StateError('outer bell failed');
+        var resetCalled = false;
+        terminal.onBell = () => throw outerError;
+        terminal.onTitleChanged = () {
+          inner.reset();
+          resetCalled = true;
+        };
+
+        expect(
+          () => terminal.write(
+            Uint8List.fromList('\x07\x1b]0;nested\x1b\\'.codeUnits),
+          ),
+          throwsA(same(outerError)),
+        );
+        expect(resetCalled, isTrue);
+      });
+
+      test('isolates a reset callback failure from the outer failure', () {
+        final inner = Terminal(cols: 80, rows: 24);
+        addTearDown(inner.dispose);
+        inner.write(Uint8List.fromList('\x1b[?2026h'.codeUnits));
+        final outerError = StateError('outer bell failed');
+        final innerError = StateError('inner hold release failed');
+        Object? nestedError;
+        inner.onRenderHold = (_) => throw innerError;
+        terminal.onBell = () => throw outerError;
+        terminal.onTitleChanged = () {
+          nestedError = captureError(inner.reset);
+        };
+
+        expect(
+          () => terminal.write(
+            Uint8List.fromList('\x07\x1b]0;nested\x1b\\'.codeUnits),
+          ),
+          throwsA(same(outerError)),
+        );
+        expect(nestedError, same(innerError));
+        inner.onRenderHold = null;
+        expect(inner.reset, returnsNormally);
       });
 
       test('rethrows failures for each operation across terminals', () {

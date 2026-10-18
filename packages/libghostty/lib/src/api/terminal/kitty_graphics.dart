@@ -62,7 +62,7 @@ final class KittyGraphics {
   /// image after a mutation.
   KittyImage? image(int imageId) {
     final handle = bindings.kittyGraphics.kittyGraphicsImage(_handle, imageId);
-    if (handle.value == 0) return null;
+    if (handle == null) return null;
     return KittyImage._(handle, _terminal);
   }
 
@@ -114,7 +114,7 @@ final class KittyGraphics {
     final handle = bindings.kittyGraphics.kittyGraphicsGet(
       terminal._terminalHandle,
     );
-    return handle.value == 0 ? null : KittyGraphics._(handle, terminal);
+    return handle == null ? null : KittyGraphics._(handle, terminal);
   }
 }
 

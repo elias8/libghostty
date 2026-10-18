@@ -19,7 +19,7 @@ final class FfiKittyGraphicsBindings implements KittyGraphicsBindings {
   FfiKittyGraphicsBindings();
 
   @override
-  LibGhosttyHandle kittyGraphicsGet(LibGhosttyHandle terminal) {
+  LibGhosttyHandle? kittyGraphicsGet(LibGhosttyHandle terminal) {
     return using((arena) {
       final out = arena<Pointer<KittyGraphicsImpl>>();
       final result = ghostty_terminal_get(
@@ -27,7 +27,8 @@ final class FfiKittyGraphicsBindings implements KittyGraphicsBindings {
         .kittyGraphics,
         out.cast(),
       );
-      if (result != .success) return const .fromAddress(0);
+      if (result == .noValue) return null;
+      checkResultCode(result.value, operation: 'ghostty_terminal_get');
       return .fromAddress(out.value.address);
     });
   }
@@ -68,13 +69,13 @@ final class FfiKittyGraphicsBindings implements KittyGraphicsBindings {
   }
 
   @override
-  LibGhosttyHandle kittyGraphicsImage(LibGhosttyHandle graphics, int imageId) {
-    if (graphics.value == 0) return const .fromAddress(0);
+  LibGhosttyHandle? kittyGraphicsImage(LibGhosttyHandle graphics, int imageId) {
+    if (graphics.value == 0) checkResultCode(Result.invalidValue.value);
     final image = ghostty_kitty_graphics_image(
       Pointer.fromAddress(graphics.value),
       imageId,
     );
-    return .fromAddress(image.address);
+    return image == nullptr ? null : .fromAddress(image.address);
   }
 
   @override

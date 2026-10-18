@@ -50,7 +50,7 @@ final class WasmKittyGraphicsBindings implements KittyGraphicsBindings {
   }
 
   @override
-  LibGhosttyHandle kittyGraphicsGet(LibGhosttyHandle terminal) {
+  LibGhosttyHandle? kittyGraphicsGet(LibGhosttyHandle terminal) {
     final frame = _scratch.acquire(const []);
     try {
       final out = frame.variableAddress(
@@ -63,7 +63,8 @@ final class WasmKittyGraphicsBindings implements KittyGraphicsBindings {
         TerminalData.kittyGraphics.value,
         out,
       );
-      if (result != Result.success.value) return const .fromAddress(0);
+      if (result == Result.noValue.value) return null;
+      checkCode(Result.fromValue(result), operation: 'ghostty_terminal_get');
       return .fromAddress(_memory.readPtr(out));
     } finally {
       frame.release();
@@ -120,11 +121,13 @@ final class WasmKittyGraphicsBindings implements KittyGraphicsBindings {
   }
 
   @override
-  LibGhosttyHandle kittyGraphicsImage(LibGhosttyHandle graphics, int imageId) {
-    if (graphics.value == 0) return const .fromAddress(0);
-    return .fromAddress(
-      _exports.ghostty_kitty_graphics_image(graphics.value, imageId),
+  LibGhosttyHandle? kittyGraphicsImage(LibGhosttyHandle graphics, int imageId) {
+    if (graphics.value == 0) throw const InvalidValueException();
+    final image = _exports.ghostty_kitty_graphics_image(
+      graphics.value,
+      imageId,
     );
+    return image == 0 ? null : .fromAddress(image);
   }
 
   @override
@@ -212,7 +215,7 @@ final class WasmKittyGraphicsBindings implements KittyGraphicsBindings {
     checkCode(result, operation: 'ghostty_kitty_graphics_placement_get_multi');
     final imageId = _memory.readU32(_multi);
     final image = kittyGraphicsImage(graphics, imageId);
-    final renderInfo = image.value == 0
+    final renderInfo = image == null
         ? const KittyPlacementRenderInfo.offscreen()
         : kittyGraphicsPlacementRenderInfo(iterator, image, terminal) ??
               const KittyPlacementRenderInfo.offscreen();

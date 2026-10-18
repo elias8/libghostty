@@ -129,56 +129,64 @@ final class WasmTerminalBindings implements TerminalBindings {
     LibGhosttyHandle terminal,
     ContinuationWriter writer,
   ) {
-    final frame = _scratch.acquire(const []);
-    Object? resultError;
-    StackTrace? resultStackTrace;
-    try {
-      final callbackIndex = _registerCallback(
-        ((int _, int data, int length) {
-          try {
-            return writer(Uint8List.fromList(_memory.readBytes(data, length)))
-                ? 1
-                : 0;
-          } on Object catch (error, stackTrace) {
-            _captureCallbackError(error, stackTrace);
-            return 0;
-          }
-        }).toJS,
-        ['i32', 'i32', 'i32'],
-        results: ['i32'],
-      );
+    void write() {
+      final frame = _scratch.acquire(const []);
+      Object? resultError;
+      StackTrace? resultStackTrace;
       try {
-        final pointer = frame.variableAddress(0, _layout.writerSize);
-        _memory.writePtr(pointer + _layout.writerWrite, callbackIndex);
-        _memory.writePtr(pointer + _layout.writerUserdata, 0);
+        final callbackIndex = _registerCallback(
+          ((int _, int data, int length) {
+            try {
+              return writer(Uint8List.fromList(_memory.readBytes(data, length)))
+                  ? 1
+                  : 0;
+            } on Object catch (error, stackTrace) {
+              _captureCallbackError(error, stackTrace);
+              return 0;
+            }
+          }).toJS,
+          ['i32', 'i32', 'i32'],
+          results: ['i32'],
+        );
         try {
-          checkResultCode(
-            _exports.ghostty_terminal_continuation_write(
-              terminal.value,
-              pointer,
-            ),
-            operation: 'ghostty_terminal_continuation_write',
-          );
-        } on Object catch (error, stackTrace) {
-          resultError = error;
-          resultStackTrace = stackTrace;
+          final pointer = frame.variableAddress(0, _layout.writerSize);
+          _memory.writePtr(pointer + _layout.writerWrite, callbackIndex);
+          _memory.writePtr(pointer + _layout.writerUserdata, 0);
+          try {
+            checkResultCode(
+              _exports.ghostty_terminal_continuation_write(
+                terminal.value,
+                pointer,
+              ),
+              operation: 'ghostty_terminal_continuation_write',
+            );
+          } on Object catch (error, stackTrace) {
+            resultError = error;
+            resultStackTrace = stackTrace;
+          }
+        } finally {
+          _releaseTableIndex(callbackIndex);
         }
       } finally {
-        _releaseTableIndex(callbackIndex);
+        frame.release();
       }
-    } finally {
-      frame.release();
+      final callbackFailure = _callbackError;
+      if (callbackFailure != null) {
+        _callbackError = null;
+        Error.throwWithStackTrace(
+          callbackFailure.error,
+          callbackFailure.stackTrace,
+        );
+      }
+      if (resultError case final error?) {
+        Error.throwWithStackTrace(error, resultStackTrace!);
+      }
     }
-    final callbackFailure = _callbackError;
-    if (callbackFailure != null) {
-      _callbackError = null;
-      Error.throwWithStackTrace(
-        callbackFailure.error,
-        callbackFailure.stackTrace,
-      );
-    }
-    if (resultError case final error?) {
-      Error.throwWithStackTrace(error, resultStackTrace!);
+
+    if (_callbackError != null) {
+      _withIsolatedCallbackError<void>(write);
+    } else {
+      write();
     }
   }
 
@@ -612,7 +620,17 @@ final class WasmTerminalBindings implements TerminalBindings {
 
   @override
   void terminalReset(LibGhosttyHandle terminal) {
-    _exports.ghostty_terminal_reset(terminal.value);
+    void operation() => _exports.ghostty_terminal_reset(terminal.value);
+    if (_callbackError != null) {
+      _withIsolatedCallbackError(operation);
+      return;
+    }
+    operation();
+    final failure = _callbackError;
+    if (failure != null) {
+      _callbackError = null;
+      Error.throwWithStackTrace(failure.error, failure.stackTrace);
+    }
   }
 
   @override
@@ -631,7 +649,7 @@ final class WasmTerminalBindings implements TerminalBindings {
       cellHeightPx,
     );
     final code = _callbacks.isNotEmpty && _callbackError != null
-        ? _runNestedCallbackOperation(result)
+        ? _withIsolatedCallbackError(result)
         : result();
     checkResultCode(code, operation: 'ghostty_terminal_resize');
     final failure = _callbackError;
@@ -1566,7 +1584,7 @@ final class WasmTerminalBindings implements TerminalBindings {
         }
 
         if (_callbackError != null) {
-          _runNestedCallbackOperation(operation);
+          _withIsolatedCallbackError(operation);
         } else {
           operation();
         }
@@ -1618,7 +1636,7 @@ final class WasmTerminalBindings implements TerminalBindings {
 
       if (_callbacks.isEmpty || _callbackError != null) {
         if (_callbackError != null) {
-          _runNestedCallbackOperation(operation);
+          _withIsolatedCallbackError(operation);
         } else {
           operation();
         }
@@ -1646,14 +1664,6 @@ final class WasmTerminalBindings implements TerminalBindings {
       throw StateError('libghostty WASM allocator returned misaligned memory.');
     }
     return pointer;
-  }
-
-  (int, int, int) _allocateUtf8(String value) {
-    final bytes = utf8.encode(value);
-    final allocationLength = bytes.isEmpty ? 1 : bytes.length;
-    final pointer = _allocateBytes(allocationLength);
-    if (bytes.isNotEmpty) _memory.writeBytes(pointer, bytes);
-    return (pointer, bytes.length, allocationLength);
   }
 
   void _callTable2(int index, int first, int second) {
@@ -1988,30 +1998,63 @@ final class WasmTerminalBindings implements TerminalBindings {
   }
 
   void _replyClipboardRead(int pointer, ClipboardReadReply value) {
-    final replyPointer = _allocateBytes(_layout.clipboardReadReplySize);
-    final contentPointer = _allocateBytes(
-      value.contents.isEmpty
-          ? 1
-          : value.contents.length * _layout.clipboardContentSize,
-    );
-    final availablePointer = _allocateBytes(
-      value.available.isEmpty ? 1 : value.available.length * _layout.stringSize,
-    );
-    final allocations = <(int, int)>[];
+    final frame = _scratch.acquire(const []);
     try {
+      final contentMimes = [
+        for (final content in value.contents) utf8.encode(content.mime),
+      ];
+      final availableBytes = [
+        for (final available in value.available) utf8.encode(available),
+      ];
+      final replyPointer = frame.variableAddress(
+        0,
+        _layout.clipboardReadReplySize,
+      );
+      final contentPointer = frame.variableAddress(
+        1,
+        value.contents.isEmpty
+            ? 1
+            : value.contents.length * _layout.clipboardContentSize,
+      );
+      final availablePointer = frame.variableAddress(
+        2,
+        value.available.isEmpty
+            ? 1
+            : value.available.length * _layout.stringSize,
+      );
+      final contentBuffers = <({int mime, int data})>[];
+      for (var i = 0; i < value.contents.length; i++) {
+        contentBuffers.add((
+          mime: frame.variableAddress(
+            3 + i * 2,
+            contentMimes[i].isEmpty ? 1 : contentMimes[i].length,
+          ),
+          data: frame.variableAddress(
+            4 + i * 2,
+            value.contents[i].data.isEmpty ? 1 : value.contents[i].data.length,
+          ),
+        ));
+      }
+      final availableBuffers = [
+        for (var i = 0; i < value.available.length; i++)
+          frame.variableAddress(
+            3 + value.contents.length * 2 + i,
+            availableBytes[i].isEmpty ? 1 : availableBytes[i].length,
+          ),
+      ];
       for (var i = 0; i < value.contents.length; i++) {
         final content = value.contents[i];
         final contentOffset = contentPointer + i * _layout.clipboardContentSize;
-        final mime = _allocateUtf8(content.mime);
-        final data = _allocateBytes(
-          content.data.isEmpty ? 1 : content.data.length,
-        );
-        allocations
-          ..add((mime.$1, mime.$3))
-          ..add((data, content.data.isEmpty ? 1 : content.data.length));
+        final mimeBytes = contentMimes[i];
+        final mimePointer = contentBuffers[i].mime;
+        final data = contentBuffers[i].data;
+        if (mimeBytes.isNotEmpty) _memory.writeBytes(mimePointer, mimeBytes);
         _memory.writeBytes(data, content.data);
-        _memory.writePtr(contentOffset + _layout.clipboardContentMime, mime.$1);
-        _memory.writeU32(contentOffset + _layout.stringLen, mime.$2);
+        _memory.writePtr(
+          contentOffset + _layout.clipboardContentMime,
+          mimePointer,
+        );
+        _memory.writeU32(contentOffset + _layout.stringLen, mimeBytes.length);
         _memory.writePtr(contentOffset + _layout.clipboardContentData, data);
         _memory.writeU32(
           contentOffset + _layout.clipboardContentData + _layout.stringLen,
@@ -2019,11 +2062,12 @@ final class WasmTerminalBindings implements TerminalBindings {
         );
       }
       for (var i = 0; i < value.available.length; i++) {
-        final available = _allocateUtf8(value.available[i]);
-        allocations.add((available.$1, available.$3));
+        final bytes = availableBytes[i];
+        final available = availableBuffers[i];
+        if (bytes.isNotEmpty) _memory.writeBytes(available, bytes);
         final offset = availablePointer + i * _layout.stringSize;
-        _memory.writePtr(offset, available.$1);
-        _memory.writeU32(offset + _layout.stringLen, available.$2);
+        _memory.writePtr(offset, available);
+        _memory.writeU32(offset + _layout.stringLen, bytes.length);
       }
       _memory.writeU32(
         replyPointer + _layout.clipboardReadReplySizeField,
@@ -2059,22 +2103,7 @@ final class WasmTerminalBindings implements TerminalBindings {
         replyPointer,
       );
     } finally {
-      for (final (pointer, length) in allocations) {
-        _exports.freeBytes(pointer, length);
-      }
-      _exports.freeBytes(replyPointer, _layout.clipboardReadReplySize);
-      _exports.freeBytes(
-        contentPointer,
-        value.contents.isEmpty
-            ? 1
-            : value.contents.length * _layout.clipboardContentSize,
-      );
-      _exports.freeBytes(
-        availablePointer,
-        value.available.isEmpty
-            ? 1
-            : value.available.length * _layout.stringSize,
-      );
+      frame.release();
     }
   }
 
@@ -2105,17 +2134,21 @@ final class WasmTerminalBindings implements TerminalBindings {
     return pointer;
   }
 
-  T _runNestedCallbackOperation<T>(T Function() operation) {
+  T _withIsolatedCallbackError<T>(T Function() operation) {
     final previousFailure = _callbackError!;
     _callbackError = null;
     late final T result;
-    late final ({Object error, StackTrace stackTrace})? failure;
+    ({Object error, StackTrace stackTrace})? operationFailure;
+    late final ({Object error, StackTrace stackTrace})? callbackFailure;
     try {
       result = operation();
+    } on Object catch (error, stackTrace) {
+      operationFailure = (error: error, stackTrace: stackTrace);
     } finally {
-      failure = _callbackError;
+      callbackFailure = _callbackError;
       _callbackError = previousFailure;
     }
+    final failure = callbackFailure ?? operationFailure;
     if (failure != null) {
       Error.throwWithStackTrace(failure.error, failure.stackTrace);
     }

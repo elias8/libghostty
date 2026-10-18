@@ -121,48 +121,56 @@ final class FfiTerminalBindings implements TerminalBindings {
     LibGhosttyHandle terminal,
     ContinuationWriter writer,
   ) {
-    final callable = NativeCallable<native.WriterFnFunction>.isolateLocal((
-      Pointer<Void> _,
-      Pointer<Uint8> data,
-      int length,
-    ) {
-      try {
-        return writer(Uint8List.fromList(data.asTypedList(length)));
-      } on Object catch (error, stackTrace) {
-        _captureCallbackError(error, stackTrace);
-        return false;
-      }
-    }, exceptionalReturn: false);
-    Object? resultError;
-    StackTrace? resultStackTrace;
-    try {
-      using((arena) {
-        final nativeWriter = native.Writer.$allocate(
-          arena,
-          write: callable.nativeFunction,
-          userdata: nullptr,
-        );
+    void write() {
+      final callable = NativeCallable<native.WriterFnFunction>.isolateLocal((
+        Pointer<Void> _,
+        Pointer<Uint8> data,
+        int length,
+      ) {
         try {
-          checkResultCode(
-            native
-                .ghostty_terminal_continuation_write(
-                  .fromAddress(terminal.value),
-                  nativeWriter.ref,
-                )
-                .value,
-            operation: 'ghostty_terminal_continuation_write',
-          );
+          return writer(Uint8List.fromList(data.asTypedList(length)));
         } on Object catch (error, stackTrace) {
-          resultError = error;
-          resultStackTrace = stackTrace;
+          _captureCallbackError(error, stackTrace);
+          return false;
         }
-      });
-    } finally {
-      callable.close();
+      }, exceptionalReturn: false);
+      Object? resultError;
+      StackTrace? resultStackTrace;
+      try {
+        using((arena) {
+          final nativeWriter = native.Writer.$allocate(
+            arena,
+            write: callable.nativeFunction,
+            userdata: nullptr,
+          );
+          try {
+            checkResultCode(
+              native
+                  .ghostty_terminal_continuation_write(
+                    .fromAddress(terminal.value),
+                    nativeWriter.ref,
+                  )
+                  .value,
+              operation: 'ghostty_terminal_continuation_write',
+            );
+          } on Object catch (error, stackTrace) {
+            resultError = error;
+            resultStackTrace = stackTrace;
+          }
+        });
+      } finally {
+        callable.close();
+      }
+      _rethrowCallbackError();
+      if (resultError case final error?) {
+        Error.throwWithStackTrace(error, resultStackTrace!);
+      }
     }
-    _rethrowCallbackError();
-    if (resultError case final error?) {
-      Error.throwWithStackTrace(error, resultStackTrace!);
+
+    if (_callbackError != null) {
+      _withIsolatedCallbackError<void>(write);
+    } else {
+      write();
     }
   }
 
@@ -519,7 +527,13 @@ final class FfiTerminalBindings implements TerminalBindings {
 
   @override
   void terminalReset(LibGhosttyHandle terminal) {
-    native.ghostty_terminal_reset(.fromAddress(terminal.value));
+    void reset() => native.ghostty_terminal_reset(.fromAddress(terminal.value));
+    if (_callbackError != null) {
+      _withIsolatedCallbackError<void>(reset);
+      return;
+    }
+    reset();
+    _rethrowCallbackError();
   }
 
   @override
@@ -546,7 +560,7 @@ final class FfiTerminalBindings implements TerminalBindings {
       return;
     }
     if (_callbackError != null) {
-      _runNestedCallbackOperation<void>(resize);
+      _withIsolatedCallbackError<void>(resize);
       return;
     }
     resize();
@@ -1264,7 +1278,7 @@ final class FfiTerminalBindings implements TerminalBindings {
       return;
     }
     if (_callbackError != null) {
-      _runNestedCallbackOperation<void>(write);
+      _withIsolatedCallbackError<void>(write);
       return;
     }
     write();
@@ -1299,7 +1313,7 @@ final class FfiTerminalBindings implements TerminalBindings {
       return write();
     }
     if (_callbackError != null) {
-      return _runNestedCallbackOperation<int?>(write);
+      return _withIsolatedCallbackError<int?>(write);
     }
     final result = write();
     _rethrowCallbackError();
@@ -1545,17 +1559,21 @@ final class FfiTerminalBindings implements TerminalBindings {
     Error.throwWithStackTrace(failure.error, failure.stackTrace);
   }
 
-  T _runNestedCallbackOperation<T>(T Function() operation) {
+  T _withIsolatedCallbackError<T>(T Function() operation) {
     final previousFailure = _callbackError!;
     _callbackError = null;
     late final T result;
-    late final ({Object error, StackTrace stackTrace})? failure;
+    ({Object error, StackTrace stackTrace})? operationFailure;
+    late final ({Object error, StackTrace stackTrace})? callbackFailure;
     try {
       result = operation();
+    } on Object catch (error, stackTrace) {
+      operationFailure = (error: error, stackTrace: stackTrace);
     } finally {
-      failure = _callbackError;
+      callbackFailure = _callbackError;
       _callbackError = previousFailure;
     }
+    final failure = callbackFailure ?? operationFailure;
     if (failure != null) {
       Error.throwWithStackTrace(failure.error, failure.stackTrace);
     }

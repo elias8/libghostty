@@ -1,8 +1,13 @@
 @Tags(['wasm'])
 library;
 
+import 'dart:js_interop';
+import 'dart:js_interop_unsafe';
+
 import 'package:libghostty/src/bindings/kitty_graphics/wasm.dart';
 import 'package:libghostty/src/bindings/wasm/layouts.dart';
+import 'package:libghostty/src/bindings/wasm/memory.dart';
+import 'package:libghostty/src/generated/libghostty_enums.g.dart';
 import 'package:libghostty/src/types/types.dart';
 import 'package:test/test.dart';
 
@@ -45,6 +50,52 @@ void main() {
 
           expect(harness.frees, isEmpty);
         }
+      });
+    });
+
+    group('kittyGraphicsGet', () {
+      test('Kitty storage uses null only for noValue and preserves errors', () {
+        final harness = FaultExports();
+        final memory = Memory(harness.exports);
+        var result = Result.noValue;
+        harness.object['ghostty_terminal_get'] =
+            (JSNumber _, JSNumber _, JSNumber out) {
+              memory.writePtr(out.toDartInt, 128);
+              return result.value.toJS;
+            }.toJS;
+        final bindings = WasmKittyGraphicsBindings(harness.exports, layout);
+
+        expect(bindings.kittyGraphicsGet(const .fromAddress(64)), isNull);
+
+        result = Result.invalidValue;
+        expect(
+          () => bindings.kittyGraphicsGet(const .fromAddress(64)),
+          throwsA(isA<InvalidValueException>()),
+        );
+
+        result = Result.success;
+
+        expect(bindings.kittyGraphicsGet(const .fromAddress(64))?.value, 128);
+      });
+    });
+
+    group('kittyGraphicsImage', () {
+      test('Kitty image lookup returns nullable handles for absent images', () {
+        final harness = FaultExports();
+        harness.object['ghostty_kitty_graphics_image'] =
+            ((JSNumber _, JSNumber id) => (id.toDartInt == 42 ? 128 : 0).toJS)
+                .toJS;
+        final bindings = WasmKittyGraphicsBindings(harness.exports, layout);
+
+        expect(bindings.kittyGraphicsImage(const .fromAddress(64), 99), isNull);
+        expect(
+          bindings.kittyGraphicsImage(const .fromAddress(64), 42)?.value,
+          128,
+        );
+        expect(
+          () => bindings.kittyGraphicsImage(const .fromAddress(0), 42),
+          throwsA(isA<InvalidValueException>()),
+        );
       });
     });
   });

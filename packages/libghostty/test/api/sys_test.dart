@@ -23,6 +23,29 @@ void main() {
     });
 
     group('setLogger', () {
+      test(
+        'receives validation logs outside terminal input processing',
+        () async {
+          final delivered = Completer<String>();
+          LibGhostty.setLogger((_, _, message) => delivered.complete(message));
+          final parser = SgrParser();
+          addTearDown(parser.dispose);
+
+          expect(
+            () => parser.parse(
+              List<int>.filled(1000, 1),
+              separators: List<String>.filled(1000, ';'),
+            ),
+            throwsA(isA<InvalidValueException>()),
+          );
+          expect(
+            await delivered.future,
+            contains('exceeds max supported length'),
+          );
+          expect(parser.parse([1]).single.tag, SgrAttributeTag.bold);
+        },
+      );
+
       test('receives decoded log emissions from current logger', () async {
         final replaced = <String>[];
         final delivered = Completer<_LogEntry>();

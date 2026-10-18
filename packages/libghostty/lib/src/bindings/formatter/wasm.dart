@@ -197,13 +197,14 @@ final class WasmFormatterBindings implements FormatterBindings {
 
   void _growFormatBuffer(int required) {
     if (required <= _formatBufferCapacity) return;
-    final replacement = _requirePointer(_exports.allocateBytes(required));
+    final replacement = _allocateBytes(required);
     _exports.freeBytes(_formatBuffer, _formatBufferCapacity);
     _formatBuffer = replacement;
     _formatBufferCapacity = required;
   }
 
-  int _requirePointer(int pointer) {
+  int _allocateBytes(int length) {
+    final pointer = _exports.allocateBytes(length);
     if (pointer == 0) throw const OutOfMemoryException();
     return pointer;
   }
