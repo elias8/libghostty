@@ -197,11 +197,21 @@ final class WasmParserBindings implements ParserBindings {
         );
       }
       for (var i = 0; i < params.length; i++) {
-        _memory.writeU16(paramsPointer + i * 2, params[i]);
+        final parameter = params[i];
+        RangeError.checkValueInInterval(parameter, 0, 65535, 'params');
+        _memory.writeU16(paramsPointer + i * 2, parameter);
       }
       if (separators != null) {
         for (var i = 0; i < separators.length; i++) {
-          _memory.writeU8(separatorsPointer + i, separators[i].codeUnitAt(0));
+          final separator = separators[i];
+          if (separator != ';' && separator != ':') {
+            throw ArgumentError.value(
+              separator,
+              'separators',
+              'must be ; or :',
+            );
+          }
+          _memory.writeU8(separatorsPointer + i, separator.codeUnitAt(0));
         }
       }
       final result = _exports.ghostty_sgr_set_params(

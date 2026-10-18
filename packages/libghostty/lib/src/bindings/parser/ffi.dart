@@ -166,14 +166,24 @@ final class FfiParserBindings implements ParserBindings {
       using((arena) {
         final nativeParams = arena<Uint16>(params.length);
         for (var i = 0; i < params.length; i++) {
-          nativeParams[i] = params[i];
+          final parameter = params[i];
+          RangeError.checkValueInInterval(parameter, 0, 65535, 'params');
+          nativeParams[i] = parameter;
         }
 
         Pointer<Char> nativeSeparators = nullptr;
         if (separators != null) {
           nativeSeparators = arena<Char>(separators.length);
           for (var i = 0; i < separators.length; i++) {
-            (nativeSeparators + i).value = separators[i].codeUnitAt(0);
+            final separator = separators[i];
+            if (separator != ';' && separator != ':') {
+              throw ArgumentError.value(
+                separator,
+                'separators',
+                'must be ; or :',
+              );
+            }
+            (nativeSeparators + i).value = separator.codeUnitAt(0);
           }
         }
 
