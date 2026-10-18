@@ -29,8 +29,12 @@ void _invokeOpaqueReply(
 }
 
 final class FfiTerminalBindings implements TerminalBindings {
+  final Allocator _callbackAllocator;
+
   final _callbacks = <int, Map<TerminalOption, NativeCallable>>{};
   final _stringBuffers = <int, Map<TerminalOption, _StringBuffer>>{};
+  List<_StringBuffer>? _retiredStringBuffers;
+  var _replyWriteDepth = 0;
 
   ({Object error, StackTrace stackTrace})? _callbackError;
 
@@ -50,7 +54,8 @@ final class FfiTerminalBindings implements TerminalBindings {
   final _multiValues = calloc<Pointer<Void>>(4);
   final _multiOut = calloc<Uint64>(4);
 
-  FfiTerminalBindings() {
+  FfiTerminalBindings({Allocator callbackAllocator = calloc})
+    : _callbackAllocator = callbackAllocator {
     _outStyle.ref.size = sizeOf<native.Style>();
   }
 
@@ -121,48 +126,56 @@ final class FfiTerminalBindings implements TerminalBindings {
     LibGhosttyHandle terminal,
     ContinuationWriter writer,
   ) {
-    final callable = NativeCallable<native.WriterFnFunction>.isolateLocal((
-      Pointer<Void> _,
-      Pointer<Uint8> data,
-      int length,
-    ) {
-      try {
-        return writer(Uint8List.fromList(data.asTypedList(length)));
-      } on Object catch (error, stackTrace) {
-        _captureCallbackError(error, stackTrace);
-        return false;
-      }
-    }, exceptionalReturn: false);
-    Object? resultError;
-    StackTrace? resultStackTrace;
-    try {
-      using((arena) {
-        final nativeWriter = native.Writer.$allocate(
-          arena,
-          write: callable.nativeFunction,
-          userdata: nullptr,
-        );
+    void write() {
+      final callable = NativeCallable<native.WriterFnFunction>.isolateLocal((
+        Pointer<Void> _,
+        Pointer<Uint8> data,
+        int length,
+      ) {
         try {
-          checkResultCode(
-            native
-                .ghostty_terminal_continuation_write(
-                  .fromAddress(terminal.value),
-                  nativeWriter.ref,
-                )
-                .value,
-            operation: 'ghostty_terminal_continuation_write',
-          );
+          return writer(Uint8List.fromList(data.asTypedList(length)));
         } on Object catch (error, stackTrace) {
-          resultError = error;
-          resultStackTrace = stackTrace;
+          _captureCallbackError(error, stackTrace);
+          return false;
         }
-      });
-    } finally {
-      callable.close();
+      }, exceptionalReturn: false);
+      Object? resultError;
+      StackTrace? resultStackTrace;
+      try {
+        using((arena) {
+          final nativeWriter = native.Writer.$allocate(
+            arena,
+            write: callable.nativeFunction,
+            userdata: nullptr,
+          );
+          try {
+            checkResultCode(
+              native
+                  .ghostty_terminal_continuation_write(
+                    .fromAddress(terminal.value),
+                    nativeWriter.ref,
+                  )
+                  .value,
+              operation: 'ghostty_terminal_continuation_write',
+            );
+          } on Object catch (error, stackTrace) {
+            resultError = error;
+            resultStackTrace = stackTrace;
+          }
+        });
+      } finally {
+        callable.close();
+      }
+      _rethrowCallbackError();
+      if (resultError case final error?) {
+        Error.throwWithStackTrace(error, resultStackTrace!);
+      }
     }
-    _rethrowCallbackError();
-    if (resultError case final error?) {
-      Error.throwWithStackTrace(error, resultStackTrace!);
+
+    if (_callbackError != null) {
+      _withIsolatedCallbackError<void>(write);
+    } else {
+      write();
     }
   }
 
@@ -178,8 +191,7 @@ final class FfiTerminalBindings implements TerminalBindings {
     final buffers = _stringBuffers.remove(terminal.value);
     if (buffers != null) {
       for (final buffer in buffers.values) {
-        if (buffer.data != nullptr) calloc.free(buffer.data);
-        calloc.free(buffer.string);
+        _disposeStringBuffer(buffer);
       }
     }
   }
@@ -458,68 +470,134 @@ final class FfiTerminalBindings implements TerminalBindings {
   }
 
   @override
-  bool terminalPasteText(
-    LibGhosttyHandle terminal,
-    String text, {
-    required bool allowUnsafe,
-  }) {
-    return using((arena) {
-      final encoded = utf8.encode(text);
-      final data = arena<Uint8>(encoded.isEmpty ? 1 : encoded.length);
-      if (encoded.isNotEmpty) {
-        data.asTypedList(encoded.length).setAll(0, encoded);
-      }
-      final mimeData = 'text/plain'.codeUnits;
-      final mimeBytes = arena<Uint8>(mimeData.length);
-      mimeBytes.asTypedList(mimeData.length).setAll(0, mimeData);
-      final mimes = arena<native.String>();
-      mimes.ref
-        ..ptr = mimeBytes
-        ..len = mimeData.length;
-      final reader = NativeCallable<native.MimeReaderFnFunction>.isolateLocal((
-        Pointer<Void> _,
-        native.String mime,
-        native.Writer writer,
-      ) {
-        if (_readString(mime) != 'text/plain') {
-          return false;
-        }
-        final write = writer.write
-            .asFunction<bool Function(Pointer<Void>, Pointer<Uint8>, int)>();
-        return write(writer.userdata, data, encoded.length);
-      }, exceptionalReturn: false);
-      try {
-        final readerStruct = native.MimeReader.$allocate(
-          arena,
-          read: reader.nativeFunction.cast(),
-          userdata: nullptr,
-        );
+  bool terminalPaste(LibGhosttyHandle terminal, PasteRequest request) {
+    final outerError = _callbackError;
+    _callbackError = null;
+    try {
+      return using((arena) {
         final paste = arena<native.Paste>();
         paste.ref
           ..size = sizeOf<native.Paste>()
-          ..location = ClipboardLocation.standard
-          ..source = PasteSource.text
-          ..mimes = mimes
-          ..mimes_len = 1
-          ..reader = readerStruct.ref
-          ..allow_unsafe = allowUnsafe;
-        final written = arena<Bool>();
-        final result = native.ghostty_terminal_paste(
-          .fromAddress(terminal.value),
-          paste,
-          written,
-        );
-        checkResultCode(result.value, operation: 'ghostty_terminal_paste');
-        return written.value;
-      } finally {
-        reader.close();
-      }
-    });
+          ..allow_unsafe = request.allowUnsafe;
+        final reader = paste.ref.reader;
+        int? token;
+        switch (request) {
+          case TextPaste(:final data):
+            final bytes = arena<Uint8>(data.isEmpty ? 1 : data.length);
+            bytes.asTypedList(data.length).setAll(0, data);
+            final mimeBytes = arena<Uint8>(10);
+            mimeBytes.asTypedList(10).setAll(0, 'text/plain'.codeUnits);
+            final mime = arena<native.String>();
+            mime.ref
+              ..ptr = mimeBytes
+              ..len = 10;
+            final content = arena<native.String>();
+            content.ref
+              ..ptr = bytes
+              ..len = data.length;
+            paste.ref
+              ..location = ClipboardLocation.standard
+              ..source = PasteSource.text
+              ..mimes = mime
+              ..mimes_len = 1;
+            reader
+              ..read = _pasteReader.cast()
+              ..userdata = content.cast();
+          case MimePaste(:final source, :final location, :final mimes):
+            final descriptors = arena<native.String>(
+              mimes.isEmpty ? 1 : mimes.length,
+            );
+            for (var i = 0; i < mimes.length; i++) {
+              final encoded = utf8.encode(mimes[i]);
+              final bytes = arena<Uint8>(encoded.isEmpty ? 1 : encoded.length);
+              bytes.asTypedList(encoded.length).setAll(0, encoded);
+              descriptors[i]
+                ..ptr = bytes
+                ..len = encoded.length;
+            }
+            token = _nextPasteToken++;
+            paste.ref
+              ..location = location
+              ..source = source
+              ..mimes = descriptors
+              ..mimes_len = mimes.length;
+            reader
+              ..read = _mimePasteReader.cast()
+              ..userdata = Pointer<Void>.fromAddress(token);
+        }
+        try {
+          if (request case MimePaste(:final read)) {
+            _pasteOperations[token!] = _PasteOperation(this, read);
+          }
+          final written = arena<Bool>();
+          final result = native.ghostty_terminal_paste(
+            .fromAddress(terminal.value),
+            paste,
+            written,
+          );
+          _rethrowCallbackError();
+          checkResultCode(result.value, operation: 'ghostty_terminal_paste');
+          return written.value;
+        } finally {
+          if (token != null) _pasteOperations.remove(token);
+        }
+      });
+    } finally {
+      _callbackError = outerError;
+    }
+  }
+
+  static final _pasteReader = Pointer.fromFunction<native.MimeReaderFnFunction>(
+    _readPaste,
+    false,
+  );
+
+  static bool _readPaste(
+    Pointer<Void> userdata,
+    native.String mime,
+    native.Writer writer,
+  ) {
+    final content = userdata.cast<native.String>().ref;
+    if (content.len == 0) return true;
+    final write = writer.write
+        .asFunction<bool Function(Pointer<Void>, Pointer<Uint8>, int)>();
+    return write(writer.userdata, content.ptr, content.len);
+  }
+
+  static var _nextPasteToken = 1;
+  static final _pasteOperations = <int, _PasteOperation>{};
+  static final _mimePasteReader =
+      Pointer.fromFunction<native.MimeReaderFnFunction>(_readMimePaste, false);
+
+  static bool _readMimePaste(
+    Pointer<Void> userdata,
+    native.String mime,
+    native.Writer writer,
+  ) {
+    final operation = _pasteOperations[userdata.address];
+    if (operation == null) return false;
+    _NativePasteSink? sink;
+    try {
+      sink = _NativePasteSink(writer);
+      final accepted = operation.read(_readString(mime), sink);
+      return accepted && !sink._failed;
+    } on Object catch (error, stackTrace) {
+      operation.bindings._captureCallbackError(error, stackTrace);
+      return false;
+    } finally {
+      sink?._close();
+    }
   }
 
   @override
   void terminalReset(LibGhosttyHandle terminal) {
-    native.ghostty_terminal_reset(.fromAddress(terminal.value));
+    void reset() => native.ghostty_terminal_reset(.fromAddress(terminal.value));
+    if (_callbackError != null) {
+      _withIsolatedCallbackError<void>(reset);
+      return;
+    }
+    reset();
+    _rethrowCallbackError();
   }
 
   @override
@@ -546,7 +624,7 @@ final class FfiTerminalBindings implements TerminalBindings {
       return;
     }
     if (_callbackError != null) {
-      _runNestedCallbackOperation<void>(resize);
+      _withIsolatedCallbackError<void>(resize);
       return;
     }
     resize();
@@ -1248,27 +1326,34 @@ final class FfiTerminalBindings implements TerminalBindings {
     if (data.isEmpty) return;
 
     void write() {
-      using((arena) {
-        final bytes = arena<Uint8>(data.length);
+      final bytes = calloc<Uint8>(data.length);
+      try {
         bytes.asTypedList(data.length).setAll(0, data);
         native.ghostty_terminal_vt_write(
           .fromAddress(terminal.value),
           bytes,
           data.length,
         );
-      });
+      } finally {
+        calloc.free(bytes);
+      }
     }
 
     if (_callbacks[terminal.value]?.isEmpty ?? true) {
       write();
       return;
     }
-    if (_callbackError != null) {
-      _runNestedCallbackOperation<void>(write);
-      return;
+    _replyWriteDepth++;
+    try {
+      if (_callbackError != null) {
+        _withIsolatedCallbackError<void>(write);
+        return;
+      }
+      write();
+      _rethrowCallbackError();
+    } finally {
+      _finishReplyWrite();
     }
-    write();
-    _rethrowCallbackError();
   }
 
   @override
@@ -1298,12 +1383,32 @@ final class FfiTerminalBindings implements TerminalBindings {
     if (_callbacks[terminal.value]?.isEmpty ?? true) {
       return write();
     }
-    if (_callbackError != null) {
-      return _runNestedCallbackOperation<int?>(write);
+    _replyWriteDepth++;
+    try {
+      if (_callbackError != null) {
+        return _withIsolatedCallbackError<int?>(write);
+      }
+      final result = write();
+      _rethrowCallbackError();
+      return result;
+    } finally {
+      _finishReplyWrite();
     }
-    final result = write();
-    _rethrowCallbackError();
-    return result;
+  }
+
+  void _finishReplyWrite() {
+    if (--_replyWriteDepth != 0) return;
+    final retired = _retiredStringBuffers;
+    if (retired == null) return;
+    _retiredStringBuffers = null;
+    for (final buffer in retired) {
+      _disposeStringBuffer(buffer);
+    }
+  }
+
+  void _disposeStringBuffer(_StringBuffer buffer) {
+    if (buffer.data != nullptr) _callbackAllocator.free(buffer.data);
+    _callbackAllocator.free(buffer.string);
   }
 
   void _captureCallbackError(Object error, StackTrace stackTrace) {
@@ -1314,8 +1419,12 @@ final class FfiTerminalBindings implements TerminalBindings {
     final buffers = _stringBuffers[handle];
     final buffer = buffers?.remove(option);
     if (buffer != null) {
-      if (buffer.data != nullptr) calloc.free(buffer.data);
-      calloc.free(buffer.string);
+      if (_replyWriteDepth == 0) {
+        _disposeStringBuffer(buffer);
+      } else {
+        // Native code consumes the returned string after the callback returns.
+        (_retiredStringBuffers ??= []).add(buffer);
+      }
     }
     if (buffers?.isEmpty ?? false) _stringBuffers.remove(handle);
   }
@@ -1467,13 +1576,31 @@ final class FfiTerminalBindings implements TerminalBindings {
   }
 
   void _replaceStringData(_StringBuffer buffer, List<int> bytes) {
-    if (buffer.data != nullptr) calloc.free(buffer.data);
-    final data = calloc<Uint8>(bytes.isEmpty ? 1 : bytes.length);
-    if (bytes.isNotEmpty) data.asTypedList(bytes.length).setAll(0, bytes);
-    buffer.data = data;
+    final capacity = bytes.isEmpty ? 1 : bytes.length;
+    if (capacity == buffer.capacity) {
+      if (bytes.isNotEmpty) {
+        buffer.data.asTypedList(bytes.length).setAll(0, bytes);
+      }
+      buffer.string.ref
+        ..ptr = buffer.data
+        ..len = bytes.length;
+      return;
+    }
+    final data = _callbackAllocator<Uint8>(capacity);
+    try {
+      if (bytes.isNotEmpty) data.asTypedList(bytes.length).setAll(0, bytes);
+    } on Object {
+      _callbackAllocator.free(data);
+      rethrow;
+    }
+    final previous = buffer.data;
+    buffer
+      ..data = data
+      ..capacity = capacity;
     buffer.string.ref
       ..ptr = data
       ..len = bytes.length;
+    if (previous != nullptr) _callbackAllocator.free(previous);
   }
 
   void _replyClipboardRead(
@@ -1545,17 +1672,21 @@ final class FfiTerminalBindings implements TerminalBindings {
     Error.throwWithStackTrace(failure.error, failure.stackTrace);
   }
 
-  T _runNestedCallbackOperation<T>(T Function() operation) {
+  T _withIsolatedCallbackError<T>(T Function() operation) {
     final previousFailure = _callbackError!;
     _callbackError = null;
     late final T result;
-    late final ({Object error, StackTrace stackTrace})? failure;
+    ({Object error, StackTrace stackTrace})? operationFailure;
+    late final ({Object error, StackTrace stackTrace})? callbackFailure;
     try {
       result = operation();
+    } on Object catch (error, stackTrace) {
+      operationFailure = (error: error, stackTrace: stackTrace);
     } finally {
-      failure = _callbackError;
+      callbackFailure = _callbackError;
       _callbackError = previousFailure;
     }
+    final failure = callbackFailure ?? operationFailure;
     if (failure != null) {
       Error.throwWithStackTrace(failure.error, failure.stackTrace);
     }
@@ -1683,7 +1814,7 @@ final class FfiTerminalBindings implements TerminalBindings {
   _StringBuffer _stringBuffer(int handle, TerminalOption option) {
     final buffers = _stringBuffers.putIfAbsent(handle, () => {});
     return buffers[option] ??= _StringBuffer(
-      native.String.$allocate(calloc, ptr: nullptr.cast(), len: 0),
+      native.String.$allocate(_callbackAllocator, ptr: nullptr.cast(), len: 0),
       nullptr.cast(),
     );
   }
@@ -1731,6 +1862,55 @@ final class FfiTerminalBindings implements TerminalBindings {
 final class _StringBuffer {
   final Pointer<native.String> string;
   Pointer<Uint8> data;
+  var capacity = 0;
 
   _StringBuffer(this.string, this.data);
+}
+
+final class _PasteOperation {
+  final FfiTerminalBindings bindings;
+  final PasteReader read;
+
+  _PasteOperation(this.bindings, this.read);
+}
+
+final class _NativePasteSink implements PasteSink {
+  final native.Writer _writer;
+  final bool Function(Pointer<Void>, Pointer<Uint8>, int) _write;
+  Pointer<Uint8> _buffer = nullptr;
+  var _capacity = 0;
+  var _active = true;
+  var _failed = false;
+
+  _NativePasteSink(this._writer)
+    : _write = _writer.write
+          .asFunction<bool Function(Pointer<Void>, Pointer<Uint8>, int)>();
+
+  @override
+  bool write(Uint8List bytes) {
+    if (!_active) throw StateError('The paste sink has expired.');
+    if (_failed) return false;
+    if (bytes.isEmpty) return true;
+    try {
+      if (bytes.length > _capacity) {
+        final buffer = calloc<Uint8>(bytes.length);
+        calloc.free(_buffer);
+        _buffer = buffer;
+        _capacity = bytes.length;
+      }
+      _buffer.asTypedList(bytes.length).setAll(0, bytes);
+      final accepted = _write(_writer.userdata, _buffer, bytes.length);
+      _failed = !accepted;
+      return accepted;
+    } on Object {
+      _failed = true;
+      rethrow;
+    }
+  }
+
+  void _close() {
+    _active = false;
+    calloc.free(_buffer);
+    _buffer = nullptr;
+  }
 }

@@ -189,3 +189,27 @@ pasteIsSafe('hello');           // true
 pasteIsSafe('rm -rf /\n');      // false
 pasteIsSafe('\x1b[201~inject'); // false
 ```
+
+### Terminal paste
+
+Set `onWritePty` before calling `Terminal.paste`. The method applies the
+terminal's paste policy and returns whether it wrote text or a clipboard event.
+
+```dart
+terminal.paste(PasteRequest.text('direct text'));
+
+final clipboardBytes = utf8.encode('clipboard text');
+terminal.paste(PasteRequest.mime(
+  source: PasteSource.clipboard,
+  location: ClipboardLocation.standard,
+  mimes: const ['text/plain'],
+  read: (mime, sink) => sink.write(clipboardBytes),
+));
+```
+
+MIME readers run synchronously and their sinks expire when they return.
+Clipboard events use `onClipboardRead` for later reads. The text fallback
+does not decode image or HTML data.
+
+On Wasm, clipboard paste events require a secure random source configured with
+`LibGhostty.setRandomSecure`.

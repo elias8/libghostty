@@ -38,7 +38,7 @@ final class GridRef {
   GridRef._(Terminal terminal, Position position, {PointTag pointTag = .active})
     : _terminal = terminal,
       _value = bindings.render.terminalGridRef(
-        terminal._terminalHandle,
+        terminal._requireHandle(),
         pointTag,
         position,
       );
@@ -55,7 +55,10 @@ final class GridRef {
   /// The cell's grapheme cluster as a list of Unicode codepoints. The
   /// primary codepoint is first, followed by any combining codepoints.
   /// Empty if the cell has no text.
-  List<int> get graphemes => bindings.render.gridRefGraphemes(_value);
+  List<int> get graphemes {
+    _terminal._requireHandle();
+    return bindings.render.gridRefGraphemes(_value);
+  }
 
   @override
   int get hashCode => Object.hash(GridRef, _terminal, _value);
@@ -63,6 +66,7 @@ final class GridRef {
   /// The hyperlink URI at this position, or null if the cell has no
   /// hyperlink.
   String? get hyperlinkUri {
+    _terminal._requireHandle();
     final uri = bindings.render.gridRefHyperlinkUri(_value);
     return uri?.isEmpty ?? true ? null : uri;
   }
@@ -74,15 +78,24 @@ final class GridRef {
   bool get rowWrap => bindings.render.rowGetWrap(_row);
 
   /// The [Style] of the cell at this position.
-  Style get style => bindings.render.gridRefStyle(_value);
+  Style get style {
+    _terminal._requireHandle();
+    return bindings.render.gridRefStyle(_value);
+  }
 
   /// The cell's width: [CellWidth.narrow], [CellWidth.wide], or
   /// [CellWidth.spacerTail].
   CellWidth get wide => bindings.render.cellGetWide(_cell);
 
-  LibGhosttyHandle get _cell => bindings.render.gridRefCell(_value);
+  RawCell get _cell {
+    _terminal._requireHandle();
+    return bindings.render.gridRefCell(_value);
+  }
 
-  LibGhosttyHandle get _row => bindings.render.gridRefRow(_value);
+  RawRow get _row {
+    _terminal._requireHandle();
+    return bindings.render.gridRefRow(_value);
+  }
 
   @override
   bool operator ==(Object other) =>
@@ -96,7 +109,7 @@ final class GridRef {
   /// coordinates).
   Position? positionIn(PointTag pointTag) {
     final position = bindings.render.terminalPointFromGridRef(
-      _terminal._terminalHandle,
+      _terminal._requireHandle(),
       _value,
       pointTag,
     );

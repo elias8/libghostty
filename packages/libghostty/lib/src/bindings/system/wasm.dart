@@ -119,7 +119,10 @@ final class WasmSystemBindings implements SystemBindings {
     final index = _registerCallback(
       ((int _, int buffer, int length) {
         try {
-          return callback(_memory.readBytes(buffer, length)) ? 1 : 0;
+          final bytes = Uint8List(length);
+          if (!callback(bytes)) return 0;
+          _memory.writeBytes(buffer, bytes);
+          return 1;
         } on Object {
           return 0;
         }

@@ -72,11 +72,7 @@ abstract interface class TerminalBindings {
   });
 
   LibGhosttyHandle terminalNew(int cols, int rows);
-  bool terminalPasteText(
-    LibGhosttyHandle terminal,
-    String text, {
-    required bool allowUnsafe,
-  });
+  bool terminalPaste(LibGhosttyHandle terminal, PasteRequest request);
   void terminalReset(LibGhosttyHandle terminal);
 
   void terminalResize(

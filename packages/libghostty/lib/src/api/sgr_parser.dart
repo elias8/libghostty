@@ -49,7 +49,8 @@ final class SgrParser {
   /// Parses SGR [params] into a list of typed attributes.
   ///
   /// [params] are the numeric values from a CSI SGR sequence, for example,
-  /// `[1, 31]` for `ESC[1;31m`.
+  /// `[1, 31]` for `ESC[1;31m`. Each value must fit in an unsigned 16-bit
+  /// integer, from 0 to 65535.
   ///
   /// [separators] optionally specifies the separator character for each
   /// parameter position: `";"` for semicolon or `":"` for colon. This is
@@ -62,8 +63,19 @@ final class SgrParser {
   /// [separators] can be modified after this call.
   ///
   /// Throws [OutOfMemoryException] if the internal copy allocation fails.
+  /// Throws [RangeError] if a parameter is outside the supported range, or
+  /// [ArgumentError] if separators have the wrong length or character.
   List<SgrAttribute> parse(List<int> params, {List<String>? separators}) {
     final handle = _requireHandle();
+    if (separators != null) {
+      if (separators.length != params.length) {
+        throw ArgumentError.value(
+          separators,
+          'separators',
+          'must have the same length as params',
+        );
+      }
+    }
     bindings.parser.sgrSetParams(handle, params, separators);
     final results = <SgrAttribute>[];
     for (

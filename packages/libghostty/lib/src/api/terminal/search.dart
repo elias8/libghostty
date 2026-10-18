@@ -8,14 +8,13 @@ part of 'terminal.dart';
 final class Search {
   static final _finalizer = Finalizer(bindings.search.searchFree);
 
-  final Terminal _terminal;
+  Terminal? _terminal;
   final LibGhosttyHandle _handle;
-  var _disposed = false;
 
   /// Creates a search bound to [terminal].
   Search(Terminal terminal)
     : _terminal = terminal,
-      _handle = bindings.search.searchNew(terminal._terminalHandle) {
+      _handle = bindings.search.searchNew(terminal._requireHandle()) {
     _finalizer.attach(this, _handle, detach: this);
   }
 
@@ -63,10 +62,11 @@ final class Search {
 
   /// Releases search resources. Calling this more than once is safe.
   void dispose() {
-    if (_disposed) return;
+    final terminal = _terminal;
+    if (terminal == null) return;
     bindings.search.searchFree(_handle);
     _finalizer.detach(this);
-    _disposed = true;
+    _terminal = null;
   }
 
   /// Reads terminal state into the search and returns the current status.
@@ -82,13 +82,13 @@ final class Search {
   /// Selects the next older match, wrapping at the oldest match.
   void selectNext() {
     bindings.search.searchSelectNext(_requireHandle());
-    _terminal._notifyListenersFromSearch();
+    _terminal!._notifyListenersFromSearch();
   }
 
   /// Selects the previous newer match, wrapping at the newest match.
   void selectPrevious() {
     bindings.search.searchSelectPrevious(_requireHandle());
-    _terminal._notifyListenersFromSearch();
+    _terminal!._notifyListenersFromSearch();
   }
 
   /// Sets or clears the search needle.
@@ -100,16 +100,17 @@ final class Search {
   SearchStatus tick() => bindings.search.searchTick(_requireHandle());
 
   Selection? _mapSelection(RawSelection? value) {
-    return value == null ? null : Selection._fromRaw(_terminal, value);
+    return value == null ? null : Selection._fromRaw(_terminal!, value);
   }
 
   List<Selection> _mapSelections(List<RawSelection> values) => [
-    for (final value in values) Selection._fromRaw(_terminal, value),
+    for (final value in values) Selection._fromRaw(_terminal!, value),
   ];
 
   LibGhosttyHandle _requireHandle() {
-    if (_disposed) throw StateError('Search has been disposed');
-    if (_terminal._disposed) throw StateError('Search terminal is disposed');
+    final terminal = _terminal;
+    if (terminal == null) throw StateError('Search has been disposed');
+    if (terminal._disposed) throw StateError('Search terminal is disposed');
     return _handle;
   }
 }

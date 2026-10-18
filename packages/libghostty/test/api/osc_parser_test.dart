@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:libghostty/libghostty.dart';
 import 'package:test/test.dart';
@@ -14,6 +15,29 @@ void main() {
     setUp(() => parser = OscParser());
 
     tearDown(() => parser.dispose());
+
+    group('feedBytes', () {
+      final bytes = utf8.encode('0;Terminal λ');
+      final inputs = <String, List<int>>{
+        'fixed list': List<int>.of(bytes, growable: false),
+        'growable list': List<int>.of(bytes),
+        'unmodifiable list': List<int>.unmodifiable(bytes),
+        'typed data view': Uint8List.sublistView(
+          Uint8List.fromList([0xff, ...bytes, 0xff]),
+          1,
+          bytes.length + 1,
+        ),
+      };
+      for (final entry in inputs.entries) {
+        test('accepts ${entry.key}', () {
+          parser.feedBytes(entry.value);
+          parser.feedBytes(const []);
+          final command = parser.end(0x07);
+          expect(command.type, OscCommandType.changeWindowTitle);
+          expect(command.windowTitle, 'Terminal λ');
+        });
+      }
+    });
 
     group('end', () {
       test('returns window commands', () {

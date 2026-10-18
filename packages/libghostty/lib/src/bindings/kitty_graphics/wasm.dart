@@ -4,7 +4,7 @@ import '../../generated/libghostty_enums.g.dart';
 import '../../generated/libghostty_wasm.g.dart';
 import '../../types/types.dart';
 import '../types.dart';
-import '../wasm/allocator.dart';
+import '../wasm/allocation_owner.dart';
 import '../wasm/layouts.dart';
 import '../wasm/memory.dart';
 import '../wasm/scratch.dart';
@@ -22,20 +22,35 @@ final class WasmKittyGraphicsBindings implements KittyGraphicsBindings {
   late final int _multi;
   late final int _written;
 
-  WasmKittyGraphicsBindings(this._exports, this._layout)
-    : _memory = Memory(_exports),
+  factory WasmKittyGraphicsBindings(GhosttyExports exports, Layouts layout) {
+    final owner = WasmAllocationOwner(exports);
+    try {
+      final bindings = WasmKittyGraphicsBindings._(exports, layout, owner);
+      owner.commit();
+      return bindings;
+    } on Object {
+      owner.rollback();
+      rethrow;
+    }
+  }
+
+  WasmKittyGraphicsBindings._(
+    this._exports,
+    this._layout,
+    WasmAllocationOwner owner,
+  ) : _memory = Memory(_exports),
       _scratch = WasmScratchPool(
         WasmExportScratchAllocator(_exports),
         maxVariableLength: WasmScratchPool.defaultMaxVariableLength,
       ) {
-    _keys = _allocate(12 * 4, alignment: 4);
-    _values = _allocate(12 * 4, alignment: 4);
-    _multi = _allocate(12 * _wasmOutputSlotSize, alignment: 8);
-    _written = _allocate(4, alignment: 4);
+    _keys = _allocate(owner, 12 * 4, alignment: 4);
+    _values = _allocate(owner, 12 * 4, alignment: 4);
+    _multi = _allocate(owner, 12 * _wasmOutputSlotSize, alignment: 8);
+    _written = _allocate(owner, 4, alignment: 4);
   }
 
   @override
-  LibGhosttyHandle kittyGraphicsGet(LibGhosttyHandle terminal) {
+  LibGhosttyHandle? kittyGraphicsGet(LibGhosttyHandle terminal) {
     final frame = _scratch.acquire(const []);
     try {
       final out = frame.variableAddress(
@@ -48,7 +63,8 @@ final class WasmKittyGraphicsBindings implements KittyGraphicsBindings {
         TerminalData.kittyGraphics.value,
         out,
       );
-      if (result != Result.success.value) return const .fromAddress(0);
+      if (result == Result.noValue.value) return null;
+      checkCode(Result.fromValue(result), operation: 'ghostty_terminal_get');
       return .fromAddress(_memory.readPtr(out));
     } finally {
       frame.release();
@@ -105,11 +121,13 @@ final class WasmKittyGraphicsBindings implements KittyGraphicsBindings {
   }
 
   @override
-  LibGhosttyHandle kittyGraphicsImage(LibGhosttyHandle graphics, int imageId) {
-    if (graphics.value == 0) return const .fromAddress(0);
-    return .fromAddress(
-      _exports.ghostty_kitty_graphics_image(graphics.value, imageId),
+  LibGhosttyHandle? kittyGraphicsImage(LibGhosttyHandle graphics, int imageId) {
+    if (graphics.value == 0) throw const InvalidValueException();
+    final image = _exports.ghostty_kitty_graphics_image(
+      graphics.value,
+      imageId,
     );
+    return image == 0 ? null : .fromAddress(image);
   }
 
   @override
@@ -197,7 +215,7 @@ final class WasmKittyGraphicsBindings implements KittyGraphicsBindings {
     checkCode(result, operation: 'ghostty_kitty_graphics_placement_get_multi');
     final imageId = _memory.readU32(_multi);
     final image = kittyGraphicsImage(graphics, imageId);
-    final renderInfo = image.value == 0
+    final renderInfo = image == null
         ? const KittyPlacementRenderInfo.offscreen()
         : kittyGraphicsPlacementRenderInfo(iterator, image, terminal) ??
               const KittyPlacementRenderInfo.offscreen();
@@ -329,10 +347,9 @@ final class WasmKittyGraphicsBindings implements KittyGraphicsBindings {
     }
   }
 
-  int _allocate(int size, {int alignment = 1}) {
-    final pointer = _require(_exports.allocateBytes(size));
+  int _allocate(WasmAllocationOwner owner, int size, {int alignment = 1}) {
+    final pointer = owner.allocate(size);
     if (pointer % alignment != 0) {
-      _exports.freeBytes(pointer, size);
       throw StateError('libghostty WASM allocator returned misaligned memory.');
     }
     return pointer;
@@ -389,11 +406,6 @@ final class WasmKittyGraphicsBindings implements KittyGraphicsBindings {
     final length = _memory.readU32(_multi + _wasmOutputSlotSize);
     if (pointer == 0 || length == 0) return Uint8List(0);
     return _memory.readBytes(pointer, length);
-  }
-
-  int _require(int pointer) {
-    if (pointer == 0) throw const OutOfMemoryException();
-    return pointer;
   }
 
   void _setImageMulti(List<KittyGraphicsImageData> keys) {

@@ -15,23 +15,29 @@ final class FfiMouseBindings implements MouseBindings {
 
   @override
   String mouseEncoderEncode(LibGhosttyHandle encoder, LibGhosttyHandle event) {
-    return using((arena) {
-      final length = arena<Size>();
-      var capacity = 128;
-      var buffer = arena<Char>(capacity);
+    final lengthBytes = sizeOf<Size>();
+    var capacity = 128;
+    var allocation = calloc<Uint8>(lengthBytes + capacity);
+    try {
+      var length = allocation.cast<Size>();
+      var buffer = (allocation + lengthBytes).cast<Char>();
       var result = native.ghostty_mouse_encoder_encode(
-        .fromAddress(encoder.value),
-        .fromAddress(event.value),
+        Pointer.fromAddress(encoder.value),
+        Pointer.fromAddress(event.value),
         buffer,
         capacity,
         length,
       );
       if (result == .outOfSpace) {
         capacity = length.value;
-        buffer = arena<Char>(capacity);
+        calloc.free(allocation);
+        allocation = nullptr;
+        allocation = calloc<Uint8>(lengthBytes + capacity);
+        length = allocation.cast<Size>();
+        buffer = (allocation + lengthBytes).cast<Char>();
         result = native.ghostty_mouse_encoder_encode(
-          .fromAddress(encoder.value),
-          .fromAddress(event.value),
+          Pointer.fromAddress(encoder.value),
+          Pointer.fromAddress(event.value),
           buffer,
           capacity,
           length,
@@ -39,7 +45,9 @@ final class FfiMouseBindings implements MouseBindings {
       }
       checkResultCode(result.value, operation: 'ghostty_mouse_encoder_encode');
       return utf8.decode(buffer.cast<Uint8>().asTypedList(length.value));
-    });
+    } finally {
+      calloc.free(allocation);
+    }
   }
 
   @override

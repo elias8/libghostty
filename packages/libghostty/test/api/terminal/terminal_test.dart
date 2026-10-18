@@ -32,6 +32,7 @@ void main() {
       test('rejects all operations after terminal disposal', () {
         terminal.dispose();
 
+        expect(() => terminal.scrollViewport(0), throwsStateError);
         expect(() => terminal.title, throwsStateError);
         expect(() => terminal.scrollToPrompt(0), throwsStateError);
         expect(() => terminal.scrollToPrompt(1), throwsStateError);
@@ -51,6 +52,35 @@ void main() {
 
         expect(terminal.dispose, returnsNormally);
       });
+    });
+
+    group('cursor state', () {
+      test(
+        'reads active coordinates, pending wrap, and visibility directly',
+        () {
+          expect(terminal.cursorPosition, const Position(row: 0, col: 0));
+          expect(terminal.cursorPendingWrap, isFalse);
+          expect(terminal.cursorVisible, isTrue);
+
+          terminal.write(Uint8List.fromList('\x1b[3;5H'.codeUnits));
+          expect(terminal.cursorPosition, const Position(row: 2, col: 4));
+
+          terminal.write(Uint8List.fromList('\x1b[1;80HX\x1b[?25l'.codeUnits));
+          expect(terminal.cursorPosition, const Position(row: 0, col: 79));
+          expect(terminal.cursorPendingWrap, isTrue);
+          expect(terminal.cursorVisible, isFalse);
+
+          terminal.write(Uint8List.fromList('Y\x1b[?25h'.codeUnits));
+          expect(terminal.cursorPosition, const Position(row: 1, col: 1));
+          expect(terminal.cursorPendingWrap, isFalse);
+          expect(terminal.cursorVisible, isTrue);
+
+          terminal.dispose();
+          expect(() => terminal.cursorPosition, throwsStateError);
+          expect(() => terminal.cursorPendingWrap, throwsStateError);
+          expect(() => terminal.cursorVisible, throwsStateError);
+        },
+      );
     });
 
     group('geometry', () {
@@ -116,6 +146,27 @@ void main() {
 
         expect(terminal.isVtGround, isFalse);
         expect(terminal.writeUntilGround(Uint8List.fromList([0xa2, 0x41])), 1);
+      });
+
+      test('runs callbacks while completing input through ground', () {
+        final error = StateError('status reply failed');
+        terminal.onWritePty = (_) => throw error;
+        terminal.write(Uint8List.fromList([0x1b, 0x5b]));
+
+        expect(
+          () => terminal.writeUntilGround(Uint8List.fromList('5n'.codeUnits)),
+          throwsA(same(error)),
+        );
+        expect(terminal.isVtGround, isTrue);
+
+        final output = <int>[];
+        terminal.onWritePty = output.addAll;
+        terminal.write(Uint8List.fromList([0x1b, 0x5b]));
+        expect(
+          terminal.writeUntilGround(Uint8List.fromList('5n'.codeUnits)),
+          2,
+        );
+        expect(utf8.decode(output), '\x1b[0n');
       });
 
       test('returns zero when already in ground', () {
@@ -388,6 +439,43 @@ void main() {
         expect(chunks, [0x1b, 0x5d]);
       });
 
+      for (final fails in [false, true]) {
+        test(
+          'isolates nested continuation failure when writer fails $fails',
+          () {
+            final inner = Terminal(cols: 10, rows: 3);
+            addTearDown(inner.dispose);
+            inner.continuationMaxBytes = 128;
+            inner.write(Uint8List.fromList([0x1b, 0x5d]));
+            final outerError = StateError('outer bell failed');
+            final innerError = StateError('inner writer failed');
+            final chunks = <int>[];
+            Object? nestedError;
+            terminal.onBell = () => throw outerError;
+            terminal.onTitleChanged = () {
+              try {
+                inner.writeContinuation((chunk) {
+                  chunks.addAll(chunk);
+                  if (fails) throw innerError;
+                  return true;
+                });
+              } on Object catch (error) {
+                nestedError = error;
+              }
+            };
+
+            expect(
+              () => terminal.write(
+                Uint8List.fromList('\x07\x1b]2;title\x07'.codeUnits),
+              ),
+              throwsA(same(outerError)),
+            );
+            expect(chunks, [0x1b, 0x5d]);
+            expect(nestedError, fails ? same(innerError) : isNull);
+          },
+        );
+      }
+
       test('maps a rejected chunk to an IO exception', () {
         terminal.continuationMaxBytes = 128;
         terminal.write(Uint8List.fromList([0x1b, 0x5d]));
@@ -508,6 +596,23 @@ void main() {
     });
 
     group('onRenderHold', () {
+      test('rethrows release callback failures during explicit reset', () {
+        final error = StateError('hold release failed');
+        final events = <bool>[];
+        terminal.onRenderHold = (held) {
+          events.add(held);
+          if (!held) throw error;
+        };
+        terminal.write(Uint8List.fromList('\x1b[?2026h'.codeUnits));
+
+        expect(terminal.reset, throwsA(same(error)));
+        expect(events, [true, false]);
+
+        terminal.onRenderHold = events.add;
+        terminal.write(Uint8List.fromList('\x1b[?2026h\x1b[?2026l'.codeUnits));
+        expect(events, [true, false, true, false]);
+      });
+
       test('reports synchronized output start and end', () {
         final events = <bool>[];
         terminal.onRenderHold = events.add;
@@ -722,6 +827,50 @@ void main() {
           () => terminal.write(Uint8List.fromList('\x1b[c'.codeUnits)),
           throwsA(same(error)),
         );
+      });
+
+      test('preserves an outer callback failure across a successful reset', () {
+        final inner = Terminal(cols: 80, rows: 24);
+        addTearDown(inner.dispose);
+        final outerError = StateError('outer bell failed');
+        var resetCalled = false;
+        terminal.onBell = () => throw outerError;
+        terminal.onTitleChanged = () {
+          inner.reset();
+          resetCalled = true;
+        };
+
+        expect(
+          () => terminal.write(
+            Uint8List.fromList('\x07\x1b]0;nested\x1b\\'.codeUnits),
+          ),
+          throwsA(same(outerError)),
+        );
+        expect(resetCalled, isTrue);
+      });
+
+      test('isolates a reset callback failure from the outer failure', () {
+        final inner = Terminal(cols: 80, rows: 24);
+        addTearDown(inner.dispose);
+        inner.write(Uint8List.fromList('\x1b[?2026h'.codeUnits));
+        final outerError = StateError('outer bell failed');
+        final innerError = StateError('inner hold release failed');
+        Object? nestedError;
+        inner.onRenderHold = (_) => throw innerError;
+        terminal.onBell = () => throw outerError;
+        terminal.onTitleChanged = () {
+          nestedError = captureError(inner.reset);
+        };
+
+        expect(
+          () => terminal.write(
+            Uint8List.fromList('\x07\x1b]0;nested\x1b\\'.codeUnits),
+          ),
+          throwsA(same(outerError)),
+        );
+        expect(nestedError, same(innerError));
+        inner.onRenderHold = null;
+        expect(inner.reset, returnsNormally);
       });
 
       test('rethrows failures for each operation across terminals', () {
@@ -1205,13 +1354,494 @@ void main() {
     });
 
     group('paste', () {
-      test('uses terminal paste policy and current mode', () {
+      setUp(() {
+        if (!isBrowser) return;
+        LibGhostty.setRandomSecure((bytes) {
+          for (var i = 0; i < bytes.length; i++) {
+            bytes[i] = i;
+          }
+          return true;
+        });
+        addTearDown(LibGhostty.clearRandomSecure);
+      });
+
+      test('requires an output callback before reading representations', () {
+        terminal.onWritePty = null;
+        expect(
+          () => terminal.paste(
+            PasteRequest.mime(
+              source: .clipboard,
+              mimes: const ['text/plain'],
+              read: (_, _) =>
+                  fail('Unexpected read without an output callback'),
+            ),
+          ),
+          throwsA(isA<InvalidValueException>()),
+        );
+      });
+
+      for (final mime in [
+        'text/plain',
+        'text/plain;charset=utf-8',
+        'UTF8_STRING',
+        'TEXT',
+        'STRING',
+      ]) {
+        test('reads the first exact text representation for $mime', () {
+          final output = <int>[];
+          final reads = <String>[];
+          terminal.onWritePty = output.addAll;
+          expect(
+            terminal.paste(
+              PasteRequest.mime(
+                source: .text,
+                mimes: ['image/png', 'Text/plain', mime, 'text/plain'],
+                read: (selected, sink) {
+                  reads.add(selected);
+                  expect(
+                    sink.write(Uint8List.fromList('chosen'.codeUnits)),
+                    isTrue,
+                  );
+                  return true;
+                },
+              ),
+            ),
+            isTrue,
+          );
+          expect(reads, [mime]);
+          expect(utf8.decode(output), 'chosen');
+        });
+      }
+
+      test('does not read image-only fallback', () {
+        terminal.onWritePty = (_) => fail('Unexpected output');
+        expect(
+          terminal.paste(
+            PasteRequest.mime(
+              source: .clipboard,
+              mimes: const ['image/png', 'Text/plain'],
+              read: (_, _) => fail('Unexpected read'),
+            ),
+          ),
+          isFalse,
+        );
+      });
+
+      test('does not fall through an empty selected representation', () {
+        final reads = <String>[];
+        terminal.onWritePty = (_) => fail('Unexpected output');
+        expect(
+          terminal.paste(
+            PasteRequest.mime(
+              source: .clipboard,
+              mimes: const ['TEXT', 'text/plain'],
+              read: (mime, sink) {
+                reads.add(mime);
+                expect(sink.write(Uint8List(0)), isTrue);
+                return true;
+              },
+            ),
+          ),
+          isFalse,
+        );
+        expect(reads, ['TEXT']);
+      });
+
+      test('copies MIME names and owns immutable direct text bytes', () {
+        final mimes = ['text/plain'];
+        final output = <int>[];
+        terminal.onWritePty = output.addAll;
+        final request = PasteRequest.mime(
+          source: .text,
+          mimes: mimes,
+          read: (mime, sink) {
+            expect(mime, 'text/plain');
+            return sink.write(Uint8List.fromList([65]));
+          },
+        );
+        mimes[0] = 'image/png';
+        expect(terminal.paste(request), isTrue);
+        expect(output, [65]);
+        final text = PasteRequest.text('é') as TextPaste;
+        expect(text.data, utf8.encode('é'));
+        expect(() => text.data[0] = 0, throwsUnsupportedError);
+      });
+
+      test('reads multiple chunks and expires the borrowed sink', () {
+        late PasteSink borrowed;
+        final output = <int>[];
+        terminal.onWritePty = output.addAll;
+        expect(
+          terminal.paste(
+            PasteRequest.mime(
+              source: .text,
+              mimes: const ['text/plain'],
+              read: (_, sink) {
+                borrowed = sink;
+                expect(sink.write(Uint8List.fromList([0xc3])), isTrue);
+                expect(sink.write(Uint8List.fromList([0xa9])), isTrue);
+                return true;
+              },
+            ),
+          ),
+          isTrue,
+        );
+        expect(utf8.decode(output), 'é');
+        expect(() => borrowed.write(Uint8List(0)), throwsStateError);
+        expect(
+          () => borrowed.write(Uint8List.fromList([65])),
+          throwsStateError,
+        );
+      });
+
+      test('reader failure discards chunks and clears errors before retry', () {
+        final output = <int>[];
+        terminal.onWritePty = output.addAll;
+        expect(
+          () => terminal.paste(
+            PasteRequest.mime(
+              source: .text,
+              mimes: const ['text/plain'],
+              read: (_, sink) {
+                sink.write(Uint8List.fromList([65]));
+                return false;
+              },
+            ),
+          ),
+          throwsA(isA<IoException>()),
+        );
+        expect(output, isEmpty);
+        final error = StateError('reader failed');
+        late PasteSink borrowed;
+        expect(
+          () => terminal.paste(
+            PasteRequest.mime(
+              source: .text,
+              mimes: const ['text/plain'],
+              read: (_, sink) {
+                borrowed = sink;
+                sink.write(Uint8List.fromList([66]));
+                throw error;
+              },
+            ),
+          ),
+          throwsA(same(error)),
+        );
+        expect(output, isEmpty);
+        expect(() => borrowed.write(Uint8List(0)), throwsStateError);
+        expect(terminal.paste(PasteRequest.text('later')), isTrue);
+        expect(utf8.decode(output), 'later');
+      });
+
+      for (final sameTerminal in [true, false]) {
+        test(
+          'nested readers isolate failures with same terminal $sameTerminal',
+          () {
+            final inner = sameTerminal ? terminal : Terminal(cols: 10, rows: 2);
+            if (!sameTerminal) addTearDown(inner.dispose);
+            final outerOutput = <int>[];
+            final innerOutput = sameTerminal ? outerOutput : <int>[];
+            terminal.onWritePty = outerOutput.addAll;
+            inner.onWritePty = innerOutput.addAll;
+            final error = StateError('inner failure');
+            expect(
+              terminal.paste(
+                PasteRequest.mime(
+                  source: .text,
+                  mimes: const ['text/plain'],
+                  read: (_, sink) {
+                    expect(
+                      () => inner.paste(
+                        PasteRequest.mime(
+                          source: .text,
+                          mimes: const ['text/plain'],
+                          read: (_, _) => throw error,
+                        ),
+                      ),
+                      throwsA(same(error)),
+                    );
+                    expect(inner.paste(PasteRequest.text('inner')), isTrue);
+                    return sink.write(Uint8List.fromList('outer'.codeUnits));
+                  },
+                ),
+              ),
+              isTrue,
+            );
+            expect(
+              utf8.decode(outerOutput),
+              sameTerminal ? 'innerouter' : 'outer',
+            );
+            expect(
+              utf8.decode(innerOutput),
+              sameTerminal ? 'innerouter' : 'inner',
+            );
+          },
+        );
+      }
+
+      test('clipboard falls back to text without a read handler', () {
+        final output = <int>[];
+        terminal.onWritePty = output.addAll;
+        terminal.modeSet(const .pasteEvents(), value: true);
+        expect(
+          terminal.paste(
+            PasteRequest.mime(
+              source: .clipboard,
+              mimes: const ['text/plain'],
+              read: (_, sink) =>
+                  sink.write(Uint8List.fromList('fallback'.codeUnits)),
+            ),
+          ),
+          isTrue,
+        );
+        expect(utf8.decode(output), 'fallback');
+      });
+
+      test(
+        'Kitty events fail without host entropy before reading or writing',
+        () {
+          LibGhostty.setRandomSecure((_) => false);
+          terminal.onWritePty = (_) => fail('Unexpected output');
+          terminal.onClipboardRead = (_) =>
+              const ClipboardReadReply(result: .success);
+          terminal.modeSet(const .pasteEvents(), value: true);
+          expect(
+            () => terminal.paste(
+              PasteRequest.mime(
+                source: .clipboard,
+                mimes: const ['text/plain'],
+                read: (_, _) => fail('Unexpected read'),
+              ),
+            ),
+            throwsA(isA<IoException>()),
+          );
+        },
+        skip: !isBrowser ? 'Native uses the OS entropy source.' : false,
+      );
+
+      test('empty MIME names remain metadata and have no text fallback', () {
+        final output = <int>[];
+        terminal.onWritePty = output.addAll;
+        final request = PasteRequest.mime(
+          source: .clipboard,
+          mimes: const [''],
+          read: (_, _) => fail('Unexpected read'),
+        );
+        expect(terminal.paste(request), isFalse);
+        expect(output, isEmpty);
+        terminal.onClipboardRead = (_) =>
+            const ClipboardReadReply(result: .success);
+        terminal.modeSet(const .pasteEvents(), value: true);
+        expect(terminal.paste(request), isTrue);
+        expect(utf8.decode(output), contains(';Cg==\x1b\\'));
+      });
+
+      for (final location in ClipboardLocation.values) {
+        test(
+          'Kitty paste advertises MIME names at $location without reading',
+          () {
+            final output = <int>[];
+            terminal.onWritePty = output.addAll;
+            terminal.onClipboardRead = (_) =>
+                const ClipboardReadReply(result: .success);
+            terminal.modeSet(const .pasteEvents(), value: true);
+            final mimes = List.generate(18, (i) => 'application/x-item-$i');
+            expect(
+              terminal.paste(
+                PasteRequest.mime(
+                  source: .clipboard,
+                  location: location,
+                  mimes: mimes,
+                  read: (_, _) => fail('Paste event must not read payloads'),
+                ),
+              ),
+              isTrue,
+            );
+            final event = utf8.decode(output);
+            final locationMetadata = location == ClipboardLocation.standard
+                ? ''
+                : ':loc=primary';
+            expect(
+              event,
+              startsWith('\x1b]5522;type=read:status=OK$locationMetadata:pw='),
+            );
+            final listing = base64.encode(
+              utf8.encode('${mimes.take(16).join(' ')}\n'),
+            );
+            expect(event, contains(';$listing\x1b\\'));
+          },
+        );
+      }
+
+      test('Kitty grant is consumed once and direct text bypasses events', () {
+        final output = <int>[];
+        final granted = <bool>[];
+        terminal.onWritePty = output.addAll;
+        terminal.onClipboardRead = (request) {
+          granted.add(request.granted);
+          return ClipboardReadReply(
+            result: .success,
+            contents: [
+              ClipboardContent(
+                mime: 'text/plain',
+                data: Uint8List.fromList('clipboard'.codeUnits),
+              ),
+            ],
+          );
+        };
+        terminal.modeSet(const .pasteEvents(), value: true);
+        expect(
+          terminal.paste(
+            PasteRequest.mime(
+              source: .clipboard,
+              mimes: const [],
+              read: (_, _) => fail('Paste event must not read payloads'),
+            ),
+          ),
+          isTrue,
+        );
+        final event = utf8.decode(output);
+        const prefix = '\x1b]5522;type=read:status=OK:pw=';
+        expect(event, startsWith(prefix));
+        final password = event.substring(
+          prefix.length,
+          event.indexOf('\x1b\\'),
+        );
+        final read =
+            '\x1b]5522;type=read:pw=$password:name=VGVzdA==;dGV4dC9wbGFpbg==\x1b\\';
+        terminal.write(Uint8List.fromList(read.codeUnits));
+        terminal.write(Uint8List.fromList(read.codeUnits));
+        expect(granted, [true, false]);
+        output.clear();
+        expect(terminal.paste(PasteRequest.text('direct')), isTrue);
+        expect(
+          terminal.paste(
+            PasteRequest.mime(
+              source: .text,
+              mimes: const ['text/plain'],
+              read: (_, sink) =>
+                  sink.write(Uint8List.fromList('mime'.codeUnits)),
+            ),
+          ),
+          isTrue,
+        );
+        expect(utf8.decode(output), 'directmime');
+      });
+
+      test(
+        'rethrows callback failures after the callback unregisters itself',
+        () {
+          final error = StateError('paste output failed');
+          terminal.onWritePty = (_) {
+            terminal.onWritePty = null;
+            throw error;
+          };
+
+          expect(
+            () => terminal.paste(PasteRequest.text('hello')),
+            throwsA(same(error)),
+          );
+        },
+      );
+
+      test('rethrows callback failures and clears them before later work', () {
+        final error = StateError('paste output failed');
+        terminal.onWritePty = (_) => throw error;
+
+        expect(
+          () => terminal.paste(PasteRequest.text('hello')),
+          throwsA(same(error)),
+        );
+
+        final output = <int>[];
+        terminal.onWritePty = output.addAll;
+        terminal.paste(PasteRequest.text('again'));
+        expect(utf8.decode(output), 'again');
+        expect(
+          () => terminal.write(Uint8List.fromList('usable'.codeUnits)),
+          returnsNormally,
+        );
+      });
+
+      test('writes a plain text paste', () {
         final output = <Uint8List>[];
         terminal.onWritePty = output.add;
 
-        terminal.paste('hello');
+        terminal.paste(PasteRequest.text('hello'));
 
         expect(utf8.decode(output.single), 'hello');
+      });
+
+      test('frames multiline text when bracketed paste is enabled', () {
+        final output = <int>[];
+        terminal.onWritePty = output.addAll;
+        terminal.modeSet(const .bracketedPaste(), value: true);
+
+        terminal.paste(PasteRequest.text('first\nsecond'));
+
+        expect(utf8.decode(output), '\x1b[200~first\nsecond\x1b[201~');
+      });
+
+      test('rejects a bracket terminator in either paste mode', () {
+        final output = <int>[];
+        terminal.onWritePty = output.addAll;
+
+        for (final bracketed in [false, true]) {
+          terminal.modeSet(const .bracketedPaste(), value: bracketed);
+          expect(
+            () => terminal.paste(PasteRequest.text('text\x1b[201~')),
+            throwsA(isA<RejectedException>()),
+          );
+          expect(output, isEmpty);
+        }
+      });
+
+      test('strips unsafe controls and converts unbracketed newlines', () {
+        final output = <int>[];
+        terminal.onWritePty = output.addAll;
+
+        terminal.paste(
+          PasteRequest.text('A\x00\x1b\x7fB\nC', allowUnsafe: true),
+        );
+
+        expect(utf8.decode(output), 'A   B\rC');
+      });
+
+      test('preserves UTF-8 across output chunk boundaries', () {
+        final output = <int>[];
+        terminal.onWritePty = output.addAll;
+        final text = '${List<String>.filled(4095, 'a').join()}é世界';
+
+        terminal.paste(PasteRequest.text(text));
+
+        expect(utf8.decode(output), text);
+      });
+
+      test('preserves empty and multibyte paste payloads', () {
+        final output = <int>[];
+        terminal.onWritePty = output.addAll;
+
+        terminal.paste(PasteRequest.text(''));
+        expect(output, isEmpty);
+        terminal.paste(PasteRequest.text('café 世界 🦋'));
+        expect(utf8.decode(output), 'café 世界 🦋');
+      });
+
+      test('keeps nested paste payloads independent', () {
+        final nested = Terminal(cols: 10, rows: 2);
+        addTearDown(nested.dispose);
+        final outerOutput = <int>[];
+        final innerOutput = <int>[];
+        nested.onWritePty = innerOutput.addAll;
+        terminal.onWritePty = (bytes) {
+          nested.paste(PasteRequest.text('inner 世界'));
+          outerOutput.addAll(bytes);
+        };
+
+        terminal.paste(PasteRequest.text('outer café'));
+
+        expect(utf8.decode(outerOutput), 'outer café');
+        expect(utf8.decode(innerOutput), 'inner 世界');
       });
 
       test('rejects unsafe text unless explicitly allowed', () {
@@ -1219,12 +1849,12 @@ void main() {
         terminal.onWritePty = output.add;
 
         expect(
-          () => terminal.paste('rm -rf /\n'),
+          () => terminal.paste(PasteRequest.text('rm -rf /\n')),
           throwsA(isA<RejectedException>()),
         );
         expect(output, isEmpty);
 
-        terminal.paste('rm -rf /\n', allowUnsafe: true);
+        terminal.paste(PasteRequest.text('rm -rf /\n', allowUnsafe: true));
 
         expect(utf8.decode(output.single), 'rm -rf /\r');
       });

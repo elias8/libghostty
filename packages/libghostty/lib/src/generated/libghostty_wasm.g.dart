@@ -49,7 +49,7 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// data type is invalid
   ///
   /// @ingroup screen
-  external int ghostty_cell_get(int cell, int data, Pointer out);
+  external int ghostty_cell_get(JSBigInt cell, int data, Pointer out);
 
   /// Get multiple data fields from a cell in a single call.
   ///
@@ -71,7 +71,7 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   ///
   /// @ingroup screen
   external int ghostty_cell_get_multi(
-    int cell,
+    JSBigInt cell,
     int count,
     Pointer keys,
     Pointer values,
@@ -1949,7 +1949,7 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// data type is invalid
   ///
   /// @ingroup screen
-  external int ghostty_row_get(int row, int data, Pointer out);
+  external int ghostty_row_get(JSBigInt row, int data, Pointer out);
 
   /// Get multiple data fields from a row in a single call.
   ///
@@ -1971,7 +1971,7 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   ///
   /// @ingroup screen
   external int ghostty_row_get_multi(
-    int row,
+    JSBigInt row,
     int count,
     Pointer keys,
     Pointer values,

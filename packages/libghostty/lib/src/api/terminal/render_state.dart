@@ -77,6 +77,7 @@ final class RenderState {
   final LibGhosttyHandle _handle;
 
   var _disposed = false;
+  var _generation = 0;
   var _dirty = DirtyState.clean;
   var _cols = 0;
   var _rows = 0;
@@ -86,8 +87,7 @@ final class RenderState {
   /// The captured amount can be smaller than [overscanRequest] near the
   /// beginning or end of the scrollback.
   RenderOverscan get overscan {
-    _ensureAlive();
-    return bindings.render.renderStateGetOverscan(_handle);
+    return bindings.render.renderStateGetOverscan(_requireHandle());
   }
 
   /// Requested overscan for subsequent updates.
@@ -95,19 +95,18 @@ final class RenderState {
   /// Both values default to zero, which captures only the viewport. A new
   /// request takes effect on the next [update].
   RenderOverscan get overscanRequest {
-    _ensureAlive();
-    return bindings.render.renderStateGetOverscanRequest(_handle);
+    return bindings.render.renderStateGetOverscanRequest(_requireHandle());
   }
 
   set overscanRequest(RenderOverscan value) {
-    _ensureAlive();
+    final handle = _requireHandle();
     if (value.above < 0 || value.above > 0xffff) {
       throw RangeError.range(value.above, 0, 0xffff, 'above');
     }
     if (value.below < 0 || value.below > 0xffff) {
       throw RangeError.range(value.below, 0, 0xffff, 'below');
     }
-    bindings.render.renderStateSetOverscanRequest(_handle, value);
+    bindings.render.renderStateSetOverscanRequest(handle, value);
   }
 
   /// Creates an empty render state.
@@ -121,13 +120,12 @@ final class RenderState {
   /// Resolved color information from the last [update]: foreground,
   /// background, cursor color, and the full 256-color palette.
   TerminalColors get colors {
-    _ensureAlive();
-    return bindings.render.renderStateGetColors(_handle);
+    return bindings.render.renderStateGetColors(_requireHandle());
   }
 
   /// Viewport width in cells from the last [update].
   int get cols {
-    _ensureAlive();
+    _requireHandle();
     return _cols;
   }
 
@@ -137,13 +135,12 @@ final class RenderState {
   /// coordinates or wide-tail state. Viewport presence is independent of
   /// [RenderStateCursor.visible], which reflects terminal cursor modes.
   RenderStateCursor get cursor {
-    _ensureAlive();
-    return bindings.render.renderStateGetCursor(_handle);
+    return bindings.render.renderStateGetCursor(_requireHandle());
   }
 
   /// Global dirty state from the last [update].
   DirtyState get dirty {
-    _ensureAlive();
+    _requireHandle();
     return _dirty;
   }
 
@@ -154,8 +151,7 @@ final class RenderState {
   /// independent; clear them via [RowIterator.dirty] during (or after)
   /// the render loop.
   set dirty(DirtyState value) {
-    _ensureAlive();
-    bindings.render.renderStateSetDirty(_handle, switch (value) {
+    bindings.render.renderStateSetDirty(_requireHandle(), switch (value) {
       DirtyState.clean => RenderStateDirty.false$,
       DirtyState.partial => RenderStateDirty.partial,
       DirtyState.full => RenderStateDirty.full,
@@ -165,7 +161,7 @@ final class RenderState {
 
   /// Viewport height in cells from the last [update].
   int get rows {
-    _ensureAlive();
+    _requireHandle();
     return _rows;
   }
 
@@ -174,17 +170,17 @@ final class RenderState {
   /// Call this after a complete frame has been rendered. Use [dirty] and
   /// [RowIterator.dirty] when only part of a frame has been consumed.
   void clean() {
-    _ensureAlive();
-    bindings.render.renderStateClean(_handle);
+    bindings.render.renderStateClean(_requireHandle());
     _dirty = .clean;
   }
 
   /// Releases the native render state handle.
   void dispose() {
     if (_disposed) return;
+    _generation++;
+    _disposed = true;
     bindings.render.renderStateFree(_handle);
     _finalizer.detach(this);
-    _disposed = true;
   }
 
   /// Snapshots [terminal]'s state and consumes its dirty flag.
@@ -203,16 +199,19 @@ final class RenderState {
   /// Throws [OutOfMemoryException] if updating requires allocation and
   /// that allocation fails.
   DirtyState update(Terminal terminal) {
-    _ensureAlive();
-    bindings.render.renderStateUpdate(_handle, terminal._terminalHandle);
-    final summary = bindings.render.renderStateGetSummary(_handle);
+    final handle = _requireHandle();
+    final terminalHandle = terminal._requireHandle();
+    _generation++;
+    bindings.render.renderStateUpdate(handle, terminalHandle);
+    final summary = bindings.render.renderStateGetSummary(handle);
     _dirty = DirtyState._fromRaw(summary.dirty);
     _cols = summary.cols;
     _rows = summary.rows;
     return _dirty;
   }
 
-  void _ensureAlive() {
+  LibGhosttyHandle _requireHandle() {
     if (_disposed) throw StateError('RenderState has been disposed');
+    return _handle;
   }
 }

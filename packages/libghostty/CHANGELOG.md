@@ -4,6 +4,10 @@
 
 ### Breaking
 
+- **Paste requests**: `Terminal.paste` now accepts `PasteRequest` and returns
+  whether output was written. Replace String arguments with `PasteRequest.text`.
+  Use `PasteRequest.mime` for clipboard source, location, MIME preferences, and
+  lazy readers. Set `allowUnsafe` on the request.
 - **Typed public values**: callback payloads, terminal geometry, decoded images,
   and X11 colors use named, immutable classes. Replace record literals with the
   corresponding class constructors.
@@ -37,8 +41,8 @@
 
 - **Kitty graphics geometry**: source rectangles are clipped to image bounds
   before destination sizing.
-- **Render traversal**: bulk Wasm cell reads and dirty-row iteration reduce
-  binding calls during incremental rendering.
+- **Render traversal**: Native cell decoding, bulk Wasm reads, and dirty-row
+  iteration reduce binding overhead.
 - **Error details**: libghostty exceptions include the result code and operation
   context. Unknown result codes are preserved by `UnknownResultException`.
 - **Native and Wasm consistency**: both targets expose the same public behavior,
@@ -46,6 +50,9 @@
 
 ### Fixed
 
+- **Resource lifetime**: reject stale borrowed handles, release self-capturing
+  callbacks, and roll back failed Wasm construction.
+- **Key event text**: leave the event usable when UTF-8 allocation fails.
 - **Package analysis**: generated Wasm documentation no longer emits invalid
   HTML lints.
 

@@ -18,6 +18,35 @@ void main() {
     tearDown(() => parser.dispose());
 
     group('parse', () {
+      test('rejects mismatched separator lengths and remains usable', () {
+        for (final separators in <List<String>>[
+          [],
+          [';', ';'],
+        ]) {
+          expect(
+            () => parser.parse([1], separators: separators),
+            throwsArgumentError,
+          );
+        }
+        expect(parser.parse([1]).single, hasTag(SgrAttributeTag.bold));
+      });
+
+      test('rejects invalid separators', () {
+        for (final separator in ['', ',', ';;']) {
+          expect(
+            () => parser.parse([1], separators: [separator]),
+            throwsArgumentError,
+          );
+        }
+      });
+
+      test('rejects parameters outside the native uint16 range', () {
+        for (final parameter in [-1, 65536]) {
+          expect(() => parser.parse([parameter]), throwsRangeError);
+        }
+        expect(parser.parse([1]).single, hasTag(SgrAttributeTag.bold));
+      });
+
       test('returns simple attributes', () {
         final bold = parser.parse([1]);
         expect(bold, hasLength(1));

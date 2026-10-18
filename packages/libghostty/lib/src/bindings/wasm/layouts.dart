@@ -1,6 +1,9 @@
 import 'dart:convert';
 
 import '../../generated/libghostty_enums.g.dart';
+import '../packed_bits_native.dart'
+    if (dart.library.js_interop) '../packed_bits_web.dart'
+    as packed_bits;
 import '../types.dart';
 
 _PackedBit _bit(Map<String, dynamic> value, String name, int totalWidth) {
@@ -46,7 +49,7 @@ Map<String, dynamic> _descriptor(Map<String, dynamic> types, String name) {
 }
 
 int _extract(int raw, _PackedBit bit) {
-  return raw ~/ bit.divisor % bit.modulus;
+  return packed_bits.extract(raw, bit.lsb, bit.divisor, bit.modulus);
 }
 
 _PackedArm _packedArm(
@@ -72,6 +75,7 @@ _PackedArm _packedArm(
         'Packed cell arm "$name" field "${entry.key}" has an invalid type.',
       );
     }
+    _validateScalarWidth(bit, entry.value);
     parsed[entry.key] = _bit(bit, '$name.${entry.key}', width);
   }
   return _PackedArm(width: width, bits: parsed);
@@ -94,14 +98,6 @@ int _positiveInt(Map<String, dynamic> value, String key) {
   throw FormatException(
     'Layout metadata field "$key" must be a positive integer.',
   );
-}
-
-int _powerOfTwo(int exponent) {
-  var value = 1;
-  for (var i = 0; i < exponent; i++) {
-    value *= 2;
-  }
-  return value;
 }
 
 Map<String, dynamic> _requiredMap(Map<String, dynamic> value, String key) {
@@ -138,6 +134,23 @@ int _requireStruct(Map<String, dynamic> descriptor, String name) {
   return _requiredNonNegativeInt(descriptor, 'size', name);
 }
 
+void _validateScalarWidth(Map<String, dynamic> value, String type) {
+  final width = _positiveInt(value, 'width');
+  final valid = switch (type) {
+    'bool' => width == 1,
+    'GhosttyStyleId' => width == 16,
+    'u21' => width == 21,
+    'GhosttyColorPaletteIndex' || 'u8' => width == 8,
+    'GhosttyCellContentTag' ||
+    'GhosttyCellWide' ||
+    'GhosttyCellSemanticContent' => width >= 2,
+    _ => false,
+  };
+  if (!valid) {
+    throw FormatException('Unsupported packed scalar width for $type: $width.');
+  }
+}
+
 _PackedBit _scalarBit(
   Map<String, dynamic> bits,
   String name,
@@ -148,6 +161,7 @@ _PackedBit _scalarBit(
   if (value['kind'] != null || value['type'] != type) {
     throw FormatException('Packed cell bit "$name" has an invalid type.');
   }
+  _validateScalarWidth(value, type);
   return _bit(value, name, totalWidth);
 }
 
@@ -1001,8 +1015,7 @@ final class Layouts {
 
 /// Packed cell metadata decoded from the artifact's ABI manifest.
 ///
-/// This is an internal Wasm implementation detail. Bit positions are always
-/// read from [ghostty_type_json] and are never part of the Dart API.
+/// Bit positions are read from [ghostty_type_json].
 final class PackedCellLayout {
   final int size;
   final String underlying;
@@ -1166,7 +1179,6 @@ final class PackedCellLayout {
       .bgColorPalette || .bgColorRgb => 0,
     };
     target.set(
-      rawCell: raw,
       contentTag: contentTag,
       codepoint: codepoint,
       hasGrapheme: hasGrapheme,
@@ -1179,6 +1191,39 @@ final class PackedCellLayout {
       backgroundR: _extract(raw, _contentRgbR),
       backgroundG: _extract(raw, _contentRgbG),
       backgroundB: _extract(raw, _contentRgbB),
+    );
+    return target;
+  }
+
+  RawCellData decodeWordsInto(int lo, int hi, RawCellData target) {
+    final contentTag = CellContentTag.fromValue(
+      packed_bits.extractWords(lo, hi, _contentTag),
+    );
+    final hasGrapheme = contentTag == .codepointGrapheme;
+    final codepoint = switch (contentTag) {
+      .codepoint => packed_bits.extractWords(lo, hi, _codepoint),
+      .codepointGrapheme => packed_bits.extractWords(
+        lo,
+        hi,
+        _codepointGrapheme,
+      ),
+      .bgColorPalette || .bgColorRgb => 0,
+    };
+    target.set(
+      contentTag: contentTag,
+      codepoint: codepoint,
+      hasGrapheme: hasGrapheme,
+      styleId: packed_bits.extractWords(lo, hi, _styleId),
+      wide: CellWide.fromValue(packed_bits.extractWords(lo, hi, _wide)),
+      isProtected: packed_bits.extractWords(lo, hi, _protected) != 0,
+      hasHyperlink: packed_bits.extractWords(lo, hi, _hyperlink) != 0,
+      semanticContent: .fromValue(
+        packed_bits.extractWords(lo, hi, _semanticContent),
+      ),
+      hasBackgroundRgb: contentTag == .bgColorRgb,
+      backgroundR: packed_bits.extractWords(lo, hi, _contentRgbR),
+      backgroundG: packed_bits.extractWords(lo, hi, _contentRgbG),
+      backgroundB: packed_bits.extractWords(lo, hi, _contentRgbB),
     );
     return target;
   }
@@ -1197,16 +1242,7 @@ final class _PackedArm {
   const _PackedArm({required this.width, required this.bits});
 }
 
-final class _PackedBit {
-  final int lsb;
-  final int width;
-  final int divisor;
-  final int modulus;
-
-  _PackedBit({required this.lsb, required this.width})
-    : divisor = _powerOfTwo(lsb),
-      modulus = _powerOfTwo(width);
-}
+typedef _PackedBit = packed_bits.PackedBit;
 
 /// Typed accessor for a single struct's layout from the JSON.
 final class _Struct {

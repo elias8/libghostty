@@ -22,8 +22,7 @@ final class SelectionGesture {
   });
 
   final LibGhosttyHandle _handle;
-  final Terminal _terminal;
-  var _disposed = false;
+  Terminal? _terminal;
 
   /// Creates a gesture state machine bound to [terminal].
   SelectionGesture(Terminal terminal)
@@ -31,7 +30,7 @@ final class SelectionGesture {
       _terminal = terminal {
     _finalizer.attach(this, (
       handle: _handle,
-      terminal: WeakReference(_terminal),
+      terminal: WeakReference(terminal),
     ), detach: this);
   }
 
@@ -40,35 +39,27 @@ final class SelectionGesture {
     final handle = _requireHandle();
     final raw = bindings.selection.selectionGestureGetState(
       handle,
-      _terminalHandle,
+      _terminal!._requireHandle(),
     );
     return SelectionGestureState(
       clickCount: raw.clickCount,
       dragged: raw.dragged,
       autoscroll: raw.autoscroll,
       behavior: raw.behavior,
-      anchor: raw.anchor == null ? null : ._fromValue(_terminal, raw.anchor!),
+      anchor: raw.anchor == null ? null : ._fromValue(_terminal!, raw.anchor!),
     );
-  }
-
-  LibGhosttyHandle get _terminalHandle {
-    final handle = _terminal._handleOrNull;
-    if (handle == null) {
-      throw StateError('SelectionGesture terminal has been disposed');
-    }
-    return handle;
   }
 
   /// Applies [event] and returns the produced selection snapshot, if any.
   Selection? apply(SelectionGestureEvent event) {
     final handle = _requireHandle();
-    event._ensureRefFor(_terminal);
+    event._ensureRefFor(_terminal!);
     final raw = bindings.selection.selectionGestureEvent(
       handle,
-      _terminalHandle,
+      _terminal!._requireHandle(),
       event._requireHandle(),
     );
-    return raw == null ? null : Selection._fromRaw(_terminal, raw);
+    return raw == null ? null : Selection._fromRaw(_terminal!, raw);
   }
 
   /// Releases the native gesture handle.
@@ -77,23 +68,29 @@ final class SelectionGesture {
   /// afterward. It is safe to dispose after the creating terminal has been
   /// disposed.
   void dispose() {
-    if (_disposed) return;
+    final terminal = _terminal;
+    if (terminal == null) return;
     bindings.selection.selectionGestureFree(
       _handle,
-      _terminal._handleOrNull ?? const LibGhosttyHandle.fromAddress(0),
+      terminal._handleOrNull ?? const LibGhosttyHandle.fromAddress(0),
     );
     _finalizer.detach(this);
-    _disposed = true;
+    _terminal = null;
   }
 
   /// Clears active gesture state while keeping this gesture reusable.
   void reset() {
     final handle = _requireHandle();
-    bindings.selection.selectionGestureReset(handle, _terminalHandle);
+    bindings.selection.selectionGestureReset(
+      handle,
+      _terminal!._requireHandle(),
+    );
   }
 
   LibGhosttyHandle _requireHandle() {
-    if (_disposed) throw StateError('SelectionGesture has been disposed');
+    if (_terminal == null) {
+      throw StateError('SelectionGesture has been disposed');
+    }
     return _handle;
   }
 }

@@ -51,7 +51,7 @@ final class KittyGraphics {
   /// Generation stamps are unique and monotonically increasing process-wide.
   /// Zero means the storage has never been mutated and is empty.
   int get generation =>
-      bindings.kittyGraphics.kittyGraphicsGetGeneration(_handle);
+      bindings.kittyGraphics.kittyGraphicsGetGeneration(_requireHandle());
 
   /// Looks up an image by its Kitty graphics [imageId].
   ///
@@ -61,8 +61,11 @@ final class KittyGraphics {
   /// by any mutating terminal call. Reacquire both this storage handle and the
   /// image after a mutation.
   KittyImage? image(int imageId) {
-    final handle = bindings.kittyGraphics.kittyGraphicsImage(_handle, imageId);
-    if (handle.value == 0) return null;
+    final handle = bindings.kittyGraphics.kittyGraphicsImage(
+      _requireHandle(),
+      imageId,
+    );
+    if (handle == null) return null;
     return KittyImage._(handle, _terminal);
   }
 
@@ -82,9 +85,11 @@ final class KittyGraphics {
   ///
   /// Throws [OutOfMemoryException] if the iterator allocation fails.
   List<KittyPlacement> placements({KittyPlacementLayer layer = .all}) {
+    final handle = _requireHandle();
+    final terminalHandle = _terminal._requireHandle();
     final iterator = bindings.kittyGraphics.kittyGraphicsPlacementIteratorNew();
     try {
-      bindings.kittyGraphics.kittyGraphicsGetPlacements(_handle, iterator);
+      bindings.kittyGraphics.kittyGraphicsGetPlacements(handle, iterator);
       if (layer != KittyPlacementLayer.all) {
         bindings.kittyGraphics.kittyGraphicsPlacementIteratorSetLayer(
           iterator,
@@ -96,8 +101,8 @@ final class KittyGraphics {
         out.add(
           bindings.kittyGraphics.kittyGraphicsPlacementGet(
             iterator,
-            _handle,
-            _terminal._terminalHandle,
+            handle,
+            terminalHandle,
           ),
         );
       }
@@ -107,14 +112,21 @@ final class KittyGraphics {
     }
   }
 
+  LibGhosttyHandle _requireHandle() {
+    if (_terminal._disposed) {
+      throw StateError('KittyGraphics terminal is disposed');
+    }
+    return _handle;
+  }
+
   /// Returns the Kitty graphics image storage for [terminal]'s active
   /// screen, or null when Kitty graphics are disabled in the native
   /// library build.
   static KittyGraphics? of(Terminal terminal) {
     final handle = bindings.kittyGraphics.kittyGraphicsGet(
-      terminal._terminalHandle,
+      terminal._requireHandle(),
     );
-    return handle.value == 0 ? null : KittyGraphics._(handle, terminal);
+    return handle == null ? null : KittyGraphics._(handle, terminal);
   }
 }
 
@@ -131,9 +143,6 @@ final class KittyGraphics {
 /// storage that remains valid after mutations.
 @immutable
 final class KittyImage {
-  // The image handle points into terminal-owned storage. This strong reference
-  // prevents terminal finalization while the borrowed handle is reachable.
-  // ignore: unused_field
   final Terminal _owner;
 
   final LibGhosttyHandle _handle;
@@ -142,12 +151,14 @@ final class KittyImage {
 
   /// Compression of the stored pixel data.
   KittyImageCompression get compression {
-    return bindings.kittyGraphics.kittyGraphicsImageGetCompression(_handle);
+    return bindings.kittyGraphics.kittyGraphicsImageGetCompression(
+      _requireHandle(),
+    );
   }
 
   /// Format of the stored pixel data.
   KittyImageFormat get format {
-    return bindings.kittyGraphics.kittyGraphicsImageGetFormat(_handle);
+    return bindings.kittyGraphics.kittyGraphicsImageGetFormat(_requireHandle());
   }
 
   /// Generation stamp for this image's pixel contents.
@@ -160,20 +171,26 @@ final class KittyImage {
   /// use the same sequence as [KittyGraphics.generation]. Stored images never
   /// have generation zero, so zero can be used as an empty cache sentinel.
   int get generation {
-    return bindings.kittyGraphics.kittyGraphicsImageGetGeneration(_handle);
+    return bindings.kittyGraphics.kittyGraphicsImageGetGeneration(
+      _requireHandle(),
+    );
   }
 
   /// Image height in pixels.
-  int get height => bindings.kittyGraphics.kittyGraphicsImageGetHeight(_handle);
+  int get height =>
+      bindings.kittyGraphics.kittyGraphicsImageGetHeight(_requireHandle());
 
   /// Image id assigned by the Kitty graphics protocol.
-  int get id => bindings.kittyGraphics.kittyGraphicsImageGetId(_handle);
+  int get id =>
+      bindings.kittyGraphics.kittyGraphicsImageGetId(_requireHandle());
 
   /// Image number assigned by the protocol, or zero when unset.
-  int get number => bindings.kittyGraphics.kittyGraphicsImageGetNumber(_handle);
+  int get number =>
+      bindings.kittyGraphics.kittyGraphicsImageGetNumber(_requireHandle());
 
   /// Image width in pixels.
-  int get width => bindings.kittyGraphics.kittyGraphicsImageGetWidth(_handle);
+  int get width =>
+      bindings.kittyGraphics.kittyGraphicsImageGetWidth(_requireHandle());
 
   /// Copies the raw pixel bytes into [destination] and returns the byte count.
   ///
@@ -185,8 +202,13 @@ final class KittyImage {
   /// terminal mutations.
   int copyPixelDataInto(Uint8List destination) {
     return bindings.kittyGraphics.kittyGraphicsImageGetPixelData(
-      _handle,
+      _requireHandle(),
       destination,
     );
+  }
+
+  LibGhosttyHandle _requireHandle() {
+    if (_owner._disposed) throw StateError('KittyImage terminal is disposed');
+    return _handle;
   }
 }

@@ -9,12 +9,14 @@ import '../../generated/libghostty_enums.g.dart';
 import '../../types/types.dart';
 import '../key/kitty_key_flags.dart';
 import '../key/mods.dart';
+import 'lifetime_native.dart' if (dart.library.js_interop) 'lifetime_web.dart';
 import 'terminal_mode.dart';
 
 part '../key/key_encoder.dart';
 part '../key/key_event.dart';
 part '../mouse/mouse_encoder.dart';
 part '../mouse/mouse_event.dart';
+part 'callback_lifetime.dart';
 part 'cell_iterator.dart';
 part 'formatter.dart';
 part 'grid_ref.dart';
@@ -95,10 +97,13 @@ part 'tracked_grid_ref.dart';
 ///
 /// terminal.dispose();
 /// ```
-final class Terminal with ChangeNotifier {
+final class Terminal with ChangeNotifier implements NativeFinalizable {
   static final _finalizer = Finalizer(bindings.terminal.terminalFree);
 
   final LibGhosttyHandle _handle;
+  _TerminalCallbacks? _callbackOwner;
+
+  _TerminalCallbacks get _callbacks => _callbackOwner ??= _TerminalCallbacks();
   bool _disposed;
 
   /// Creates a terminal with the given grid dimensions.
@@ -125,7 +130,7 @@ final class Terminal with ChangeNotifier {
   /// Programs switch screens via DEC private mode 1049 (e.g. when entering
   /// full-screen editors like vim).
   TerminalScreen get activeScreen {
-    return bindings.terminal.terminalGetActiveScreen(_terminalHandle);
+    return bindings.terminal.terminalGetActiveScreen(_requireHandle());
   }
 
   /// Effective background color (OSC override if active, otherwise default).
@@ -133,7 +138,7 @@ final class Terminal with ChangeNotifier {
   /// Returns null if no color is configured (neither a default nor an OSC
   /// override).
   RgbColor? get background {
-    return bindings.terminal.terminalGetColorBackground(_terminalHandle);
+    return bindings.terminal.terminalGetColorBackground(_requireHandle());
   }
 
   /// Sets the default background color, or clears it if null.
@@ -141,25 +146,32 @@ final class Terminal with ChangeNotifier {
   /// This sets the embedder default. Programs running in the terminal can
   /// still override it via OSC 11.
   set background(RgbColor? color) {
-    bindings.terminal.terminalSetColorBackground(_terminalHandle, color);
+    bindings.terminal.terminalSetColorBackground(_requireHandle(), color);
   }
 
   /// Default background color, ignoring any OSC override.
   ///
   /// Returns null if no default has been configured.
   RgbColor? get backgroundDefault {
-    return bindings.terminal.terminalGetColorBackgroundDefault(_terminalHandle);
+    return bindings.terminal.terminalGetColorBackgroundDefault(
+      _requireHandle(),
+    );
   }
 
   /// Maximum decoded bytes accepted in one Kitty clipboard write transaction.
   ///
   /// The default is 64 MiB. Setting this to null restores that default.
   int get clipboardWriteMaxBytes {
-    return bindings.terminal.terminalGetClipboardWriteMaxBytes(_terminalHandle);
+    return bindings.terminal.terminalGetClipboardWriteMaxBytes(
+      _requireHandle(),
+    );
   }
 
   set clipboardWriteMaxBytes(int? value) {
-    bindings.terminal.terminalSetClipboardWriteMaxBytes(_terminalHandle, value);
+    bindings.terminal.terminalSetClipboardWriteMaxBytes(
+      _requireHandle(),
+      value,
+    );
   }
 
   /// Opaque token that changes when scrollback compression may have new work.
@@ -175,7 +187,7 @@ final class Terminal with ChangeNotifier {
   /// if (terminal.compressionActivity != previous) scheduleCompression();
   /// ```
   int get compressionActivity {
-    return bindings.terminal.terminalCompressionActivity(_terminalHandle);
+    return bindings.terminal.terminalCompressionActivity(_requireHandle());
   }
 
   /// Replay-safe bytes for the terminal's unfinished VT or UTF-8 input.
@@ -189,7 +201,7 @@ final class Terminal with ChangeNotifier {
   /// [OutOfMemoryException] if the bytes cannot be allocated. Access this
   /// property serially with [write] and other terminal operations.
   Uint8List get continuation {
-    return bindings.terminal.terminalContinuationGet(_terminalHandle);
+    return bindings.terminal.terminalContinuationGet(_requireHandle());
   }
 
   /// Maximum number of unfinished VT or UTF-8 bytes retained for
@@ -198,7 +210,7 @@ final class Terminal with ChangeNotifier {
   /// A value of zero disables continuation tracking. Tracking must be enabled
   /// before the input that produces unfinished parser state is written.
   int get continuationMaxBytes {
-    return bindings.terminal.terminalGetContinuationMaxBytes(_terminalHandle);
+    return bindings.terminal.terminalGetContinuationMaxBytes(_requireHandle());
   }
 
   /// Sets the maximum number of unfinished VT or UTF-8 bytes retained for
@@ -209,45 +221,64 @@ final class Terminal with ChangeNotifier {
   /// unfinished input has already been written does not recover it.
   set continuationMaxBytes(int value) {
     RangeError.checkNotNegative(value, 'value');
-    bindings.terminal.terminalSetContinuationMaxBytes(_terminalHandle, value);
+    bindings.terminal.terminalSetContinuationMaxBytes(_requireHandle(), value);
   }
 
   /// Effective cursor color (OSC override if active, otherwise default).
   ///
   /// Returns null if no color is configured.
   RgbColor? get cursorColor {
-    return bindings.terminal.terminalGetColorCursor(_terminalHandle);
+    return bindings.terminal.terminalGetColorCursor(_requireHandle());
   }
 
   /// Sets the default cursor color, or clears it if null.
   ///
   /// Programs running in the terminal can override this via OSC 12.
   set cursorColor(RgbColor? color) {
-    bindings.terminal.terminalSetColorCursor(_terminalHandle, color);
+    bindings.terminal.terminalSetColorCursor(_requireHandle(), color);
   }
 
   /// Default cursor color, ignoring any OSC override.
   ///
   /// Returns null if no default has been configured.
   RgbColor? get cursorColorDefault {
-    return bindings.terminal.terminalGetColorCursorDefault(_terminalHandle);
+    return bindings.terminal.terminalGetColorCursorDefault(_requireHandle());
+  }
+
+  /// Whether the next printed character will soft-wrap to the next row.
+  bool get cursorPendingWrap =>
+      bindings.terminal.terminalGetCursorPendingWrap(_requireHandle());
+
+  /// Zero-based cursor position within the active screen area.
+  ///
+  /// This position is independent of the scrollback viewport.
+  Position get cursorPosition {
+    final handle = _requireHandle();
+    return Position(
+      row: bindings.terminal.terminalGetCursorY(handle),
+      col: bindings.terminal.terminalGetCursorX(handle),
+    );
   }
 
   /// The cursor's current SGR style (applied to newly printed characters).
   Style get cursorStyle =>
-      bindings.terminal.terminalGetCursorStyle(_terminalHandle);
+      bindings.terminal.terminalGetCursorStyle(_requireHandle());
+
+  /// Whether DEC mode 25 enables cursor visibility.
+  bool get cursorVisible =>
+      bindings.terminal.terminalGetCursorVisible(_requireHandle());
 
   /// Sets whether DECSCUSR reset (CSI 0 q) restores a blinking cursor.
   set defaultCursorBlink(bool? value) {
     bindings.terminal.terminalSetDefaultCursorBlink(
-      _terminalHandle,
+      _requireHandle(),
       blinking: value,
     );
   }
 
   /// Sets the cursor shape restored by DECSCUSR reset (CSI 0 q).
   set defaultCursorShape(TerminalCursorShape? value) {
-    bindings.terminal.terminalSetDefaultCursorShape(_terminalHandle, value);
+    bindings.terminal.terminalSetDefaultCursorShape(_requireHandle(), value);
   }
 
   /// Effective foreground color (OSC override if active, otherwise default).
@@ -255,21 +286,23 @@ final class Terminal with ChangeNotifier {
   /// Returns null if no color is configured (neither a default nor an OSC
   /// override).
   RgbColor? get foreground {
-    return bindings.terminal.terminalGetColorForeground(_terminalHandle);
+    return bindings.terminal.terminalGetColorForeground(_requireHandle());
   }
 
   /// Sets the default foreground color, or clears it if null.
   ///
   /// Programs running in the terminal can override this via OSC 10.
   set foreground(RgbColor? color) {
-    bindings.terminal.terminalSetColorForeground(_terminalHandle, color);
+    bindings.terminal.terminalSetColorForeground(_requireHandle(), color);
   }
 
   /// Default foreground color, ignoring any OSC override.
   ///
   /// Returns null if no default has been configured.
   RgbColor? get foregroundDefault {
-    return bindings.terminal.terminalGetColorForegroundDefault(_terminalHandle);
+    return bindings.terminal.terminalGetColorForegroundDefault(
+      _requireHandle(),
+    );
   }
 
   /// Current terminal dimensions in cells and pixels.
@@ -281,7 +314,7 @@ final class Terminal with ChangeNotifier {
   /// final cellWidth = geometry.widthPx ~/ geometry.cols;
   /// ```
   TerminalGeometry get geometry =>
-      bindings.terminal.terminalGetGeometry(_terminalHandle);
+      bindings.terminal.terminalGetGeometry(_requireHandle());
 
   /// Whether VT processing encountered a non-gracefully handled error.
   ///
@@ -295,61 +328,67 @@ final class Terminal with ChangeNotifier {
   /// }
   /// ```
   bool get hasVtProcessingError {
-    return bindings.terminal.terminalGetVtProcessingError(_terminalHandle);
+    return bindings.terminal.terminalGetVtProcessingError(_requireHandle());
   }
 
   /// Total terminal height in pixels (rows * cell height).
-  int get heightPx => bindings.terminal.terminalGetHeightPx(_terminalHandle);
+  int get heightPx => bindings.terminal.terminalGetHeightPx(_requireHandle());
 
   /// Whether the cursor is at the semantic prompt boundary.
   ///
   /// The value is false when prompt tracking is unavailable or when the
   /// cursor is on the alternate screen.
   bool get isCursorAtPrompt {
-    return bindings.terminal.terminalGetCursorAtPrompt(_terminalHandle);
+    return bindings.terminal.terminalGetCursorAtPrompt(_requireHandle());
   }
 
   /// Whether the file medium is enabled for Kitty image loading.
   /// Returns null when Kitty graphics are not compiled in.
   bool? get isKittyFileMedium {
-    return bindings.terminal.terminalGetKittyImageMediumFile(_terminalHandle);
+    return bindings.terminal.terminalGetKittyImageMediumFile(_requireHandle());
   }
 
   /// Whether the shared memory medium is enabled for Kitty image loading.
   /// Returns null when Kitty graphics are not compiled in.
   bool? get isKittySharedMemMedium {
     return bindings.terminal.terminalGetKittyImageMediumSharedMem(
-      _terminalHandle,
+      _requireHandle(),
     );
   }
 
   /// Whether any mouse tracking mode is currently active.
   bool get isMouseTracking =>
-      bindings.terminal.terminalGetMouseTracking(_terminalHandle);
+      bindings.terminal.terminalGetMouseTracking(_requireHandle());
 
   /// Whether the viewport is at the active terminal area instead of scrollback.
   bool get isViewportActive {
-    return bindings.terminal.terminalGetViewportActive(_terminalHandle);
+    return bindings.terminal.terminalGetViewportActive(_requireHandle());
   }
 
   /// Whether the VT parser is in its ground state.
   ///
   /// This is true when no escape, control, or UTF-8 sequence is pending and
   /// the next byte can be processed from a stateless boundary.
-  bool get isVtGround => bindings.terminal.terminalGetVtGround(_terminalHandle);
+  bool get isVtGround =>
+      bindings.terminal.terminalGetVtGround(_requireHandle());
 
   /// Kitty image storage limit in bytes for the active screen.
   ///
   /// Zero means the Kitty graphics protocol is disabled. Returns null when
   /// Kitty graphics support is not compiled into the library.
   int? get kittyImageStorageLimit {
-    return bindings.terminal.terminalGetKittyImageStorageLimit(_terminalHandle);
+    return bindings.terminal.terminalGetKittyImageStorageLimit(
+      _requireHandle(),
+    );
   }
 
   /// Sets the Kitty image storage limit in bytes. Zero or null disables
   /// the Kitty graphics protocol entirely.
   set kittyImageStorageLimit(int? value) {
-    bindings.terminal.terminalSetKittyImageStorageLimit(_terminalHandle, value);
+    bindings.terminal.terminalSetKittyImageStorageLimit(
+      _requireHandle(),
+      value,
+    );
   }
 
   /// Current Kitty keyboard protocol flags.
@@ -358,7 +397,7 @@ final class Terminal with ChangeNotifier {
   /// Kitty keyboard protocol. Use [KeyEncoder] to encode key events according
   /// to these flags.
   KittyKeyFlags get kittyKeyboardFlags => KittyKeyFlags.fromValue(
-    bindings.terminal.terminalGetKittyKeyboardFlags(_terminalHandle),
+    bindings.terminal.terminalGetKittyKeyboardFlags(_requireHandle()),
   );
 
   /// Directory allowed for Kitty image loading through temporary files.
@@ -371,9 +410,21 @@ final class Terminal with ChangeNotifier {
   /// ```
   String? get kittyTempFileDirectory {
     return bindings.terminal.terminalGetKittyImageMediumTempFile(
-      _terminalHandle,
+      _requireHandle(),
     );
   }
+
+  /// Screen and Kitty graphics memory held by this terminal.
+  ///
+  /// This reads every screen page and may take time for long scrollback
+  /// histories. Query it when checking memory budgets instead of after every
+  /// write.
+  TerminalMemoryUsage get memoryUsage =>
+      bindings.terminal.terminalGetMemoryUsage(_requireHandle());
+
+  /// Mouse pointer shape requested by the running program through OSC 22.
+  MouseShape get mouseShape =>
+      bindings.terminal.terminalGetMouseShape(_requireHandle());
 
   /// Active mouse tracking mode derived from the current terminal modes.
   ///
@@ -388,23 +439,12 @@ final class Terminal with ChangeNotifier {
     return MouseTracking.none;
   }
 
-  /// Mouse pointer shape requested by the running program through OSC 22.
-  MouseShape get mouseShape =>
-      bindings.terminal.terminalGetMouseShape(_terminalHandle);
-
-  /// Screen and Kitty graphics memory held by this terminal.
-  ///
-  /// This reads every screen page and may take time for long scrollback
-  /// histories. Query it when checking memory budgets instead of after every
-  /// write.
-  TerminalMemoryUsage get memoryUsage =>
-      bindings.terminal.terminalGetMemoryUsage(_terminalHandle);
-
   /// Registers a callback for BEL character (0x07).
   ///
   /// Fires synchronously during [write]. Set to null to ignore bell events.
   set onBell(VoidCallback? value) {
-    bindings.terminal.terminalSetOnBell(_terminalHandle, value);
+    final handle = _requireHandle();
+    _callbacks.setBell(handle, value);
   }
 
   /// Registers a callback for clipboard reads requested by terminal content.
@@ -415,7 +455,8 @@ final class Terminal with ChangeNotifier {
   /// so applications should apply an explicit permission policy. A reply is
   /// required before the callback returns.
   set onClipboardRead(ClipboardReadCallback? value) {
-    bindings.terminal.terminalSetOnClipboardRead(_terminalHandle, value);
+    final handle = _requireHandle();
+    _callbacks.setClipboardRead(handle, value);
   }
 
   /// Registers a callback for clipboard writes requested by terminal content.
@@ -434,7 +475,8 @@ final class Terminal with ChangeNotifier {
   /// };
   /// ```
   set onClipboardWrite(ClipboardWriteCallback? value) {
-    bindings.terminal.terminalSetOnClipboardWrite(_terminalHandle, value);
+    final handle = _requireHandle();
+    _callbacks.setClipboardWrite(handle, value);
   }
 
   /// Registers a callback for color scheme queries (CSI ? 996 n).
@@ -442,7 +484,8 @@ final class Terminal with ChangeNotifier {
   /// Return the current [ColorScheme], or null to silently ignore the query.
   /// Fires synchronously during [write].
   set onColorScheme(ValueGetter<ColorScheme?>? value) {
-    bindings.terminal.terminalSetOnColorScheme(_terminalHandle, value);
+    final handle = _requireHandle();
+    _callbacks.setColorScheme(handle, value);
   }
 
   /// Registers a callback for OSC 9 and OSC 777 desktop notifications.
@@ -451,7 +494,8 @@ final class Terminal with ChangeNotifier {
   /// how to display them. Fires synchronously during [write]. Set to null to
   /// ignore notifications.
   set onDesktopNotification(DesktopNotificationCallback? value) {
-    bindings.terminal.terminalSetOnDesktopNotification(_terminalHandle, value);
+    final handle = _requireHandle();
+    _callbacks.setDesktopNotification(handle, value);
   }
 
   /// Registers a callback for device attributes queries (CSI c / > c / = c).
@@ -459,7 +503,8 @@ final class Terminal with ChangeNotifier {
   /// Return a [DeviceAttributesResponse], or null to silently ignore the query.
   /// Fires synchronously during [write].
   set onDeviceAttributes(ValueGetter<DeviceAttributesResponse?>? value) {
-    bindings.terminal.terminalSetOnDeviceAttributes(_terminalHandle, value);
+    final handle = _requireHandle();
+    _callbacks.setDeviceAttributes(handle, value);
   }
 
   /// Registers a callback for ENQ character (0x05).
@@ -467,14 +512,8 @@ final class Terminal with ChangeNotifier {
   /// Return the response bytes to write back to the PTY. Return an empty list
   /// to send no response. Fires synchronously during [write].
   set onEnquiry(ValueGetter<Uint8List>? value) {
-    bindings.terminal.terminalSetOnEnquiry(_terminalHandle, value);
-  }
-
-  /// Registers a callback for OSC 9;4 progress reports.
-  ///
-  /// Fires synchronously during [write]. Set to null to ignore reports.
-  set onProgressReport(TerminalProgressCallback? value) {
-    bindings.terminal.terminalSetOnProgressReport(_terminalHandle, value);
+    final handle = _requireHandle();
+    _callbacks.setEnquiry(handle, value);
   }
 
   /// Registers a callback for validated OSC 7501 program status reports.
@@ -482,7 +521,16 @@ final class Terminal with ChangeNotifier {
   /// The strings in each report are copied and remain valid after the
   /// callback returns. Set to null to ignore reports.
   set onProgramStatus(TerminalProgramStatusCallback? value) {
-    bindings.terminal.terminalSetOnProgramStatus(_terminalHandle, value);
+    final handle = _requireHandle();
+    _callbacks.setProgramStatus(handle, value);
+  }
+
+  /// Registers a callback for OSC 9;4 progress reports.
+  ///
+  /// Fires synchronously during [write]. Set to null to ignore reports.
+  set onProgressReport(TerminalProgressCallback? value) {
+    final handle = _requireHandle();
+    _callbacks.setProgressReport(handle, value);
   }
 
   /// Registers a callback for working-directory changes via OSC 7/9/1337.
@@ -491,7 +539,8 @@ final class Terminal with ChangeNotifier {
   /// OSC 9 and OSC 1337 values are typically paths. Fires synchronously during
   /// [write].
   set onPwdChanged(VoidCallback? value) {
-    bindings.terminal.terminalSetOnPwdChanged(_terminalHandle, value);
+    final handle = _requireHandle();
+    _callbacks.setPwdChanged(handle, value);
   }
 
   /// Registers a callback when synchronized output starts or ends a render
@@ -500,7 +549,8 @@ final class Terminal with ChangeNotifier {
   /// The callback receives true when a hold starts and false when it ends.
   /// Set to null to ignore these events.
   set onRenderHold(ValueSetter<bool>? value) {
-    bindings.terminal.terminalSetOnRenderHold(_terminalHandle, value);
+    final handle = _requireHandle();
+    _callbacks.setRenderHold(handle, value);
   }
 
   /// Registers a callback after the program performs a full terminal reset.
@@ -508,7 +558,8 @@ final class Terminal with ChangeNotifier {
   /// Fires synchronously during [write] when the program sends RIS (`ESC c`).
   /// It does not fire for [reset]. Set to null to ignore reset events.
   set onReset(VoidCallback? value) {
-    bindings.terminal.terminalSetOnReset(_terminalHandle, value);
+    final handle = _requireHandle();
+    _callbacks.setReset(handle, value);
   }
 
   /// Registers a callback for shell integration events reported through
@@ -517,7 +568,8 @@ final class Terminal with ChangeNotifier {
   /// Command and error strings are copied and remain valid after the callback
   /// returns. Set to null to ignore these events.
   set onSemanticPrompt(TerminalSemanticPromptCallback? value) {
-    bindings.terminal.terminalSetOnSemanticPrompt(_terminalHandle, value);
+    final handle = _requireHandle();
+    _callbacks.setSemanticPrompt(handle, value);
   }
 
   /// Registers a callback for XTWINOPS size queries (CSI 14/16/18 t).
@@ -525,7 +577,8 @@ final class Terminal with ChangeNotifier {
   /// Return a [TerminalSizeInfo] with the current geometry, or null to
   /// silently ignore the query. Fires synchronously during [write].
   set onSize(ValueGetter<TerminalSizeInfo?>? value) {
-    bindings.terminal.terminalSetOnSize(_terminalHandle, value);
+    final handle = _requireHandle();
+    _callbacks.setSize(handle, value);
   }
 
   /// Registers a callback for title changes via OSC 0 or OSC 2.
@@ -533,7 +586,8 @@ final class Terminal with ChangeNotifier {
   /// Read the new [title] inside the callback. Fires synchronously during
   /// [write].
   set onTitleChanged(VoidCallback? value) {
-    bindings.terminal.terminalSetOnTitleChanged(_terminalHandle, value);
+    final handle = _requireHandle();
+    _callbacks.setTitleChanged(handle, value);
   }
 
   /// Registers a callback for unsupported string sequences.
@@ -555,7 +609,8 @@ final class Terminal with ChangeNotifier {
   /// };
   /// ```
   set onUnknownSequence(TerminalUnknownSequenceCallback? value) {
-    bindings.terminal.terminalSetOnUnknownSequence(_terminalHandle, value);
+    final handle = _requireHandle();
+    _callbacks.setUnknownSequence(handle, value);
   }
 
   /// Registers a callback for PTY write-back data.
@@ -566,7 +621,8 @@ final class Terminal with ChangeNotifier {
   /// responses also use this callback when [setTitleReports] is enabled. Fires
   /// synchronously during [write].
   set onWritePty(ValueSetter<Uint8List>? value) {
-    bindings.terminal.terminalSetOnWritePty(_terminalHandle, value);
+    final handle = _requireHandle();
+    _callbacks.setWritePty(handle, value);
   }
 
   /// Registers a callback for XTVERSION queries (CSI > q).
@@ -575,7 +631,8 @@ final class Terminal with ChangeNotifier {
   /// string to use the default "libghostty" identifier. Fires synchronously
   /// during [write].
   set onXtversion(ValueGetter<String>? value) {
-    bindings.terminal.terminalSetOnXtversion(_terminalHandle, value);
+    final handle = _requireHandle();
+    _callbacks.setXtversion(handle, value);
   }
 
   /// Current 256-color palette with any active OSC 4 overrides applied.
@@ -583,7 +640,7 @@ final class Terminal with ChangeNotifier {
   /// Always returns a 256-element list (the built-in default palette is used
   /// as a baseline).
   List<RgbColor> get palette {
-    return bindings.terminal.terminalGetColorPalette(_terminalHandle);
+    return bindings.terminal.terminalGetColorPalette(_requireHandle());
   }
 
   /// Sets the default 256-color palette, or resets to built-in defaults if
@@ -595,12 +652,12 @@ final class Terminal with ChangeNotifier {
   /// Throws [ArgumentError] when [colors] is non-null and does not contain
   /// exactly 256 entries.
   set palette(List<RgbColor>? colors) {
-    bindings.terminal.terminalSetColorPalette(_terminalHandle, colors);
+    bindings.terminal.terminalSetColorPalette(_requireHandle(), colors);
   }
 
   /// Default 256-color palette, ignoring any OSC 4 overrides.
   List<RgbColor> get paletteDefault {
-    return bindings.terminal.terminalGetColorPaletteDefault(_terminalHandle);
+    return bindings.terminal.terminalGetColorPaletteDefault(_requireHandle());
   }
 
   /// Current working directory as reported by OSC 7.
@@ -609,43 +666,11 @@ final class Terminal with ChangeNotifier {
   /// without parsing them. OSC 7 values are therefore raw URIs, while the
   /// other forms are typically paths. The returned string is a Dart-owned
   /// snapshot and remains valid after subsequent terminal operations.
-  String get pwd => bindings.terminal.terminalGetPwd(_terminalHandle);
+  String get pwd => bindings.terminal.terminalGetPwd(_requireHandle());
 
   /// Sets the working directory, or clears it if null.
   set pwd(String? value) {
-    bindings.terminal.terminalSetPwd(_terminalHandle, value);
-  }
-
-  /// Maximum bytes retained for scrollback, or null when unlimited.
-  ///
-  /// This limit and [scrollbackMaxLines] apply together. Ghostty prunes when
-  /// either limit is reached, at page granularity.
-  int? get scrollbackMaxBytes {
-    return bindings.terminal.terminalGetScrollbackMaxBytes(_terminalHandle);
-  }
-
-  /// Sets the maximum bytes retained for scrollback.
-  ///
-  /// Set to null for no byte limit or zero to clear retained history and
-  /// disable scrollback by bytes.
-  set scrollbackMaxBytes(int? value) {
-    bindings.terminal.terminalSetScrollbackMaxBytes(_terminalHandle, value);
-  }
-
-  /// Maximum physical lines retained for scrollback, or null when unlimited.
-  ///
-  /// This limit and [scrollbackMaxBytes] apply together. Ghostty prunes when
-  /// either limit is reached, at page granularity.
-  int? get scrollbackMaxLines {
-    return bindings.terminal.terminalGetScrollbackMaxLines(_terminalHandle);
-  }
-
-  /// Sets the maximum physical lines retained for scrollback.
-  ///
-  /// Set to null for no line limit or zero to clear retained history and
-  /// disable scrollback by lines.
-  set scrollbackMaxLines(int? value) {
-    bindings.terminal.terminalSetScrollbackMaxLines(_terminalHandle, value);
+    bindings.terminal.terminalSetPwd(_requireHandle(), value);
   }
 
   /// Controls whether a resize can pull rows from scrollback into the active
@@ -655,36 +680,46 @@ final class Terminal with ChangeNotifier {
   /// the PTY keeps its own screen buffer without scrollback.
   set resizePullScrollback(bool? value) {
     bindings.terminal.terminalSetResizePullScrollback(
-      _terminalHandle,
+      _requireHandle(),
       value: value,
     );
   }
 
-  /// Enables or disables DECRQCRA checksum replies.
+  /// Maximum bytes retained for scrollback, or null when unlimited.
   ///
-  /// Checksum replies are disabled by default because a program could use
-  /// them to read screen contents.
-  set xtChecksumReport(bool enabled) {
-    bindings.terminal.terminalSetXtChecksumReport(
-      _terminalHandle,
-      enabled: enabled,
-    );
+  /// This limit and [scrollbackMaxLines] apply together. Ghostty prunes when
+  /// either limit is reached, at page granularity.
+  int? get scrollbackMaxBytes {
+    return bindings.terminal.terminalGetScrollbackMaxBytes(_requireHandle());
   }
 
-  /// Sets DECRQCRA checksum calculation flags and the default used after a
-  /// full terminal reset.
+  /// Sets the maximum bytes retained for scrollback.
   ///
-  /// The value must be between 0 and 31. Set null to restore the DEC default.
-  set xtChecksumExtension(int? value) {
-    if (value != null && (value < 0 || value > 31)) {
-      throw RangeError.range(value, 0, 31, 'value');
-    }
-    bindings.terminal.terminalSetXtChecksumExtension(_terminalHandle, value);
+  /// Set to null for no byte limit or zero to clear retained history and
+  /// disable scrollback by bytes.
+  set scrollbackMaxBytes(int? value) {
+    bindings.terminal.terminalSetScrollbackMaxBytes(_requireHandle(), value);
+  }
+
+  /// Maximum physical lines retained for scrollback, or null when unlimited.
+  ///
+  /// This limit and [scrollbackMaxBytes] apply together. Ghostty prunes when
+  /// either limit is reached, at page granularity.
+  int? get scrollbackMaxLines {
+    return bindings.terminal.terminalGetScrollbackMaxLines(_requireHandle());
+  }
+
+  /// Sets the maximum physical lines retained for scrollback.
+  ///
+  /// Set to null for no line limit or zero to clear retained history and
+  /// disable scrollback by lines.
+  set scrollbackMaxLines(int? value) {
+    bindings.terminal.terminalSetScrollbackMaxLines(_requireHandle(), value);
   }
 
   /// Number of rows in the scrollback buffer (excluding the active grid).
   int get scrollbackRows =>
-      bindings.terminal.terminalGetScrollbackRows(_terminalHandle);
+      bindings.terminal.terminalGetScrollbackRows(_requireHandle());
 
   /// Scrollbar position and dimensions for rendering a scrollbar widget.
   ///
@@ -696,14 +731,14 @@ final class Terminal with ChangeNotifier {
   /// There is no scroll-state notification. Callers building scrollbars should
   /// poll this once per frame or per write batch and diff the result.
   Scrollbar get scrollbar =>
-      bindings.terminal.terminalGetScrollbar(_terminalHandle);
+      bindings.terminal.terminalGetScrollbar(_requireHandle());
 
   /// Active selection on the terminal screen, or null when none is active.
   ///
   /// Getting returns an untracked snapshot. Setting installs a copy as
   /// terminal-owned tracked state. Set null to clear the active selection.
   Selection? get selection {
-    final raw = bindings.selection.terminalGetSelection(_terminalHandle);
+    final raw = bindings.selection.terminalGetSelection(_requireHandle());
     return raw == null ? null : Selection._fromRaw(this, raw);
   }
 
@@ -714,7 +749,7 @@ final class Terminal with ChangeNotifier {
   /// to this terminal.
   set selection(Selection? value) {
     bindings.selection.terminalSetSelection(
-      _terminalHandle,
+      _requireHandle(),
       _checkedSelection(value),
     );
     notifyListeners();
@@ -726,22 +761,22 @@ final class Terminal with ChangeNotifier {
   /// leave `TN` queries unanswered. Names longer than 128 UTF-8 bytes throw
   /// [InvalidValueException].
   set terminfoName(String? value) {
-    bindings.terminal.terminalSetTerminfoName(_terminalHandle, value);
+    bindings.terminal.terminalSetTerminfoName(_requireHandle(), value);
   }
 
   /// Terminal title as set by OSC 0 or OSC 2 sequences.
   ///
   /// The returned string is a Dart-owned snapshot and remains valid after
   /// subsequent terminal operations.
-  String get title => bindings.terminal.terminalGetTitle(_terminalHandle);
+  String get title => bindings.terminal.terminalGetTitle(_requireHandle());
 
   /// Sets the terminal title, or clears it if null.
   set title(String? value) {
-    bindings.terminal.terminalSetTitle(_terminalHandle, value);
+    bindings.terminal.terminalSetTitle(_requireHandle(), value);
   }
 
   /// Total number of rows: active grid rows plus scrollback rows.
-  int get totalRows => bindings.terminal.terminalGetTotalRows(_terminalHandle);
+  int get totalRows => bindings.terminal.terminalGetTotalRows(_requireHandle());
 
   /// Maximum bytes captured for unsupported string sequences.
   ///
@@ -751,17 +786,39 @@ final class Terminal with ChangeNotifier {
   set unknownSequenceMaxBytes(int? value) {
     if (value != null) RangeError.checkNotNegative(value, 'value');
     bindings.terminal.terminalSetUnknownSequenceMaxBytes(
-      _terminalHandle,
+      _requireHandle(),
       value,
     );
   }
 
   /// Total terminal width in pixels (cols * cell width).
-  int get widthPx => bindings.terminal.terminalGetWidthPx(_terminalHandle);
+  int get widthPx => bindings.terminal.terminalGetWidthPx(_requireHandle());
+
+  /// Sets DECRQCRA checksum calculation flags and the default used after a
+  /// full terminal reset.
+  ///
+  /// The value must be between 0 and 31. Set null to restore the DEC default.
+  set xtChecksumExtension(int? value) {
+    if (value != null && (value < 0 || value > 31)) {
+      throw RangeError.range(value, 0, 31, 'value');
+    }
+    bindings.terminal.terminalSetXtChecksumExtension(_requireHandle(), value);
+  }
+
+  /// Enables or disables DECRQCRA checksum replies.
+  ///
+  /// Checksum replies are disabled by default because a program could use
+  /// them to read screen contents.
+  set xtChecksumReport(bool enabled) {
+    bindings.terminal.terminalSetXtChecksumReport(
+      _requireHandle(),
+      enabled: enabled,
+    );
+  }
 
   LibGhosttyHandle? get _handleOrNull => _disposed ? null : _handle;
 
-  LibGhosttyHandle get _terminalHandle {
+  LibGhosttyHandle _requireHandle() {
     if (_disposed) throw StateError('Terminal has been disposed');
     return _handle;
   }
@@ -786,7 +843,7 @@ final class Terminal with ChangeNotifier {
   TerminalCompressionResult compress({
     TerminalCompressionMode mode = .incremental,
   }) {
-    final result = bindings.terminal.terminalCompress(_terminalHandle, mode);
+    final result = bindings.terminal.terminalCompress(_requireHandle(), mode);
     return result;
   }
 
@@ -799,6 +856,9 @@ final class Terminal with ChangeNotifier {
   void dispose() {
     if (_disposed) return;
     bindings.terminal.terminalFree(_handle);
+    // JS keeps a dereferenced weak target alive until the current job ends.
+    if (keepsDereferencedTargetsAliveForJob) _callbackOwner?.clear();
+    _callbackOwner = null;
     _finalizer.detach(this);
     _disposed = true;
     super.dispose();
@@ -811,7 +871,7 @@ final class Terminal with ChangeNotifier {
   /// [continuationMaxBytes] to have been enabled before that input was written.
   /// Do not mutate the terminal concurrently with this call.
   Uint8List encodeSnapshot() {
-    return bindings.snapshot.snapshotEncode(_terminalHandle);
+    return bindings.snapshot.snapshotEncode(_requireHandle());
   }
 
   /// Formats an explicit or active selection.
@@ -825,7 +885,7 @@ final class Terminal with ChangeNotifier {
     Selection? selection,
   }) {
     return bindings.selection.terminalSelectionFormat(
-      _terminalHandle,
+      _requireHandle(),
       format,
       unwrap: unwrap,
       trim: trim,
@@ -835,13 +895,13 @@ final class Terminal with ChangeNotifier {
 
   /// Queries whether the given terminal [mode] is currently enabled.
   bool modeGet(TerminalMode mode) {
-    return bindings.terminal.terminalModeGet(_terminalHandle, mode.value);
+    return bindings.terminal.terminalModeGet(_requireHandle(), mode.value);
   }
 
   /// Enables or disables the given terminal [mode].
   void modeSet(TerminalMode mode, {required bool value}) {
     bindings.terminal.terminalModeSet(
-      _terminalHandle,
+      _requireHandle(),
       mode.value,
       value: value,
     );
@@ -853,31 +913,34 @@ final class Terminal with ChangeNotifier {
   /// and throw [InvalidValueException].
   void modeSetDefault(TerminalMode mode, {required bool value}) {
     bindings.terminal.terminalModeSetDefault(
-      _terminalHandle,
+      _requireHandle(),
       mode.value,
       value: value,
     );
   }
 
-  /// Pastes [text] according to the terminal's current modes.
+  /// Pastes [request] according to the terminal's clipboard and text modes.
   ///
-  /// The text is supplied as a clipboard-like MIME representation and is
-  /// written through [onWritePty]. By default unsafe command-injecting text is
-  /// rejected before any output is written; set [allowUnsafe] only after the
-  /// application has confirmed the paste with the user.
-  void paste(String text, {bool allowUnsafe = false}) {
-    final written = bindings.terminal.terminalPasteText(
-      _terminalHandle,
-      text,
-      allowUnsafe: allowUnsafe,
-    );
+  /// Returns whether text or a paste event was written through [onWritePty].
+  /// Returns false when no event or non-empty supported text was written.
+  /// A reader returning false throws [IoException].
+  /// Clipboard events advertise MIME names and defer content requests to
+  /// [onClipboardRead]. Otherwise Ghostty selects a supported text MIME and
+  /// applies safety checks, sanitization, and bracketed paste framing.
+  ///
+  /// Reader and output callback exceptions are rethrown after the native call.
+  /// A reader failure or safety rejection writes no paste payload. Output
+  /// callback failures can occur after output has already been delivered.
+  bool paste(PasteRequest request) {
+    final written = bindings.terminal.terminalPaste(_requireHandle(), request);
     if (written) notifyListeners();
+    return written;
   }
 
   /// Performs a full reset (RIS): resets modes, scrollback, scrolling region,
   /// and screen contents to defaults while preserving terminal dimensions.
   void reset() {
-    bindings.terminal.terminalReset(_terminalHandle);
+    bindings.terminal.terminalReset(_requireHandle());
   }
 
   /// Resizes the terminal grid to the given cell dimensions.
@@ -904,7 +967,7 @@ final class Terminal with ChangeNotifier {
   }) {
     try {
       bindings.terminal.terminalResize(
-        _terminalHandle,
+        _requireHandle(),
         cols,
         rows,
         cellWidthPx,
@@ -922,7 +985,7 @@ final class Terminal with ChangeNotifier {
 
   /// Scrolls the viewport to the bottom (active area).
   void scrollToBottom() {
-    bindings.terminal.terminalScrollViewport(_terminalHandle, .bottom, 0);
+    bindings.terminal.terminalScrollViewport(_requireHandle(), .bottom, 0);
   }
 
   /// Scrolls the viewport to an absolute row in the scrollable area.
@@ -936,7 +999,7 @@ final class Terminal with ChangeNotifier {
   /// can be passed here to restore that viewport position.
   void scrollToRow(int row) {
     RangeError.checkNotNegative(row, 'row');
-    bindings.terminal.terminalScrollViewport(_terminalHandle, .row, row);
+    bindings.terminal.terminalScrollViewport(_requireHandle(), .row, row);
   }
 
   /// Scrolls between retained shell prompts relative to the viewport top.
@@ -952,7 +1015,7 @@ final class Terminal with ChangeNotifier {
   ///
   /// Returns true only when the viewport offset changes.
   bool scrollToPrompt(int delta) {
-    final handle = _terminalHandle;
+    final handle = _requireHandle();
     if (delta == 0) return false;
 
     final initialOffset = scrollbar.offset;
@@ -962,14 +1025,15 @@ final class Terminal with ChangeNotifier {
 
   /// Scrolls the viewport to the top of the scrollback history.
   void scrollToTop() {
-    bindings.terminal.terminalScrollViewport(_terminalHandle, .top, 0);
+    bindings.terminal.terminalScrollViewport(_requireHandle(), .top, 0);
   }
 
   /// Scrolls the viewport by [delta] rows. Positive values scroll down
   /// (toward the active area), negative values scroll up (toward history).
   void scrollViewport(int delta) {
+    final handle = _requireHandle();
     if (delta == 0) return;
-    bindings.terminal.terminalScrollViewport(_terminalHandle, .delta, delta);
+    bindings.terminal.terminalScrollViewport(handle, .delta, delta);
   }
 
   /// Derives a selection snapshot covering all selectable terminal content.
@@ -977,7 +1041,7 @@ final class Terminal with ChangeNotifier {
   /// The returned selection is not installed as the terminal's active
   /// selection. Assign it to [selection] to make it active.
   Selection? selectAll() {
-    final raw = bindings.selection.terminalSelectAll(_terminalHandle);
+    final raw = bindings.selection.terminalSelectAll(_requireHandle());
     return raw == null ? null : Selection._fromRaw(this, raw);
   }
 
@@ -991,7 +1055,7 @@ final class Terminal with ChangeNotifier {
     bool semanticPromptBoundary = false,
   }) {
     final raw = bindings.selection.terminalSelectLine(
-      _terminalHandle,
+      _requireHandle(),
       _checkedRef(ref),
       whitespace: whitespace,
       semanticPromptBoundary: semanticPromptBoundary,
@@ -1005,7 +1069,7 @@ final class Terminal with ChangeNotifier {
   /// selection. Assign it to [selection] to make it active.
   Selection? selectOutput(GridRef ref) {
     final raw = bindings.selection.terminalSelectOutput(
-      _terminalHandle,
+      _requireHandle(),
       _checkedRef(ref),
     );
     return raw == null ? null : Selection._fromRaw(this, raw);
@@ -1017,7 +1081,7 @@ final class Terminal with ChangeNotifier {
   /// selection. Assign it to [selection] to make it active.
   Selection? selectWord(GridRef ref, {List<int>? boundaryCodepoints}) {
     final raw = bindings.selection.terminalSelectWord(
-      _terminalHandle,
+      _requireHandle(),
       _checkedRef(ref),
       boundaryCodepoints: boundaryCodepoints,
     );
@@ -1034,7 +1098,7 @@ final class Terminal with ChangeNotifier {
     List<int>? boundaryCodepoints,
   }) {
     final raw = bindings.selection.terminalSelectWordBetween(
-      _terminalHandle,
+      _requireHandle(),
       _checkedRef(start, 'start'),
       _checkedRef(end, 'end'),
       boundaryCodepoints: boundaryCodepoints,
@@ -1047,13 +1111,13 @@ final class Terminal with ChangeNotifier {
   /// This replaces protocol-specific overrides. Pass null to remove all
   /// overrides and use the built-in defaults.
   void setApcBufferLimit(int? bytes) {
-    bindings.terminal.terminalSetApcBufferLimit(_terminalHandle, bytes);
+    bindings.terminal.terminalSetApcBufferLimit(_requireHandle(), bytes);
   }
 
   /// Enables or disables Glyph Protocol APC handling.
   void setGlyphProtocol({required bool enabled}) {
     bindings.terminal.terminalSetGlyphProtocol(
-      _terminalHandle,
+      _requireHandle(),
       enabled: enabled,
     );
   }
@@ -1065,13 +1129,13 @@ final class Terminal with ChangeNotifier {
   /// Pass null to remove the Kitty-specific override and use the built-in
   /// Kitty graphics default.
   void setKittyApcBufferLimit(int? bytes) {
-    bindings.terminal.terminalSetKittyApcBufferLimit(_terminalHandle, bytes);
+    bindings.terminal.terminalSetKittyApcBufferLimit(_requireHandle(), bytes);
   }
 
   /// Enables or disables the file medium for Kitty image loading.
   void setKittyFileMedium({required bool enabled}) {
     bindings.terminal.terminalSetKittyImageMediumFile(
-      _terminalHandle,
+      _requireHandle(),
       enabled: enabled,
     );
   }
@@ -1079,7 +1143,7 @@ final class Terminal with ChangeNotifier {
   /// Enables or disables the shared memory medium for Kitty image loading.
   void setKittySharedMemMedium({required bool enabled}) {
     bindings.terminal.terminalSetKittyImageMediumSharedMem(
-      _terminalHandle,
+      _requireHandle(),
       enabled: enabled,
     );
   }
@@ -1096,7 +1160,7 @@ final class Terminal with ChangeNotifier {
   /// ```
   void setKittyTempFileDirectory(String? directory) {
     bindings.terminal.terminalSetKittyImageMediumTempFile(
-      _terminalHandle,
+      _requireHandle(),
       directory,
     );
   }
@@ -1111,7 +1175,10 @@ final class Terminal with ChangeNotifier {
   /// This setting is independent of [onTitleChanged], which observes title
   /// changes made by OSC 0 or OSC 2.
   void setTitleReports({required bool enabled}) {
-    bindings.terminal.terminalSetTitleReport(_terminalHandle, enabled: enabled);
+    bindings.terminal.terminalSetTitleReport(
+      _requireHandle(),
+      enabled: enabled,
+    );
   }
 
   /// Feeds raw VT-encoded bytes into the terminal for processing.
@@ -1133,7 +1200,7 @@ final class Terminal with ChangeNotifier {
   /// ```
   void write(Uint8List data) {
     try {
-      bindings.terminal.terminalVtWrite(_terminalHandle, data);
+      bindings.terminal.terminalVtWrite(_requireHandle(), data);
     } on Object catch (error, stackTrace) {
       try {
         notifyListeners();
@@ -1160,7 +1227,7 @@ final class Terminal with ChangeNotifier {
   /// overflows. If [writer] throws, that exception is rethrown after the C
   /// operation completes.
   void writeContinuation(ContinuationWriter writer) {
-    bindings.terminal.terminalContinuationWrite(_terminalHandle, writer);
+    bindings.terminal.terminalContinuationWrite(_requireHandle(), writer);
   }
 
   /// Writes bytes until the parser reaches the ground state.
@@ -1183,7 +1250,7 @@ final class Terminal with ChangeNotifier {
     late final int? consumed;
     try {
       consumed = bindings.terminal.terminalWriteUntilGround(
-        _terminalHandle,
+        _requireHandle(),
         data,
       );
     } on Object catch (error, stackTrace) {

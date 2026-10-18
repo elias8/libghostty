@@ -6,6 +6,100 @@ import 'package:test/test.dart';
 
 void main() {
   group('WasmScratchPool', () {
+    test('release frees large storage but reuses small slots', () {
+      final allocator = _TestScratchAllocator();
+      final pool = WasmScratchPool(
+        allocator,
+        maxVariableLength: 1024,
+        maxRetainedVariableLength: 16,
+        maxRetainedVariableSlots: 2,
+      );
+      final first = pool.acquire(const []);
+      final small = first.variableAddress(0, 8);
+      final large = first.variableAddress(1, 128);
+      final overflow = first.variableAddress(2, 8);
+      first.release();
+      expect(allocator.freedAddresses, [large, overflow]);
+      expect(allocator.activeAllocations, {small});
+
+      final second = pool.acquire(const []);
+      expect(second.variableAddress(0, 8), small);
+      expect(second.variableAddress(1, 8), isNot(large));
+      second.release();
+      pool.dispose();
+      expect(allocator.activeAllocations, isEmpty);
+    });
+
+    test('reuses a frame after a zero-length overflow slot', () {
+      final allocator = _TestScratchAllocator();
+      final pool = WasmScratchPool(
+        allocator,
+        maxVariableLength: 64,
+        maxRetainedVariableSlots: 1,
+      );
+      final first = pool.acquire(const []);
+      expect(first.variable(2, 0, alignment: 8).alignment, 8);
+      first.release();
+
+      final second = pool.acquire(const []);
+      expect(allocator.allocations, 0);
+      final overflow = second.variableAddress(2, 8);
+      second.release();
+      expect(allocator.freedAddresses, [overflow]);
+      expect(allocator.activeAllocations, isEmpty);
+      pool.dispose();
+    });
+
+    test('release trims overflow slots after failed growth', () {
+      final allocator = _TestScratchAllocator();
+      final pool = WasmScratchPool(
+        allocator,
+        maxVariableLength: 64,
+        maxRetainedVariableSlots: 1,
+      );
+      final first = pool.acquire(const []);
+      final retained = first.variableAddress(0, 8);
+      final overflow = first.variableAddress(2, 8, alignment: 8);
+      allocator.failAllocation = true;
+      expect(() => first.variable(2, 16, alignment: 8), throwsStateError);
+      expect(first.variableAddress(2, 8, alignment: 8), overflow);
+      first.release();
+      expect(allocator.freedAddresses, [overflow]);
+
+      allocator.failAllocation = false;
+      final second = pool.acquire(const []);
+      expect(second.variableAddress(0, 8), retained);
+      expect(second.variable(2, 0).capacity, 0);
+      expect(allocator.activeAllocations, {retained});
+      second.release();
+      pool.dispose();
+    });
+
+    test(
+      'release frees capacity above the limit returned by the allocator',
+      () {
+        final allocator = _TestScratchAllocator()..extraCapacity = 16;
+        final pool = WasmScratchPool(
+          allocator,
+          maxVariableLength: 64,
+          maxRetainedVariableLength: 16,
+        );
+        final first = pool.acquire(const []);
+        final region = first.variable(0, 8);
+        expect(region.capacity, 24);
+        expect(allocator.requests, [(length: 8, alignment: 1)]);
+        first.release();
+        expect(allocator.freedAddresses, [region.address]);
+        expect(allocator.activeAllocations, isEmpty);
+
+        final second = pool.acquire(const []);
+        expect(second.variable(0, 0).capacity, 0);
+        second.release();
+        pool.dispose();
+        expect(allocator.freeCalls, 1);
+      },
+    );
+
     void runWithFrame(WasmScratchFrame frame, void Function() operation) {
       try {
         operation();
@@ -337,6 +431,8 @@ final class _TestScratchAllocator implements ScratchAllocator {
   final List<({int length, int alignment})> requests = [];
   final List<int> freedAddresses = [];
   final Set<int> activeAllocations = {};
+  var extraCapacity = 0;
+  var failAllocation = false;
   late int _nextAddress;
   late int allocations;
   late int freeCalls;
@@ -353,9 +449,13 @@ final class _TestScratchAllocator implements ScratchAllocator {
 
   @override
   ScratchAllocation allocate({required int length, required int alignment}) {
+    if (failAllocation) throw StateError('Allocation failed');
     final address = (_nextAddress + alignment - 1) ~/ alignment * alignment;
-    final allocation = ScratchAllocation(address: address, capacity: length);
-    _nextAddress = address + length;
+    final allocation = ScratchAllocation(
+      address: address,
+      capacity: length + extraCapacity,
+    );
+    _nextAddress = address + allocation.capacity;
     allocations++;
     activeAllocations.add(allocation.address);
     requests.add((length: length, alignment: alignment));

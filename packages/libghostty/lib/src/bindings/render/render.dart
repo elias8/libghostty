@@ -3,24 +3,24 @@ import '../../types/types.dart';
 import '../types.dart';
 
 abstract interface class RenderBindings {
-  int cellGetCodepoint(LibGhosttyHandle cell);
-  int cellGetColorPalette(LibGhosttyHandle cell);
-  RgbColor cellGetColorRgb(LibGhosttyHandle cell);
-  CellContentTag cellGetContentTag(LibGhosttyHandle cell);
-  bool cellGetHasHyperlink(LibGhosttyHandle cell);
-  bool cellGetHasStyling(LibGhosttyHandle cell);
-  bool cellGetHasText(LibGhosttyHandle cell);
-  bool cellGetProtected(LibGhosttyHandle cell);
-  CellSemanticContent cellGetSemanticContent(LibGhosttyHandle cell);
-  int cellGetStyleId(LibGhosttyHandle cell);
-  RawCellSummary cellGetSummary(LibGhosttyHandle cell);
-  CellWide cellGetWide(LibGhosttyHandle cell);
+  int cellGetCodepoint(RawCell cell);
+  int cellGetColorPalette(RawCell cell);
+  RgbColor cellGetColorRgb(RawCell cell);
+  CellContentTag cellGetContentTag(RawCell cell);
+  bool cellGetHasHyperlink(RawCell cell);
+  bool cellGetHasStyling(RawCell cell);
+  bool cellGetHasText(RawCell cell);
+  bool cellGetProtected(RawCell cell);
+  CellSemanticContent cellGetSemanticContent(RawCell cell);
+  int cellGetStyleId(RawCell cell);
+  RawCellSummary cellGetSummary(RawCell cell);
+  CellWide cellGetWide(RawCell cell);
   bool decodeRawCell(RawCellsView view, int index, RawCellData output);
 
-  LibGhosttyHandle gridRefCell(RawGridRef ref);
+  RawCell gridRefCell(RawGridRef ref);
   List<int> gridRefGraphemes(RawGridRef ref);
   String? gridRefHyperlinkUri(RawGridRef ref);
-  LibGhosttyHandle gridRefRow(RawGridRef ref);
+  RawRow gridRefRow(RawGridRef ref);
   Style gridRefStyle(RawGridRef ref);
 
   void renderStateBeginUpdate(
@@ -57,7 +57,7 @@ abstract interface class RenderBindings {
   String rowCellsGetGraphemesUtf8(LibGhosttyHandle cells);
   bool rowCellsGetHasStyling(LibGhosttyHandle cells);
 
-  LibGhosttyHandle rowCellsGetRawCell(LibGhosttyHandle cells);
+  RawCell rowCellsGetRawCell(LibGhosttyHandle cells);
   bool rowCellsGetSelected(LibGhosttyHandle cells);
   Style rowCellsGetStyle(LibGhosttyHandle cells);
   RawRowCellsSummary rowCellsGetSummary(LibGhosttyHandle cells);
@@ -66,22 +66,22 @@ abstract interface class RenderBindings {
   bool rowCellsNext(LibGhosttyHandle cells);
   void rowCellsSelect(LibGhosttyHandle cells, int x);
 
-  bool rowGetDirty(LibGhosttyHandle row);
-  bool rowGetGrapheme(LibGhosttyHandle row);
-  bool rowGetHyperlink(LibGhosttyHandle row);
-  bool rowGetKittyVirtualPlaceholder(LibGhosttyHandle row);
+  bool rowGetDirty(RawRow row);
+  bool rowGetGrapheme(RawRow row);
+  bool rowGetHyperlink(RawRow row);
+  bool rowGetKittyVirtualPlaceholder(RawRow row);
 
-  RowSemanticPrompt rowGetSemanticPrompt(LibGhosttyHandle row);
-  bool rowGetStyled(LibGhosttyHandle row);
-  RawRowSummary rowGetSummary(LibGhosttyHandle row);
-  bool rowGetWrap(LibGhosttyHandle row);
-  bool rowGetWrapContinuation(LibGhosttyHandle row);
+  RowSemanticPrompt rowGetSemanticPrompt(RawRow row);
+  bool rowGetStyled(RawRow row);
+  RawRowSummary rowGetSummary(RawRow row);
+  bool rowGetWrap(RawRow row);
+  bool rowGetWrapContinuation(RawRow row);
 
   void rowIteratorFree(LibGhosttyHandle iterator);
   bool rowIteratorGetDirty(LibGhosttyHandle iterator);
   RenderRowId rowIteratorGetId(LibGhosttyHandle iterator);
   int rowIteratorGetViewportY(LibGhosttyHandle iterator);
-  LibGhosttyHandle rowIteratorGetRawRow(LibGhosttyHandle iterator);
+  RawRow rowIteratorGetRawRow(LibGhosttyHandle iterator);
   ({int startCol, int endCol})? rowIteratorGetSelection(
     LibGhosttyHandle iterator,
   );

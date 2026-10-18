@@ -5,6 +5,7 @@ import '../../generated/libghostty_wasm.g.dart';
 import '../../types/types.dart';
 import '../result_helpers.dart';
 import '../types.dart';
+import '../wasm/allocation_owner.dart';
 import '../wasm/allocator.dart';
 import '../wasm/layouts.dart';
 import '../wasm/memory.dart';
@@ -20,17 +21,30 @@ final class WasmFormatterBindings implements FormatterBindings {
   late int _formatBufferCapacity;
   late int _written;
 
-  WasmFormatterBindings(this._exports, this._layout)
-    : _memory = Memory(_exports),
+  factory WasmFormatterBindings(GhosttyExports exports, Layouts layout) {
+    final owner = WasmAllocationOwner(exports);
+    try {
+      final bindings = WasmFormatterBindings._(exports, layout, owner);
+      owner.commit();
+      return bindings;
+    } on Object {
+      owner.rollback();
+      rethrow;
+    }
+  }
+
+  WasmFormatterBindings._(
+    this._exports,
+    this._layout,
+    WasmAllocationOwner owner,
+  ) : _memory = Memory(_exports),
       _scratch = WasmScratchPool(
         WasmExportScratchAllocator(_exports),
         maxVariableLength: WasmScratchPool.defaultMaxVariableLength,
       ) {
     _formatBufferCapacity = 4096;
-    _formatBuffer = _requirePointer(
-      _exports.allocateBytes(_formatBufferCapacity),
-    );
-    _written = _requirePointer(_exports.allocateBytes(4));
+    _formatBuffer = owner.allocate(_formatBufferCapacity);
+    _written = owner.allocate(4);
   }
 
   @override
@@ -183,13 +197,14 @@ final class WasmFormatterBindings implements FormatterBindings {
 
   void _growFormatBuffer(int required) {
     if (required <= _formatBufferCapacity) return;
-    final replacement = _requirePointer(_exports.allocateBytes(required));
+    final replacement = _allocateBytes(required);
     _exports.freeBytes(_formatBuffer, _formatBufferCapacity);
     _formatBuffer = replacement;
     _formatBufferCapacity = required;
   }
 
-  int _requirePointer(int pointer) {
+  int _allocateBytes(int length) {
+    final pointer = _exports.allocateBytes(length);
     if (pointer == 0) throw const OutOfMemoryException();
     return pointer;
   }

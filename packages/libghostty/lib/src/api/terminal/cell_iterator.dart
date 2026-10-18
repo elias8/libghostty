@@ -36,14 +36,13 @@ final class CellIterator {
   RawCellsView? _rawCells;
   var _rawCellsAvailable = false;
   var _rowPositionGeneration = 0;
-  var _rawCell = const LibGhosttyHandle.fromAddress(0);
   final _rawCellData = RawCellData();
+  RawCell? _fallbackCell;
   var _graphemeLen = 0;
   var _prevStyleId = -1;
   var _cachedStyle = const Style();
   var _col = -1;
   var _isSelected = false;
-  var _textValid = false;
   var _metadataValid = false;
   var _selectedValid = false;
 
@@ -62,7 +61,7 @@ final class CellIterator {
   RgbColor? get background {
     _ensureCurrent();
     if (_rawCellsAvailable) {
-      _ensureMetadata();
+      if (!_metadataValid) _refreshMetadata();
       if (_rawCellData.hasBackgroundRgb) {
         return RgbColor(
           _rawCellData.backgroundR,
@@ -78,7 +77,7 @@ final class CellIterator {
   int? get backgroundArgb {
     _ensureCurrent();
     if (_rawCellsAvailable) {
-      _ensureMetadata();
+      if (!_metadataValid) _refreshMetadata();
       if (_rawCellData.hasBackgroundRgb) {
         return 0xFF000000 |
             (_rawCellData.backgroundR << 16) |
@@ -91,7 +90,7 @@ final class CellIterator {
 
   /// Primary codepoint of the current cell, or 0 if the cell has no text.
   int get codepoint {
-    _ensureText();
+    _ensureMetadata();
     return _rawCellData.codepoint;
   }
 
@@ -106,7 +105,7 @@ final class CellIterator {
   /// Full grapheme cluster of the current cell as a string, or empty if
   /// the cell has no text.
   String get content {
-    _ensureText();
+    _ensureMetadata();
     if (_graphemeLen == 0) return '';
     if (_graphemeLen == 1) return String.fromCharCode(_rawCellData.codepoint);
     return String.fromCharCodes(
@@ -133,22 +132,22 @@ final class CellIterator {
   /// Number of codepoints in the current cell's grapheme cluster (0 =
   /// empty).
   int get graphemeLength {
-    _ensureText();
+    _ensureMetadata();
     return _graphemeLen;
   }
 
   /// Whether the current cell has a hyperlink (OSC 8).
   bool get hasHyperlink {
-    _ensureText();
+    _ensureMetadata();
     if (_rawCellsAvailable) return _rawCellData.hasHyperlink;
-    return bindings.render.cellGetHasHyperlink(_rawCell);
+    return bindings.render.cellGetHasHyperlink(_fallbackCell!);
   }
 
   /// Whether the current cell has non-default styling attributes.
   bool get hasStyling {
     _ensureCurrent();
     if (_rawCellsAvailable) {
-      _ensureMetadata();
+      if (!_metadataValid) _refreshMetadata();
       return _rawCellData.styleId != 0;
     }
     return bindings.render.rowCellsGetHasStyling(_handle);
@@ -156,15 +155,15 @@ final class CellIterator {
 
   /// Whether the current cell contains any text.
   bool get hasText {
-    _ensureText();
+    _ensureMetadata();
     return _graphemeLen > 0;
   }
 
   /// Whether the current cell is protected (DECSCA).
   bool get isProtected {
-    _ensureText();
+    _ensureMetadata();
     if (_rawCellsAvailable) return _rawCellData.isProtected;
-    return bindings.render.cellGetProtected(_rawCell);
+    return bindings.render.cellGetProtected(_fallbackCell!);
   }
 
   /// Whether the current cell is contained within the current selection.
@@ -184,9 +183,9 @@ final class CellIterator {
 
   /// Semantic content type of the current cell.
   SemanticContent get semanticContent {
-    _ensureText();
+    _ensureMetadata();
     if (_rawCellsAvailable) return _rawCellData.semanticContent;
-    return bindings.render.cellGetSemanticContent(_rawCell);
+    return bindings.render.cellGetSemanticContent(_fallbackCell!);
   }
 
   /// Style of the current cell. Cached per style id to avoid redundant
@@ -194,8 +193,10 @@ final class CellIterator {
   Style get style {
     _ensureMetadata();
     if (_rawCellData.styleId != _prevStyleId) {
+      _cachedStyle = _rawCellData.styleId == 0
+          ? const Style()
+          : bindings.render.rowCellsGetStyle(_handle);
       _prevStyleId = _rawCellData.styleId;
-      _cachedStyle = bindings.render.rowCellsGetStyle(_handle);
     }
     return _cachedStyle;
   }
@@ -217,9 +218,13 @@ final class CellIterator {
   /// Releases the native iterator handle.
   void dispose() {
     if (_disposed) return;
+    _disposed = true;
+    _rowIterator = null;
+    _rawCells = null;
+    _rawCellsAvailable = false;
+    _invalidate();
     bindings.render.rowCellsFree(_handle);
     _finalizer.detach(this);
-    _disposed = true;
   }
 
   /// Advances to the next cell. Returns true when a cell is available and
@@ -240,19 +245,21 @@ final class CellIterator {
   /// recent [RowIterator.next] must have returned true). Subsequent
   /// [next] / [select] calls read cells from that row.
   void reset(RowIterator rowIterator) {
-    _ensureAlive();
+    final handle = _requireHandle();
     rowIterator._ensurePositioned();
-    bindings.render.rowCellsInit(_handle, rowIterator._handle);
-    _rowIterator = rowIterator;
+    _rowIterator = null;
+    _rawCellsAvailable = false;
+    _prevStyleId = -1;
+    _invalidate();
+    bindings.render.rowCellsInit(handle, rowIterator._handle);
     final rawCells = _rawCells ??= RawCellsView();
     _rawCellsAvailable = bindings.render.rowIteratorGetRawCells(
       rowIterator._handle,
       rawCells,
     );
+    _rowIterator = rowIterator;
     _rowPositionGeneration = rowIterator._positionGeneration;
     _col = -1;
-    _prevStyleId = -1;
-    _invalidate();
   }
 
   /// Positions the iterator at column [col] within the current row so
@@ -269,67 +276,79 @@ final class CellIterator {
     _invalidate();
   }
 
-  void _ensureAlive() {
+  LibGhosttyHandle _requireHandle() {
     if (_disposed) throw StateError('CellIterator has been disposed');
+    return _handle;
   }
 
+  @pragma('vm:prefer-inline')
   void _ensureCurrent() {
-    _ensureAlive();
     final rowIterator = _rowIterator;
+    if (rowIterator == null ||
+        rowIterator._positionGeneration != _rowPositionGeneration ||
+        rowIterator._renderGeneration !=
+            rowIterator._renderState!._generation) {
+      _throwInvalidCurrent(rowIterator);
+    }
+  }
+
+  Never _throwInvalidCurrent(RowIterator? rowIterator) {
     if (rowIterator == null) {
+      if (_disposed) throw StateError('CellIterator has been disposed');
       throw StateError('CellIterator has not been bound to a row');
     }
-    rowIterator._ensurePositioned();
     if (rowIterator._positionGeneration != _rowPositionGeneration) {
+      if (rowIterator._disposed) {
+        throw StateError('RowIterator has been disposed');
+      }
       throw StateError('CellIterator has been invalidated by a row update');
     }
+    if (rowIterator._renderState!._disposed) {
+      throw StateError('RenderState has been disposed');
+    }
+    throw StateError('CellIterator has been invalidated by a render update');
   }
 
+  @pragma('vm:prefer-inline')
   void _ensureMetadata() {
     _ensureCurrent();
     if (!_metadataValid) _refreshMetadata();
   }
 
-  void _ensureText() {
-    _ensureCurrent();
-    if (!_textValid) _refreshMetadata();
-  }
-
   void _invalidate() {
-    _textValid = false;
+    _fallbackCell = null;
     _metadataValid = false;
     _selectedValid = false;
   }
 
   void _refreshMetadata() {
+    _fallbackCell = null;
     if (_rawCellsAvailable) {
       if (bindings.render.decodeRawCell(_rawCells!, _col, _rawCellData)) {
-        _rawCell = .fromAddress(_rawCellData.rawCell);
         _graphemeLen = _rawCellData.hasGrapheme
             ? bindings.render.rowCellsGetGraphemeLen(_handle)
             : _rawCellData.codepoint == 0
             ? 0
             : 1;
         _selectedValid = true;
-        _textValid = true;
         _metadataValid = true;
         return;
       }
       _rawCellsAvailable = false;
     }
 
+    _rawCellData.hasBackgroundRgb = false;
     final rowCell = bindings.render.rowCellsGetSummary(_handle);
-    _rawCell = .fromAddress(rowCell.rawCell);
+    final rawCell = rowCell.rawCell;
     _graphemeLen = rowCell.graphemeLen;
     _isSelected = rowCell.selected;
     _selectedValid = true;
 
-    final cell = bindings.render.cellGetSummary(_rawCell);
-    _rawCellData.rawCell = rowCell.rawCell;
+    final cell = bindings.render.cellGetSummary(rawCell);
+    _fallbackCell = rawCell;
     _rawCellData.styleId = cell.styleId;
     _rawCellData.codepoint = _graphemeLen > 0 ? cell.codepoint : 0;
     _rawCellData.wide = cell.wide;
-    _textValid = true;
     _metadataValid = true;
   }
 }

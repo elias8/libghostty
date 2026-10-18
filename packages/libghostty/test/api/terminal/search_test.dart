@@ -22,6 +22,36 @@ void main() {
       terminal.dispose();
     });
 
+    group('dispose', () {
+      test('is idempotent and rejects operations afterward', () {
+        search.dispose();
+
+        expect(search.dispose, returnsNormally);
+        expect(() => search.matches, throwsStateError);
+        expect(() => search.needle, throwsStateError);
+        expect(() => search.selectedIndex, throwsStateError);
+        expect(() => search.selectedMatch, throwsStateError);
+        expect(() => search.selectScroll, throwsStateError);
+        expect(() => search.selectScroll = SearchScroll.none, throwsStateError);
+        expect(() => search.status, throwsStateError);
+        expect(() => search.totalMatches, throwsStateError);
+        expect(() => search.viewportMatches, throwsStateError);
+        expect(search.feed, throwsStateError);
+        expect(search.run, throwsStateError);
+        expect(search.selectNext, throwsStateError);
+        expect(search.selectPrevious, throwsStateError);
+        expect(() => search.setNeedle('hello'), throwsStateError);
+        expect(search.tick, throwsStateError);
+      });
+
+      test('succeeds after terminal disposal', () {
+        terminal.dispose();
+
+        expect(search.run, throwsStateError);
+        expect(search.dispose, returnsNormally);
+      });
+    });
+
     test('finds matches after running the search', () {
       terminal.write(Uint8List.fromList('hello world hello'.codeUnits));
 

@@ -5,5 +5,6 @@ export 'exceptions.dart';
 export 'formatter.dart';
 export 'geometry.dart';
 export 'kitty_graphics.dart';
+export 'paste.dart';
 export 'render.dart';
 export 'terminal.dart';

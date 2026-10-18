@@ -215,8 +215,14 @@ final class WasmSearchBindings implements SearchBindings {
   (int, int, int) _allocateString(String value) {
     final bytes = utf8.encode(value);
     final pointer = _allocateBytes(_layout.stringSize);
+    late final int data;
+    try {
+      data = _allocateBytes(bytes.isEmpty ? 1 : bytes.length);
+    } on Object {
+      _freeBytes(pointer, _layout.stringSize);
+      rethrow;
+    }
     final dataLength = bytes.isEmpty ? 1 : bytes.length;
-    final data = _allocateBytes(dataLength);
     if (bytes.isNotEmpty) _memory.writeBytes(data, bytes);
     _memory.writePtr(pointer, data);
     _memory.writeU32(pointer + _layout.stringLen, bytes.length);

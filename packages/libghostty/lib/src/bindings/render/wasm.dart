@@ -1,32 +1,35 @@
 import 'dart:convert';
 import 'dart:js_interop';
-import 'dart:js_interop_unsafe';
+import 'dart:typed_data';
 
 import '../../generated/libghostty_enums.g.dart';
 import '../../generated/libghostty_wasm.g.dart';
 import '../../types/types.dart';
 import '../result_helpers.dart';
 import '../types.dart';
-import '../wasm/allocator.dart';
+import '../wasm/allocation_owner.dart';
 import '../wasm/layouts.dart';
 import '../wasm/memory.dart';
 import '../wasm/scratch.dart';
 import 'render.dart';
+
+@JS('BigInt')
+external JSBigInt _bigInt(JSNumber value);
+
+final _zeroRaw = _bigInt(0.toJS);
 
 const _wasmEnumSize = 4;
 const _wasmPointerSize = 4;
 const _wasmSizeSize = 4;
 const _wasmOutputSlotSize = 8;
 const _maxMultiQueryCount = 12;
-final JSString _cellGetMultiMethod = 'ghostty_cell_get_multi'.toJS;
-final JSString _rowGetMultiMethod = 'ghostty_row_get_multi'.toJS;
 const _emptyRenderStateCursor = RenderStateCursor(visible: false);
-const RawRowIteratorSummary _emptyRowIteratorSummary = (
+final RawRowIteratorSummary _emptyRowIteratorSummary = (
   dirty: false,
-  rawRow: 0,
+  rawRow: RawRow.fromOpaque(_zeroRaw),
 );
-const RawRowCellsSummary _emptyRowCellsSummary = (
-  rawCell: 0,
+final RawRowCellsSummary _emptyRowCellsSummary = (
+  rawCell: RawCell.fromOpaque(_zeroRaw),
   graphemeLen: 0,
   selected: false,
 );
@@ -74,60 +77,60 @@ final class WasmRenderBindings implements RenderBindings {
     : _raw = _WasmRenderRaw(exports, layout);
 
   @override
-  int cellGetCodepoint(LibGhosttyHandle h) =>
-      _required(_raw.cellGetCodepoint(h.value), 'ghostty_cell_get');
+  int cellGetCodepoint(RawCell h) =>
+      _required(_raw.cellGetCodepoint(h), 'ghostty_cell_get');
 
   @override
-  int cellGetColorPalette(LibGhosttyHandle h) =>
-      _required(_raw.cellGetColorPalette(h.value), 'ghostty_cell_get');
+  int cellGetColorPalette(RawCell h) =>
+      _required(_raw.cellGetColorPalette(h), 'ghostty_cell_get');
 
   @override
-  RgbColor cellGetColorRgb(LibGhosttyHandle h) =>
-      _required(_raw.cellGetColorRgb(h.value), 'ghostty_cell_get');
+  RgbColor cellGetColorRgb(RawCell h) =>
+      _required(_raw.cellGetColorRgb(h), 'ghostty_cell_get');
 
   @override
-  CellContentTag cellGetContentTag(LibGhosttyHandle h) =>
-      _required(_raw.cellGetContentTag(h.value), 'ghostty_cell_get');
+  CellContentTag cellGetContentTag(RawCell h) =>
+      _required(_raw.cellGetContentTag(h), 'ghostty_cell_get');
 
   @override
-  bool cellGetHasHyperlink(LibGhosttyHandle h) =>
-      _required(_raw.cellGetHasHyperlink(h.value), 'ghostty_cell_get');
+  bool cellGetHasHyperlink(RawCell h) =>
+      _required(_raw.cellGetHasHyperlink(h), 'ghostty_cell_get');
 
   @override
-  bool cellGetHasStyling(LibGhosttyHandle h) =>
-      _required(_raw.cellGetHasStyling(h.value), 'ghostty_cell_get');
+  bool cellGetHasStyling(RawCell h) =>
+      _required(_raw.cellGetHasStyling(h), 'ghostty_cell_get');
 
   @override
-  bool cellGetHasText(LibGhosttyHandle h) =>
-      _required(_raw.cellGetHasText(h.value), 'ghostty_cell_get');
+  bool cellGetHasText(RawCell h) =>
+      _required(_raw.cellGetHasText(h), 'ghostty_cell_get');
 
   @override
-  bool cellGetProtected(LibGhosttyHandle h) =>
-      _required(_raw.cellGetProtected(h.value), 'ghostty_cell_get');
+  bool cellGetProtected(RawCell h) =>
+      _required(_raw.cellGetProtected(h), 'ghostty_cell_get');
 
   @override
-  CellSemanticContent cellGetSemanticContent(LibGhosttyHandle h) =>
-      _required(_raw.cellGetSemanticContent(h.value), 'ghostty_cell_get');
+  CellSemanticContent cellGetSemanticContent(RawCell h) =>
+      _required(_raw.cellGetSemanticContent(h), 'ghostty_cell_get');
 
   @override
-  int cellGetStyleId(LibGhosttyHandle h) =>
-      _required(_raw.cellGetStyleId(h.value), 'ghostty_cell_get');
+  int cellGetStyleId(RawCell h) =>
+      _required(_raw.cellGetStyleId(h), 'ghostty_cell_get');
 
   @override
-  RawCellSummary cellGetSummary(LibGhosttyHandle h) =>
-      _required(_raw.cellGetSummary(h.value), 'ghostty_cell_get_multi');
+  RawCellSummary cellGetSummary(RawCell h) =>
+      _required(_raw.cellGetSummary(h), 'ghostty_cell_get_multi');
 
   @override
-  CellWide cellGetWide(LibGhosttyHandle h) =>
-      _required(_raw.cellGetWide(h.value), 'ghostty_cell_get');
+  CellWide cellGetWide(RawCell h) =>
+      _required(_raw.cellGetWide(h), 'ghostty_cell_get');
 
   @override
   bool decodeRawCell(RawCellsView view, int index, RawCellData output) =>
       _raw.decodeRawCell(view, index, output);
 
   @override
-  LibGhosttyHandle gridRefCell(RawGridRef r) =>
-      .fromAddress(_required(_raw.gridRefCell(r), 'ghostty_grid_ref_cell'));
+  RawCell gridRefCell(RawGridRef r) =>
+      _required(_raw.gridRefCell(r), 'ghostty_grid_ref_cell');
 
   @override
   List<int> gridRefGraphemes(RawGridRef r) =>
@@ -138,8 +141,8 @@ final class WasmRenderBindings implements RenderBindings {
       _optional(_raw.gridRefHyperlinkUri(r), 'ghostty_grid_ref_hyperlink_uri');
 
   @override
-  LibGhosttyHandle gridRefRow(RawGridRef r) =>
-      .fromAddress(_required(_raw.gridRefRow(r), 'ghostty_grid_ref_row'));
+  RawRow gridRefRow(RawGridRef r) =>
+      _required(_raw.gridRefRow(r), 'ghostty_grid_ref_row');
 
   @override
   Style gridRefStyle(RawGridRef r) =>
@@ -277,11 +280,9 @@ final class WasmRenderBindings implements RenderBindings {
   );
 
   @override
-  LibGhosttyHandle rowCellsGetRawCell(LibGhosttyHandle h) => .fromAddress(
-    _required(
-      _raw.rowCellsGetRawCell(h.value),
-      'ghostty_render_state_row_cells_get',
-    ),
+  RawCell rowCellsGetRawCell(LibGhosttyHandle h) => _required(
+    _raw.rowCellsGetRawCell(h.value),
+    'ghostty_render_state_row_cells_get',
   );
 
   @override
@@ -323,40 +324,39 @@ final class WasmRenderBindings implements RenderBindings {
   );
 
   @override
-  bool rowGetDirty(LibGhosttyHandle h) =>
-      _required(_raw.rowGetDirty(h.value), 'ghostty_row_get');
+  bool rowGetDirty(RawRow h) =>
+      _required(_raw.rowGetDirty(h), 'ghostty_row_get');
 
   @override
-  bool rowGetGrapheme(LibGhosttyHandle h) =>
-      _required(_raw.rowGetGrapheme(h.value), 'ghostty_row_get');
+  bool rowGetGrapheme(RawRow h) =>
+      _required(_raw.rowGetGrapheme(h), 'ghostty_row_get');
 
   @override
-  bool rowGetHyperlink(LibGhosttyHandle h) =>
-      _required(_raw.rowGetHyperlink(h.value), 'ghostty_row_get');
+  bool rowGetHyperlink(RawRow h) =>
+      _required(_raw.rowGetHyperlink(h), 'ghostty_row_get');
 
   @override
-  bool rowGetKittyVirtualPlaceholder(LibGhosttyHandle h) =>
-      _required(_raw.rowGetKittyVirtualPlaceholder(h.value), 'ghostty_row_get');
+  bool rowGetKittyVirtualPlaceholder(RawRow h) =>
+      _required(_raw.rowGetKittyVirtualPlaceholder(h), 'ghostty_row_get');
 
   @override
-  RowSemanticPrompt rowGetSemanticPrompt(LibGhosttyHandle h) =>
-      _required(_raw.rowGetSemanticPrompt(h.value), 'ghostty_row_get');
+  RowSemanticPrompt rowGetSemanticPrompt(RawRow h) =>
+      _required(_raw.rowGetSemanticPrompt(h), 'ghostty_row_get');
 
   @override
-  bool rowGetStyled(LibGhosttyHandle h) =>
-      _required(_raw.rowGetStyled(h.value), 'ghostty_row_get');
+  bool rowGetStyled(RawRow h) =>
+      _required(_raw.rowGetStyled(h), 'ghostty_row_get');
 
   @override
-  RawRowSummary rowGetSummary(LibGhosttyHandle h) =>
-      _required(_raw.rowGetSummary(h.value), 'ghostty_row_get_multi');
+  RawRowSummary rowGetSummary(RawRow h) =>
+      _required(_raw.rowGetSummary(h), 'ghostty_row_get_multi');
 
   @override
-  bool rowGetWrap(LibGhosttyHandle h) =>
-      _required(_raw.rowGetWrap(h.value), 'ghostty_row_get');
+  bool rowGetWrap(RawRow h) => _required(_raw.rowGetWrap(h), 'ghostty_row_get');
 
   @override
-  bool rowGetWrapContinuation(LibGhosttyHandle h) =>
-      _required(_raw.rowGetWrapContinuation(h.value), 'ghostty_row_get');
+  bool rowGetWrapContinuation(RawRow h) =>
+      _required(_raw.rowGetWrapContinuation(h), 'ghostty_row_get');
 
   @override
   void rowIteratorFree(LibGhosttyHandle h) => _raw.rowIteratorFree(h.value);
@@ -378,11 +378,9 @@ final class WasmRenderBindings implements RenderBindings {
   );
 
   @override
-  LibGhosttyHandle rowIteratorGetRawRow(LibGhosttyHandle h) => .fromAddress(
-    _required(
-      _raw.rowIteratorGetRawRow(h.value),
-      'ghostty_render_state_row_get',
-    ),
+  RawRow rowIteratorGetRawRow(LibGhosttyHandle h) => _required(
+    _raw.rowIteratorGetRawRow(h.value),
+    'ghostty_render_state_row_get',
   );
 
   @override
@@ -510,13 +508,10 @@ final class WasmRenderBindings implements RenderBindings {
 }
 
 final class _WasmRenderRaw {
-  static final _jsBigInt = globalContext['BigInt']! as JSFunction;
   final GhosttyExports _exports;
   final Memory _memory;
   final Layouts _layout;
   final WasmScratchPool _scratch;
-  final _cellGetMultiArguments = List<JSAny?>.filled(5, null);
-  final _rowGetMultiArguments = List<JSAny?>.filled(5, null);
   late final int _multiKeys;
   late final int _multiValues;
   late final int _multiOut;
@@ -532,39 +527,51 @@ final class _WasmRenderRaw {
 
   late final int _cellMultiOut;
 
-  _WasmRenderRaw(this._exports, this._layout)
+  factory _WasmRenderRaw(GhosttyExports exports, Layouts layout) {
+    final owner = WasmAllocationOwner(exports);
+    try {
+      final bindings = _WasmRenderRaw._(exports, layout, owner);
+      owner.commit();
+      return bindings;
+    } on Object {
+      owner.rollback();
+      rethrow;
+    }
+  }
+
+  _WasmRenderRaw._(this._exports, this._layout, WasmAllocationOwner owner)
     : _memory = Memory(_exports),
       _scratch = WasmScratchPool(
         WasmExportScratchAllocator(_exports),
         maxVariableLength: WasmScratchPool.defaultMaxVariableLength,
       ) {
-    _multiKeys = _allocateBytes(_maxMultiQueryCount * _wasmEnumSize);
-    _multiValues = _allocateBytes(_maxMultiQueryCount * _wasmPointerSize);
-    _multiOut = _allocateBytes(_maxMultiQueryCount * _wasmOutputSlotSize);
-    _multiWritten = _allocateSize();
-    _renderStateSummaryMultiKeys = _allocateBytes(
+    _multiKeys = owner.allocate(_maxMultiQueryCount * _wasmEnumSize);
+    _multiValues = owner.allocate(_maxMultiQueryCount * _wasmPointerSize);
+    _multiOut = owner.allocate(_maxMultiQueryCount * _wasmOutputSlotSize);
+    _multiWritten = _allocateSize(owner);
+    _renderStateSummaryMultiKeys = owner.allocate(
       _renderStateSummaryKeys.length * _wasmEnumSize,
     );
-    _renderStateSummaryMultiValues = _allocateBytes(
+    _renderStateSummaryMultiValues = owner.allocate(
       _renderStateSummaryKeys.length * _wasmPointerSize,
     );
-    _renderStateSummaryMultiOut = _allocateBytes(
+    _renderStateSummaryMultiOut = owner.allocate(
       _renderStateSummaryKeys.length * _wasmOutputSlotSize,
     );
-    _rowCellsMultiKeys = _allocateBytes(
+    _rowCellsMultiKeys = owner.allocate(
       _rowCellsSummaryKeys.length * _wasmEnumSize,
     );
-    _rowCellsMultiValues = _allocateBytes(
+    _rowCellsMultiValues = owner.allocate(
       _rowCellsSummaryKeys.length * _wasmPointerSize,
     );
-    _rowCellsMultiOut = _allocateBytes(
+    _rowCellsMultiOut = owner.allocate(
       _rowCellsSummaryKeys.length * _wasmOutputSlotSize,
     );
-    _cellMultiKeys = _allocateBytes(_cellSummaryKeys.length * _wasmEnumSize);
-    _cellMultiValues = _allocateBytes(
+    _cellMultiKeys = owner.allocate(_cellSummaryKeys.length * _wasmEnumSize);
+    _cellMultiValues = owner.allocate(
       _cellSummaryKeys.length * _wasmPointerSize,
     );
-    _cellMultiOut = _allocateBytes(
+    _cellMultiOut = owner.allocate(
       _cellSummaryKeys.length * _wasmOutputSlotSize,
     );
     _writeMultiKeys(
@@ -587,9 +594,9 @@ final class _WasmRenderRaw {
     );
   }
 
-  CResult<int> cellGetCodepoint(int cell) => _cellGetU32(cell, .codepoint);
+  CResult<int> cellGetCodepoint(RawCell cell) => _cellGetU32(cell, .codepoint);
 
-  CResult<int> cellGetColorPalette(int cell) {
+  CResult<int> cellGetColorPalette(RawCell cell) {
     final frame = _scratch.acquire(const []);
     try {
       final outPtr = frame.variableAddress(0, 1);
@@ -603,7 +610,7 @@ final class _WasmRenderRaw {
     }
   }
 
-  CResult<RgbColor> cellGetColorRgb(int cell) {
+  CResult<RgbColor> cellGetColorRgb(RawCell cell) {
     final frame = _scratch.acquire(const []);
     try {
       final outPtr = frame.variableAddress(0, _layout.colorRgbSize);
@@ -624,31 +631,33 @@ final class _WasmRenderRaw {
     }
   }
 
-  CResult<CellContentTag> cellGetContentTag(int cell) {
+  CResult<CellContentTag> cellGetContentTag(RawCell cell) {
     final raw = _cellGetI32(cell, .contentTag);
     return (raw.$1, CellContentTag.fromValue(raw.$2));
   }
 
-  CResult<bool> cellGetHasHyperlink(int cell) =>
+  CResult<bool> cellGetHasHyperlink(RawCell cell) =>
       _cellGetBool(cell, .hasHyperlink);
 
-  CResult<bool> cellGetHasStyling(int cell) => _cellGetBool(cell, .hasStyling);
+  CResult<bool> cellGetHasStyling(RawCell cell) =>
+      _cellGetBool(cell, .hasStyling);
 
-  CResult<bool> cellGetHasText(int cell) => _cellGetBool(cell, .hasText);
+  CResult<bool> cellGetHasText(RawCell cell) => _cellGetBool(cell, .hasText);
 
-  CResult<bool> cellGetProtected(int cell) => _cellGetBool(cell, .protected);
+  CResult<bool> cellGetProtected(RawCell cell) =>
+      _cellGetBool(cell, .protected);
 
-  CResult<CellSemanticContent> cellGetSemanticContent(int cell) {
+  CResult<CellSemanticContent> cellGetSemanticContent(RawCell cell) {
     final raw = _cellGetI32(cell, .semanticContent);
     return (raw.$1, CellSemanticContent.fromValue(raw.$2));
   }
 
-  CResult<int> cellGetStyleId(int cell) => _cellGetU16(cell, .styleId);
+  CResult<int> cellGetStyleId(RawCell cell) => _cellGetU16(cell, .styleId);
 
-  CResult<RawCellSummary> cellGetSummary(int cell) {
+  CResult<RawCellSummary> cellGetSummary(RawCell cell) {
     final result = Result.fromValue(
-      _callCellGetMulti(
-        cell,
+      _exports.ghostty_cell_get_multi(
+        cell.opaque as JSBigInt,
         _cellSummaryKeys.length,
         _cellMultiKeys,
         _cellMultiValues,
@@ -668,20 +677,25 @@ final class _WasmRenderRaw {
     );
   }
 
-  CResult<CellWide> cellGetWide(int cell) {
+  CResult<CellWide> cellGetWide(RawCell cell) {
     final raw = _cellGetI32(cell, .wide);
     return (raw.$1, CellWide.fromValue(raw.$2));
   }
 
-  CResult<int> gridRefCell(RawGridRef ref) {
+  CResult<RawCell> gridRefCell(RawGridRef ref) {
     final frame = _scratch.acquire(const []);
     try {
       final refPtr = frame.variableAddress(0, _layout.gridRefSize);
       final outPtr = frame.variableAddress(1, 8, alignment: 8);
       _writeGridRef(refPtr, ref);
       final result = _exports.ghostty_grid_ref_cell(refPtr, outPtr);
-      if (result != 0) return (.fromValue(result), 0);
-      return (.fromValue(result), _memory.readU64(outPtr));
+      if (result != 0) {
+        return (.fromValue(result), RawCell.fromOpaque(_zeroRaw));
+      }
+      return (
+        .fromValue(result),
+        RawCell.fromOpaque(_memory.readU64BigInt(outPtr)),
+      );
     } finally {
       frame.release();
     }
@@ -790,15 +804,18 @@ final class _WasmRenderRaw {
     }
   }
 
-  CResult<int> gridRefRow(RawGridRef ref) {
+  CResult<RawRow> gridRefRow(RawGridRef ref) {
     final frame = _scratch.acquire(const []);
     try {
       final refPtr = frame.variableAddress(0, _layout.gridRefSize);
       final outPtr = frame.variableAddress(1, 8, alignment: 8);
       _writeGridRef(refPtr, ref);
       final result = _exports.ghostty_grid_ref_row(refPtr, outPtr);
-      if (result != 0) return (.fromValue(result), 0);
-      return (.fromValue(result), _memory.readU64(outPtr));
+      if (result != 0) return (.fromValue(result), RawRow.fromOpaque(_zeroRaw));
+      return (
+        .fromValue(result),
+        RawRow.fromOpaque(_memory.readU64BigInt(outPtr)),
+      );
     } finally {
       frame.release();
     }
@@ -1280,7 +1297,7 @@ final class _WasmRenderRaw {
     }
   }
 
-  CResult<int> rowCellsGetRawCell(int cells) {
+  CResult<RawCell> rowCellsGetRawCell(int cells) {
     final frame = _scratch.acquire(const []);
     try {
       final outPtr = frame.variableAddress(0, 8, alignment: 8);
@@ -1291,8 +1308,8 @@ final class _WasmRenderRaw {
           outPtr,
         ),
       );
-      if (result != .success) return (result, 0);
-      return (result, _memory.readU64(outPtr));
+      if (result != .success) return (result, RawCell.fromOpaque(_zeroRaw));
+      return (result, RawCell.fromOpaque(_memory.readU64BigInt(outPtr)));
     } finally {
       frame.release();
     }
@@ -1350,7 +1367,7 @@ final class _WasmRenderRaw {
     return (
       result,
       (
-        rawCell: _memory.readU64(_rowCellsMultiOut),
+        rawCell: RawCell.fromOpaque(_memory.readU64BigInt(_rowCellsMultiOut)),
         graphemeLen: _memory.readU32(_rowCellsMultiOut + _wasmOutputSlotSize),
         selected:
             _memory.readU8(_rowCellsMultiOut + 2 * _wasmOutputSlotSize) != 0,
@@ -1405,17 +1422,17 @@ final class _WasmRenderRaw {
     );
   }
 
-  CResult<bool> rowGetDirty(int row) => _rowGetBool(row, .dirty);
+  CResult<bool> rowGetDirty(RawRow row) => _rowGetBool(row, .dirty);
 
-  CResult<bool> rowGetGrapheme(int row) => _rowGetBool(row, .grapheme);
+  CResult<bool> rowGetGrapheme(RawRow row) => _rowGetBool(row, .grapheme);
 
-  CResult<bool> rowGetHyperlink(int row) => _rowGetBool(row, .hyperlink);
+  CResult<bool> rowGetHyperlink(RawRow row) => _rowGetBool(row, .hyperlink);
 
-  CResult<bool> rowGetKittyVirtualPlaceholder(int row) {
+  CResult<bool> rowGetKittyVirtualPlaceholder(RawRow row) {
     return _rowGetBool(row, .kittyVirtualPlaceholder);
   }
 
-  CResult<RowSemanticPrompt> rowGetSemanticPrompt(int row) {
+  CResult<RowSemanticPrompt> rowGetSemanticPrompt(RawRow row) {
     final frame = _scratch.acquire(const []);
     try {
       final outPtr = frame.variableAddress(
@@ -1431,9 +1448,9 @@ final class _WasmRenderRaw {
     }
   }
 
-  CResult<bool> rowGetStyled(int row) => _rowGetBool(row, .styled);
+  CResult<bool> rowGetStyled(RawRow row) => _rowGetBool(row, .styled);
 
-  CResult<RawRowSummary> rowGetSummary(int row) {
+  CResult<RawRowSummary> rowGetSummary(RawRow row) {
     const keys = _rowSummaryKeys;
     for (var i = 0; i < keys.length; i++) {
       _memory.writeU32(_multiKeys + i * _wasmEnumSize, keys[i].value);
@@ -1443,8 +1460,8 @@ final class _WasmRenderRaw {
       );
     }
     final result = Result.fromValue(
-      _callRowGetMulti(
-        row,
+      _exports.ghostty_row_get_multi(
+        row.opaque as JSBigInt,
         keys.length,
         _multiKeys,
         _multiValues,
@@ -1469,9 +1486,9 @@ final class _WasmRenderRaw {
     );
   }
 
-  CResult<bool> rowGetWrap(int row) => _rowGetBool(row, .wrap);
+  CResult<bool> rowGetWrap(RawRow row) => _rowGetBool(row, .wrap);
 
-  CResult<bool> rowGetWrapContinuation(int row) =>
+  CResult<bool> rowGetWrapContinuation(RawRow row) =>
       _rowGetBool(row, .wrapContinuation);
 
   void rowIteratorFree(int handle) {
@@ -1496,7 +1513,7 @@ final class _WasmRenderRaw {
     }
   }
 
-  CResult<int> rowIteratorGetRawRow(int iterator) {
+  CResult<RawRow> rowIteratorGetRawRow(int iterator) {
     final frame = _scratch.acquire(const []);
     try {
       final outPtr = frame.variableAddress(0, 8, alignment: 8);
@@ -1507,8 +1524,8 @@ final class _WasmRenderRaw {
           outPtr,
         ),
       );
-      if (result != .success) return (result, 0);
-      return (result, _memory.readU64(outPtr));
+      if (result != .success) return (result, RawRow.fromOpaque(_zeroRaw));
+      return (result, RawRow.fromOpaque(_memory.readU64BigInt(outPtr)));
     } finally {
       frame.release();
     }
@@ -1610,7 +1627,9 @@ final class _WasmRenderRaw {
       result,
       (
         dirty: _memory.readU8(_multiOut) != 0,
-        rawRow: _memory.readU64(_multiOut + _wasmOutputSlotSize),
+        rawRow: RawRow.fromOpaque(
+          _memory.readU64BigInt(_multiOut + _wasmOutputSlotSize),
+        ),
       ),
     );
   }
@@ -1657,8 +1676,13 @@ final class _WasmRenderRaw {
 
   bool decodeRawCell(RawCellsView view, int index, RawCellData output) {
     if (index < 0 || index >= view.length) return false;
-    final raw = _memory.readU64(view.address + index * _layout.cellLayout.size);
-    _layout.cellLayout.decodeInto(raw, output);
+    final address = view.address + index * _layout.cellLayout.size;
+    final bytes = _memory.view;
+    _layout.cellLayout.decodeWordsInto(
+      bytes.getUint32(address, Endian.little),
+      bytes.getUint32(address + 4, Endian.little),
+      output,
+    );
     return true;
   }
 
@@ -1872,88 +1896,21 @@ final class _WasmRenderRaw {
     }
   }
 
-  int _allocateBytes(int size) {
-    final pointer = _exports.allocateBytes(size);
-    if (pointer == 0) throw const OutOfMemoryException();
-    return pointer;
-  }
-
-  int _allocateSize() {
-    final pointer = _exports.allocateBytes(4);
-    if (pointer == 0) throw const OutOfMemoryException();
+  int _allocateSize(WasmAllocationOwner owner) {
+    final pointer = owner.allocate(4);
     if (pointer % _wasmSizeSize != 0) {
-      _exports.freeBytes(pointer, 4);
       throw StateError('libghostty WASM allocator returned misaligned memory.');
     }
     return pointer;
   }
 
-  int _callCellGet(int cell, CellData data, int outPtr) {
-    final fn = (_exports as JSObject)['ghostty_cell_get']! as JSFunction;
-    return (fn.callAsFunction(
-              null,
-              _toBigInt(cell),
-              data.value.toJS,
-              outPtr.toJS,
-            )!
-            as JSNumber)
-        .toDartInt;
-  }
+  int _callCellGet(RawCell cell, CellData data, int outPtr) =>
+      _exports.ghostty_cell_get(cell.opaque as JSBigInt, data.value, outPtr);
 
-  int _callCellGetMulti(
-    int cell,
-    int count,
-    int keys,
-    int values,
-    int outWritten,
-  ) {
-    // WebAssembly exposes i64 parameters as JavaScript BigInt values, while
-    // Dart's typed callAsFunction overload accepts only four arguments. These
-    // C functions take five, so callMethodVarArgs is the supported bridge. The
-    // argument lists are reused because this path runs for every cell and row.
-    // https://api.dart.dev/dart-js_interop_unsafe/JSObjectUnsafeUtilExtension/callMethodVarArgs.html
-    final arguments = _cellGetMultiArguments;
-    arguments[0] = _toBigInt(cell);
-    arguments[1] = count.toJS;
-    arguments[2] = keys.toJS;
-    arguments[3] = values.toJS;
-    arguments[4] = outWritten.toJS;
-    return (_exports as JSObject)
-        .callMethodVarArgs<JSNumber>(_cellGetMultiMethod, arguments)
-        .toDartInt;
-  }
+  int _callRowGet(RawRow row, RowData data, int outPtr) =>
+      _exports.ghostty_row_get(row.opaque as JSBigInt, data.value, outPtr);
 
-  int _callRowGet(int row, RowData data, int outPtr) {
-    final fn = (_exports as JSObject)['ghostty_row_get']! as JSFunction;
-    return (fn.callAsFunction(
-              null,
-              _toBigInt(row),
-              data.value.toJS,
-              outPtr.toJS,
-            )!
-            as JSNumber)
-        .toDartInt;
-  }
-
-  int _callRowGetMulti(
-    int row,
-    int count,
-    int keys,
-    int values,
-    int outWritten,
-  ) {
-    final arguments = _rowGetMultiArguments;
-    arguments[0] = _toBigInt(row);
-    arguments[1] = count.toJS;
-    arguments[2] = keys.toJS;
-    arguments[3] = values.toJS;
-    arguments[4] = outWritten.toJS;
-    return (_exports as JSObject)
-        .callMethodVarArgs<JSNumber>(_rowGetMultiMethod, arguments)
-        .toDartInt;
-  }
-
-  CResult<bool> _cellGetBool(int cell, CellData data) {
+  CResult<bool> _cellGetBool(RawCell cell, CellData data) {
     final frame = _scratch.acquire(const []);
     try {
       final outPtr = frame.variableAddress(0, 1);
@@ -1965,7 +1922,7 @@ final class _WasmRenderRaw {
     }
   }
 
-  CResult<int> _cellGetI32(int cell, CellData data) {
+  CResult<int> _cellGetI32(RawCell cell, CellData data) {
     final frame = _scratch.acquire(const []);
     try {
       final outPtr = frame.variableAddress(
@@ -1981,7 +1938,7 @@ final class _WasmRenderRaw {
     }
   }
 
-  CResult<int> _cellGetU16(int cell, CellData data) {
+  CResult<int> _cellGetU16(RawCell cell, CellData data) {
     final frame = _scratch.acquire(const []);
     try {
       final outPtr = frame.variableAddress(
@@ -1997,7 +1954,7 @@ final class _WasmRenderRaw {
     }
   }
 
-  CResult<int> _cellGetU32(int cell, CellData data) {
+  CResult<int> _cellGetU32(RawCell cell, CellData data) {
     final frame = _scratch.acquire(const []);
     try {
       final outPtr = frame.variableAddress(
@@ -2092,7 +2049,7 @@ final class _WasmRenderRaw {
     }
   }
 
-  CResult<bool> _rowGetBool(int row, RowData data) {
+  CResult<bool> _rowGetBool(RawRow row, RowData data) {
     final frame = _scratch.acquire(const []);
     try {
       final outPtr = frame.variableAddress(0, 1);
@@ -2143,9 +2100,5 @@ final class _WasmRenderRaw {
     for (var i = 0; i < len; i++) {
       _memory.writeU8(ptr + i, 0);
     }
-  }
-
-  static JSAny _toBigInt(int value) {
-    return _jsBigInt.callAsFunction(null, value.toJS)!;
   }
 }

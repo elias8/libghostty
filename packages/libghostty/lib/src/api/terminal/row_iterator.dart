@@ -33,6 +33,7 @@ final class RowIterator {
 
   var _disposed = false;
   RenderState? _renderState;
+  var _renderGeneration = 0;
   var _positionGeneration = 0;
   var _positioned = false;
   late RawRowSummary _rowSummary;
@@ -146,9 +147,13 @@ final class RowIterator {
   /// Releases the native iterator handle.
   void dispose() {
     if (_disposed) return;
+    _positionGeneration++;
+    _disposed = true;
+    _renderState = null;
+    _positioned = false;
+    _rowSummaryValid = false;
     bindings.render.rowIteratorFree(_handle);
     _finalizer.detach(this);
-    _disposed = true;
   }
 
   /// Advances to the next row. Returns true when a row is available and
@@ -156,15 +161,19 @@ final class RowIterator {
   /// is exhausted.
   bool next() {
     _ensureCurrent();
-    final hasNext = bindings.render.rowIteratorNext(_handle);
     _positionGeneration++;
+    _positioned = false;
+    _rowSummaryValid = false;
+    final bool hasNext;
+    try {
+      hasNext = bindings.render.rowIteratorNext(_handle);
+    } on Object {
+      _renderState = null;
+      rethrow;
+    }
     if (hasNext) {
-      _rowSummaryValid = false;
       _index++;
       _positioned = true;
-    } else {
-      _rowSummaryValid = false;
-      _positioned = false;
     }
     return hasNext;
   }
@@ -178,16 +187,21 @@ final class RowIterator {
   /// position when overscan is enabled.
   bool nextDirty() {
     _ensureCurrent();
-    final index = bindings.render.rowIteratorNextDirty(_handle);
     _positionGeneration++;
+    _positioned = false;
+    _rowSummaryValid = false;
+    final int? index;
+    try {
+      index = bindings.render.rowIteratorNextDirty(_handle);
+    } on Object {
+      _renderState = null;
+      rethrow;
+    }
     if (index case final value?) {
-      _rowSummaryValid = false;
       _index = value;
       _positioned = true;
       return true;
     }
-    _rowSummaryValid = false;
-    _positioned = false;
     return false;
   }
 
@@ -197,24 +211,34 @@ final class RowIterator {
   /// Any [CellIterator] previously bound to this iterator must be rebound
   /// via [CellIterator.reset] before further use.
   void reset(RenderState renderState) {
-    _ensureAlive();
-    renderState._ensureAlive();
-    bindings.render.rowIteratorInit(_handle, renderState._handle);
-    _renderState = renderState;
+    final handle = _requireHandle();
+    final renderHandle = renderState._requireHandle();
     _positionGeneration++;
+    _renderState = null;
     _rowSummaryValid = false;
     _index = -1;
     _positioned = false;
+    bindings.render.rowIteratorInit(handle, renderHandle);
+    _renderState = renderState;
+    _renderGeneration = renderState._generation;
   }
 
-  void _ensureAlive() {
+  LibGhosttyHandle _requireHandle() {
     if (_disposed) throw StateError('RowIterator has been disposed');
+    return _handle;
   }
 
   void _ensureCurrent() {
-    _ensureAlive();
-    if (_renderState == null) {
+    final renderState = _renderState;
+    if (renderState == null) {
+      if (_disposed) throw StateError('RowIterator has been disposed');
       throw StateError('RowIterator has not been bound to a RenderState');
+    }
+    if (_renderGeneration != renderState._generation) {
+      if (renderState._disposed) {
+        throw StateError('RenderState has been disposed');
+      }
+      throw StateError('RowIterator has been invalidated by a render update');
     }
   }
 

@@ -29,6 +29,34 @@ void main() {
         expect(KittyGraphics.of(terminal), isNotNull);
       });
 
+      test(
+        'rejects borrowed storage and image reads after terminal disposal',
+        () {
+          terminal.write(_transmitRedPixel());
+          final graphics = KittyGraphics.of(terminal)!;
+          final image = graphics.image(42)!;
+          expect(image.width, 1);
+          final destination = Uint8List(3);
+          expect(image.copyPixelDataInto(destination), 3);
+          expect(destination, [255, 0, 0]);
+
+          terminal.dispose();
+
+          expect(() => graphics.generation, throwsStateError);
+          expect(() => graphics.image(42), throwsStateError);
+          expect(graphics.placements, throwsStateError);
+          expect(() => image.compression, throwsStateError);
+          expect(() => image.format, throwsStateError);
+          expect(() => image.generation, throwsStateError);
+          expect(() => image.id, throwsStateError);
+          expect(() => image.number, throwsStateError);
+          expect(() => image.width, throwsStateError);
+          expect(() => image.height, throwsStateError);
+          expect(() => image.copyPixelDataInto(destination), throwsStateError);
+          expect(destination, [255, 0, 0]);
+        },
+      );
+
       group('image', () {
         test('returns null for an unknown id', () {
           expect(KittyGraphics.of(terminal)?.image(99999), isNull);
