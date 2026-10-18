@@ -37,6 +37,7 @@ final class WasmTerminalBindings implements TerminalBindings {
       _scratch = WasmScratchPool(
         WasmExportScratchAllocator(_exports),
         maxVariableLength: WasmScratchPool.defaultMaxVariableLength,
+        maxRetainedVariableLength: WasmScratchPool.defaultMaxVariableLength,
       ),
       _table =
           (_exports as JSObject)['__indirect_function_table'] as web.Table? ??

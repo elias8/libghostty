@@ -5,6 +5,7 @@ import '../../generated/libghostty_wasm.g.dart';
 import '../../types/types.dart';
 import '../result_helpers.dart';
 import '../types.dart';
+import '../wasm/allocation_owner.dart';
 import '../wasm/allocator.dart';
 import '../wasm/layouts.dart';
 import '../wasm/memory.dart';
@@ -31,18 +32,33 @@ final class WasmSelectionBindings implements SelectionBindings {
   late final int _multiOut;
   late final int _multiGridRef;
 
-  WasmSelectionBindings(this._exports, this._layout)
-    : _memory = Memory(_exports),
+  factory WasmSelectionBindings(GhosttyExports exports, Layouts layout) {
+    final owner = WasmAllocationOwner(exports);
+    try {
+      final bindings = WasmSelectionBindings._(exports, layout, owner);
+      owner.commit();
+      return bindings;
+    } on Object {
+      owner.rollback();
+      rethrow;
+    }
+  }
+
+  WasmSelectionBindings._(
+    this._exports,
+    this._layout,
+    WasmAllocationOwner owner,
+  ) : _memory = Memory(_exports),
       _scratch = WasmScratchPool(
         WasmExportScratchAllocator(_exports),
         maxVariableLength: WasmScratchPool.defaultMaxVariableLength,
       ) {
-    _formatBuffer = _allocateBytes(_formatBufferCapacity);
-    _outSize = _allocateSize();
-    _multiKeys = _allocateBytes(5 * _wasmEnumSize);
-    _multiValues = _allocateBytes(5 * _wasmPointerSize);
-    _multiOut = _allocateBytes(5 * _wasmOutputSlotSize);
-    _multiGridRef = _allocateBytes(_layout.gridRefSize);
+    _formatBuffer = owner.allocate(_formatBufferCapacity);
+    _outSize = _allocatePersistentSize(owner);
+    _multiKeys = owner.allocate(5 * _wasmEnumSize);
+    _multiValues = owner.allocate(5 * _wasmPointerSize);
+    _multiOut = owner.allocate(5 * _wasmOutputSlotSize);
+    _multiGridRef = owner.allocate(_layout.gridRefSize);
   }
 
   @override
@@ -733,11 +749,9 @@ final class WasmSelectionBindings implements SelectionBindings {
     return ptr;
   }
 
-  int _allocateSize() {
-    final ptr = _exports.allocateBytes(4);
-    if (ptr == 0) throw const OutOfMemoryException();
+  int _allocatePersistentSize(WasmAllocationOwner owner) {
+    final ptr = owner.allocate(4);
     if (ptr % 4 != 0) {
-      _exports.freeBytes(ptr, 4);
       throw StateError('libghostty WASM allocator returned misaligned memory.');
     }
     return ptr;

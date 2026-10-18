@@ -101,6 +101,7 @@ final class WasmScratchFrame {
   final List<_FixedScratchSlot> _fixedSlots = [];
   final List<_VariableScratchSlot> _variableSlots = [];
   late bool _active;
+  var _needsTrim = false;
 
   WasmScratchFrame._(this._pool) : _active = false;
 
@@ -259,6 +260,26 @@ final class WasmScratchFrame {
     _variableSlots.clear();
   }
 
+  void _trimVariableAllocations() {
+    if (!_needsTrim) return;
+    for (var i = 0; i < _variableSlots.length; i++) {
+      final slot = _variableSlots[i];
+      if (i >= _pool.maxRetainedVariableSlots ||
+          slot.capacity > _pool.maxRetainedVariableLength) {
+        if (slot.allocation case final allocation?) {
+          _pool._allocator.free(allocation);
+        }
+        slot
+          ..allocation = null
+          ..length = 0;
+      }
+    }
+    if (_variableSlots.length > _pool.maxRetainedVariableSlots) {
+      _variableSlots.length = _pool.maxRetainedVariableSlots;
+    }
+    _needsTrim = false;
+  }
+
   _FixedScratchSlot _fixedSlot(int index) {
     _checkActive();
     if (index < 0 || index >= _fixedSlots.length) {
@@ -283,6 +304,9 @@ final class WasmScratchFrame {
       return;
     }
     final allocation = _allocate(length: capacity, alignment: alignment);
+    if (allocation.capacity > _pool.maxRetainedVariableLength) {
+      _needsTrim = true;
+    }
     final old = slot.allocation;
     slot
       ..allocation = allocation
@@ -299,6 +323,9 @@ final class WasmScratchFrame {
   _VariableScratchSlot _variableSlot(int index) {
     while (_variableSlots.length <= index) {
       _variableSlots.add(_VariableScratchSlot());
+      if (_variableSlots.length > _pool.maxRetainedVariableSlots) {
+        _needsTrim = true;
+      }
     }
     return _variableSlots[index];
   }
@@ -338,16 +365,31 @@ final class WasmScratchPool {
 
   final ScratchAllocator _allocator;
   final int maxVariableLength;
+  final int maxRetainedVariableLength;
+  final int maxRetainedVariableSlots;
   final _frames = <WasmScratchFrame>[];
   late int _activeDepth;
   late bool _disposed;
 
-  WasmScratchPool(this._allocator, {required this.maxVariableLength}) {
+  WasmScratchPool(
+    this._allocator, {
+    required this.maxVariableLength,
+    this.maxRetainedVariableLength = 64 * 1024,
+    this.maxRetainedVariableSlots = 16,
+  }) {
     _activeDepth = 0;
     _disposed = false;
     if (maxVariableLength < 0) {
       throw RangeError.range(maxVariableLength, 0, null, 'maxVariableLength');
     }
+    RangeError.checkNotNegative(
+      maxRetainedVariableLength,
+      'maxRetainedVariableLength',
+    );
+    RangeError.checkNotNegative(
+      maxRetainedVariableSlots,
+      'maxRetainedVariableSlots',
+    );
   }
 
   /// Acquires the frame at the current nesting depth.
@@ -392,6 +434,7 @@ final class WasmScratchPool {
     if (_activeDepth == 0 || !identical(frame, _frames[_activeDepth - 1])) {
       throw StateError('Scratch frames must be released in reverse order');
     }
+    frame._trimVariableAllocations();
     frame._active = false;
     _activeDepth--;
   }

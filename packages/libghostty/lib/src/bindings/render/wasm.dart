@@ -7,7 +7,7 @@ import '../../generated/libghostty_wasm.g.dart';
 import '../../types/types.dart';
 import '../result_helpers.dart';
 import '../types.dart';
-import '../wasm/allocator.dart';
+import '../wasm/allocation_owner.dart';
 import '../wasm/layouts.dart';
 import '../wasm/memory.dart';
 import '../wasm/scratch.dart';
@@ -532,39 +532,51 @@ final class _WasmRenderRaw {
 
   late final int _cellMultiOut;
 
-  _WasmRenderRaw(this._exports, this._layout)
+  factory _WasmRenderRaw(GhosttyExports exports, Layouts layout) {
+    final owner = WasmAllocationOwner(exports);
+    try {
+      final bindings = _WasmRenderRaw._(exports, layout, owner);
+      owner.commit();
+      return bindings;
+    } on Object {
+      owner.rollback();
+      rethrow;
+    }
+  }
+
+  _WasmRenderRaw._(this._exports, this._layout, WasmAllocationOwner owner)
     : _memory = Memory(_exports),
       _scratch = WasmScratchPool(
         WasmExportScratchAllocator(_exports),
         maxVariableLength: WasmScratchPool.defaultMaxVariableLength,
       ) {
-    _multiKeys = _allocateBytes(_maxMultiQueryCount * _wasmEnumSize);
-    _multiValues = _allocateBytes(_maxMultiQueryCount * _wasmPointerSize);
-    _multiOut = _allocateBytes(_maxMultiQueryCount * _wasmOutputSlotSize);
-    _multiWritten = _allocateSize();
-    _renderStateSummaryMultiKeys = _allocateBytes(
+    _multiKeys = owner.allocate(_maxMultiQueryCount * _wasmEnumSize);
+    _multiValues = owner.allocate(_maxMultiQueryCount * _wasmPointerSize);
+    _multiOut = owner.allocate(_maxMultiQueryCount * _wasmOutputSlotSize);
+    _multiWritten = _allocateSize(owner);
+    _renderStateSummaryMultiKeys = owner.allocate(
       _renderStateSummaryKeys.length * _wasmEnumSize,
     );
-    _renderStateSummaryMultiValues = _allocateBytes(
+    _renderStateSummaryMultiValues = owner.allocate(
       _renderStateSummaryKeys.length * _wasmPointerSize,
     );
-    _renderStateSummaryMultiOut = _allocateBytes(
+    _renderStateSummaryMultiOut = owner.allocate(
       _renderStateSummaryKeys.length * _wasmOutputSlotSize,
     );
-    _rowCellsMultiKeys = _allocateBytes(
+    _rowCellsMultiKeys = owner.allocate(
       _rowCellsSummaryKeys.length * _wasmEnumSize,
     );
-    _rowCellsMultiValues = _allocateBytes(
+    _rowCellsMultiValues = owner.allocate(
       _rowCellsSummaryKeys.length * _wasmPointerSize,
     );
-    _rowCellsMultiOut = _allocateBytes(
+    _rowCellsMultiOut = owner.allocate(
       _rowCellsSummaryKeys.length * _wasmOutputSlotSize,
     );
-    _cellMultiKeys = _allocateBytes(_cellSummaryKeys.length * _wasmEnumSize);
-    _cellMultiValues = _allocateBytes(
+    _cellMultiKeys = owner.allocate(_cellSummaryKeys.length * _wasmEnumSize);
+    _cellMultiValues = owner.allocate(
       _cellSummaryKeys.length * _wasmPointerSize,
     );
-    _cellMultiOut = _allocateBytes(
+    _cellMultiOut = owner.allocate(
       _cellSummaryKeys.length * _wasmOutputSlotSize,
     );
     _writeMultiKeys(
@@ -1872,17 +1884,9 @@ final class _WasmRenderRaw {
     }
   }
 
-  int _allocateBytes(int size) {
-    final pointer = _exports.allocateBytes(size);
-    if (pointer == 0) throw const OutOfMemoryException();
-    return pointer;
-  }
-
-  int _allocateSize() {
-    final pointer = _exports.allocateBytes(4);
-    if (pointer == 0) throw const OutOfMemoryException();
+  int _allocateSize(WasmAllocationOwner owner) {
+    final pointer = owner.allocate(4);
     if (pointer % _wasmSizeSize != 0) {
-      _exports.freeBytes(pointer, 4);
       throw StateError('libghostty WASM allocator returned misaligned memory.');
     }
     return pointer;
