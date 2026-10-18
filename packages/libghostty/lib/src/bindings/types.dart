@@ -2,7 +2,10 @@ import 'dart:typed_data';
 
 import '../generated/libghostty_enums.g.dart';
 import '../types/color.dart';
+import 'raw_values.dart';
 import 'result_helpers.dart';
+
+export 'raw_values.dart';
 
 typedef RawOscUnknownCommandData = ({
   Uint8List content,
@@ -47,7 +50,6 @@ typedef RawCellSummary = ({int codepoint, int styleId, CellWide wide});
 /// The caller owns and reuses the instance. Read or copy its fields before the
 /// next cell is decoded.
 final class RawCellData {
-  var rawCell = 0;
   CellContentTag contentTag = .codepoint;
   var codepoint = 0;
   var hasGrapheme = false;
@@ -62,7 +64,6 @@ final class RawCellData {
   var backgroundB = 0;
 
   void set({
-    required int rawCell,
     required CellContentTag contentTag,
     required int codepoint,
     required bool hasGrapheme,
@@ -76,7 +77,6 @@ final class RawCellData {
     required int backgroundG,
     required int backgroundB,
   }) {
-    this.rawCell = rawCell;
     this.contentTag = contentTag;
     this.codepoint = codepoint;
     this.hasGrapheme = hasGrapheme;
@@ -102,10 +102,14 @@ typedef RawGridRef = ({int node, int x, int y});
 typedef RawRenderStateSummary = ({int cols, int rows, RenderStateDirty dirty});
 
 /// Current render cell data captured by one boundary query.
-typedef RawRowCellsSummary = ({int rawCell, int graphemeLen, bool selected});
+typedef RawRowCellsSummary = ({
+  RawCell rawCell,
+  int graphemeLen,
+  bool selected,
+});
 
 /// Current render row data captured by one boundary query.
-typedef RawRowIteratorSummary = ({bool dirty, int rawRow});
+typedef RawRowIteratorSummary = ({bool dirty, RawRow rawRow});
 
 /// Scalar row metadata captured by one boundary query.
 typedef RawRowSummary = ({

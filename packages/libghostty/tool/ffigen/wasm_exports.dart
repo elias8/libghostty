@@ -2,8 +2,9 @@
 ///
 /// Maps C types to WASM value types following the WebAssembly calling
 /// convention:
-/// - All integer types (bool, enum, size_t, uint8-32, int8-32) map to
-///   [int] (i32/i64).
+/// - Fixed-width 64-bit integers map to JSBigInt (i64).
+/// - Other integer types (bool, enum, size_t, uint8-32, int8-32) map to
+///   [int] (i32 on wasm32).
 /// - float and double map to [double] (f32/f64).
 /// - Pointers and function pointers map to [Pointer] (i32 table index).
 /// - Struct/union returns use the sret convention: output pointer as
@@ -96,12 +97,16 @@ bool _isStructReturn(Type type) => type is Compound;
 
 /// Maps a C type to its WASM JS interop representation.
 ///
-/// WASM has four value types: i32, i64, f32, f64. All integer types
-/// (including bool, enum, size_t, and function pointers as table indices)
-/// map to [int]. Float and double map to [double]. Pointers map to
+/// Fixed-width i64 values map to JSBigInt. Other integers map to [int]
+/// for the wasm32 ABI. Float and double map to [double]. Pointers map to
 /// [Pointer] (typedef for [int]).
 String _wasmType(Type type, Context context) {
   if (type is PointerType) return 'Pointer';
+  final resolved = type.typealiasType;
+  if (resolved == NativeType(SupportedNativeType.int64) ||
+      resolved == NativeType(SupportedNativeType.uint64)) {
+    return 'JSBigInt';
+  }
   final native = type.getNativeType(context).trim().toLowerCase();
   if (native == 'void') return 'void';
   if (native.contains('float') || native.contains('double')) return 'double';

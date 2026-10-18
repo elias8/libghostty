@@ -4,6 +4,15 @@ import 'dart:ffi';
 import 'package:ffi/ffi.dart';
 
 import '../../generated/libghostty.g.dart'
+    as native
+    show
+        CellsView,
+        RenderStateCursor,
+        RenderStateOverscan,
+        RenderStateRowId,
+        Style,
+        ghostty_type_json;
+import '../../generated/libghostty.g.dart'
     hide
         ClipboardContent,
         ClipboardWrite,
@@ -14,14 +23,24 @@ import '../../generated/libghostty.g.dart'
         SgrAttribute,
         String,
         Style;
-import '../../generated/libghostty.g.dart'
-    as native
-    show RenderStateCursor, RenderStateOverscan, RenderStateRowId, Style;
 import '../../generated/libghostty_enums.g.dart';
 import '../../types/types.dart';
 import '../result_helpers.dart';
 import '../types.dart';
+import '../wasm/layouts.dart' show PackedCellLayout;
 import 'render.dart';
+
+final PackedCellLayout _packedCellLayout = _loadPackedCellLayout();
+
+PackedCellLayout _loadPackedCellLayout() {
+  final root = jsonDecode(
+    native.ghostty_type_json().cast<Utf8>().toDartString(),
+  );
+  if (root is! Map<String, dynamic> || root['types'] is! Map<String, dynamic>) {
+    throw const FormatException('Invalid libghostty type metadata.');
+  }
+  return PackedCellLayout.fromTypes(root['types'] as Map<String, dynamic>);
+}
 
 const RawRenderStateSummary _emptyRenderStateSummary = (
   cols: 0,
@@ -31,7 +50,7 @@ const RawRenderStateSummary _emptyRenderStateSummary = (
 const _emptyRenderStateCursor = RenderStateCursor(visible: false);
 const RawRowIteratorSummary _emptyRowIteratorSummary = (
   dirty: false,
-  rawRow: 0,
+  rawRow: RawRow(0),
 );
 const RawRowSummary _emptyRowSummary = (
   wrap: false,
@@ -71,59 +90,65 @@ final class FfiRenderBindings implements RenderBindings {
   FfiRenderBindings() : _raw = _FfiRenderRaw();
 
   @override
-  int cellGetCodepoint(LibGhosttyHandle h) =>
+  int cellGetCodepoint(RawCell h) =>
       _required(_raw.cellGetCodepoint(h.value), 'ghostty_cell_get');
 
   @override
-  int cellGetColorPalette(LibGhosttyHandle h) =>
+  int cellGetColorPalette(RawCell h) =>
       _required(_raw.cellGetColorPalette(h.value), 'ghostty_cell_get');
 
   @override
-  RgbColor cellGetColorRgb(LibGhosttyHandle h) =>
+  RgbColor cellGetColorRgb(RawCell h) =>
       _required(_raw.cellGetColorRgb(h.value), 'ghostty_cell_get');
 
   @override
-  CellContentTag cellGetContentTag(LibGhosttyHandle h) =>
+  CellContentTag cellGetContentTag(RawCell h) =>
       _required(_raw.cellGetContentTag(h.value), 'ghostty_cell_get');
 
   @override
-  bool cellGetHasHyperlink(LibGhosttyHandle h) =>
+  bool cellGetHasHyperlink(RawCell h) =>
       _required(_raw.cellGetHasHyperlink(h.value), 'ghostty_cell_get');
 
   @override
-  bool cellGetHasStyling(LibGhosttyHandle h) =>
+  bool cellGetHasStyling(RawCell h) =>
       _required(_raw.cellGetHasStyling(h.value), 'ghostty_cell_get');
 
   @override
-  bool cellGetHasText(LibGhosttyHandle h) =>
+  bool cellGetHasText(RawCell h) =>
       _required(_raw.cellGetHasText(h.value), 'ghostty_cell_get');
 
   @override
-  bool cellGetProtected(LibGhosttyHandle h) =>
+  bool cellGetProtected(RawCell h) =>
       _required(_raw.cellGetProtected(h.value), 'ghostty_cell_get');
 
   @override
-  CellSemanticContent cellGetSemanticContent(LibGhosttyHandle h) =>
+  CellSemanticContent cellGetSemanticContent(RawCell h) =>
       _required(_raw.cellGetSemanticContent(h.value), 'ghostty_cell_get');
 
   @override
-  int cellGetStyleId(LibGhosttyHandle h) =>
+  int cellGetStyleId(RawCell h) =>
       _required(_raw.cellGetStyleId(h.value), 'ghostty_cell_get');
 
   @override
-  RawCellSummary cellGetSummary(LibGhosttyHandle h) =>
-      _raw.cellGetSummary(h.value);
+  RawCellSummary cellGetSummary(RawCell h) => _raw.cellGetSummary(h.value);
 
   @override
-  CellWide cellGetWide(LibGhosttyHandle h) =>
+  CellWide cellGetWide(RawCell h) =>
       _required(_raw.cellGetWide(h.value), 'ghostty_cell_get');
 
   @override
-  bool decodeRawCell(RawCellsView view, int index, RawCellData output) => false;
+  bool decodeRawCell(RawCellsView view, int index, RawCellData output) {
+    if (index < 0 || index >= view.length || view.address == 0) return false;
+    final raw = Pointer<Uint64>.fromAddress(
+      view.address + index * _packedCellLayout.size,
+    ).value;
+    _packedCellLayout.decodeInto(raw, output);
+    return true;
+  }
 
   @override
-  LibGhosttyHandle gridRefCell(RawGridRef r) =>
-      .fromAddress(_required(_raw.gridRefCell(r), 'ghostty_grid_ref_cell'));
+  RawCell gridRefCell(RawGridRef r) =>
+      RawCell(_required(_raw.gridRefCell(r), 'ghostty_grid_ref_cell'));
 
   @override
   List<int> gridRefGraphemes(RawGridRef r) =>
@@ -134,8 +159,8 @@ final class FfiRenderBindings implements RenderBindings {
       _optional(_raw.gridRefHyperlinkUri(r), 'ghostty_grid_ref_hyperlink_uri');
 
   @override
-  LibGhosttyHandle gridRefRow(RawGridRef r) =>
-      .fromAddress(_required(_raw.gridRefRow(r), 'ghostty_grid_ref_row'));
+  RawRow gridRefRow(RawGridRef r) =>
+      RawRow(_required(_raw.gridRefRow(r), 'ghostty_grid_ref_row'));
 
   @override
   Style gridRefStyle(RawGridRef r) =>
@@ -174,6 +199,10 @@ final class FfiRenderBindings implements RenderBindings {
       _required(_raw.renderStateGetCursor(s.value), 'ghostty_render_state_get');
 
   @override
+  RenderStateDirty renderStateGetDirty(LibGhosttyHandle s) =>
+      _required(_raw.renderStateGetDirty(s.value), 'ghostty_render_state_get');
+
+  @override
   RenderOverscan renderStateGetOverscan(LibGhosttyHandle s) => _required(
     _raw.renderStateGetOverscan(s.value),
     'ghostty_render_state_get',
@@ -184,10 +213,6 @@ final class FfiRenderBindings implements RenderBindings {
     _raw.renderStateGetOverscanRequest(s.value),
     'ghostty_render_state_get',
   );
-
-  @override
-  RenderStateDirty renderStateGetDirty(LibGhosttyHandle s) =>
-      _required(_raw.renderStateGetDirty(s.value), 'ghostty_render_state_get');
 
   @override
   int renderStateGetRows(LibGhosttyHandle s) =>
@@ -275,7 +300,7 @@ final class FfiRenderBindings implements RenderBindings {
   );
 
   @override
-  LibGhosttyHandle rowCellsGetRawCell(LibGhosttyHandle h) => .fromAddress(
+  RawCell rowCellsGetRawCell(LibGhosttyHandle h) => RawCell(
     _required(
       _raw.rowCellsGetRawCell(h.value),
       'ghostty_render_state_row_cells_get',
@@ -319,39 +344,39 @@ final class FfiRenderBindings implements RenderBindings {
   );
 
   @override
-  bool rowGetDirty(LibGhosttyHandle h) =>
+  bool rowGetDirty(RawRow h) =>
       _required(_raw.rowGetDirty(h.value), 'ghostty_row_get');
 
   @override
-  bool rowGetGrapheme(LibGhosttyHandle h) =>
+  bool rowGetGrapheme(RawRow h) =>
       _required(_raw.rowGetGrapheme(h.value), 'ghostty_row_get');
 
   @override
-  bool rowGetHyperlink(LibGhosttyHandle h) =>
+  bool rowGetHyperlink(RawRow h) =>
       _required(_raw.rowGetHyperlink(h.value), 'ghostty_row_get');
 
   @override
-  bool rowGetKittyVirtualPlaceholder(LibGhosttyHandle h) =>
+  bool rowGetKittyVirtualPlaceholder(RawRow h) =>
       _required(_raw.rowGetKittyVirtualPlaceholder(h.value), 'ghostty_row_get');
 
   @override
-  RowSemanticPrompt rowGetSemanticPrompt(LibGhosttyHandle h) =>
+  RowSemanticPrompt rowGetSemanticPrompt(RawRow h) =>
       _required(_raw.rowGetSemanticPrompt(h.value), 'ghostty_row_get');
 
   @override
-  bool rowGetStyled(LibGhosttyHandle h) =>
+  bool rowGetStyled(RawRow h) =>
       _required(_raw.rowGetStyled(h.value), 'ghostty_row_get');
 
   @override
-  RawRowSummary rowGetSummary(LibGhosttyHandle h) =>
+  RawRowSummary rowGetSummary(RawRow h) =>
       _required(_raw.rowGetSummary(h.value), 'ghostty_row_get_multi');
 
   @override
-  bool rowGetWrap(LibGhosttyHandle h) =>
+  bool rowGetWrap(RawRow h) =>
       _required(_raw.rowGetWrap(h.value), 'ghostty_row_get');
 
   @override
-  bool rowGetWrapContinuation(LibGhosttyHandle h) =>
+  bool rowGetWrapContinuation(RawRow h) =>
       _required(_raw.rowGetWrapContinuation(h.value), 'ghostty_row_get');
 
   @override
@@ -368,13 +393,20 @@ final class FfiRenderBindings implements RenderBindings {
       _required(_raw.rowIteratorGetId(h.value), 'ghostty_render_state_row_get');
 
   @override
-  int rowIteratorGetViewportY(LibGhosttyHandle h) => _required(
-    _raw.rowIteratorGetViewportY(h.value),
-    'ghostty_render_state_row_get',
-  );
+  bool rowIteratorGetRawCells(LibGhosttyHandle h, RawCellsView view) {
+    if (!_raw.rowIteratorGetRawCells(h.value, view)) return false;
+    final address = view.address;
+    final length = view.length;
+    final selection = _optional(
+      _raw.rowIteratorGetSelection(h.value),
+      'ghostty_render_state_row_get',
+    );
+    view.set(address: address, length: length, selection: selection);
+    return true;
+  }
 
   @override
-  LibGhosttyHandle rowIteratorGetRawRow(LibGhosttyHandle h) => .fromAddress(
+  RawRow rowIteratorGetRawRow(LibGhosttyHandle h) => RawRow(
     _required(
       _raw.rowIteratorGetRawRow(h.value),
       'ghostty_render_state_row_get',
@@ -395,8 +427,10 @@ final class FfiRenderBindings implements RenderBindings {
   );
 
   @override
-  bool rowIteratorGetRawCells(LibGhosttyHandle h, RawCellsView view) =>
-      _raw.rowIteratorGetRawCells(h.value, view);
+  int rowIteratorGetViewportY(LibGhosttyHandle h) => _required(
+    _raw.rowIteratorGetViewportY(h.value),
+    'ghostty_render_state_row_get',
+  );
 
   @override
   void rowIteratorInit(LibGhosttyHandle h, LibGhosttyHandle s) => _check(
@@ -569,12 +603,10 @@ final class _FfiRenderRaw {
   }
 
   CResult<RgbColor> cellGetColorRgb(int cell) {
-    return using((arena) {
-      final out = arena<ColorRgb>();
-      final result = ghostty_cell_get(cell, .colorRgb, out.cast());
-      if (result != .success) return (result, const RgbColor(0, 0, 0));
-      return (result, RgbColor(out.ref.r, out.ref.g, out.ref.b));
-    });
+    final result = ghostty_cell_get(cell, .colorRgb, _outColorRgb.cast());
+    if (result != .success) return (result, const RgbColor(0, 0, 0));
+    final color = _outColorRgb.ref;
+    return (result, RgbColor(color.r, color.g, color.b));
   }
 
   CResult<CellContentTag> cellGetContentTag(int cell) {
@@ -808,33 +840,6 @@ final class _FfiRenderRaw {
     );
   }
 
-  CResult<RenderOverscan> renderStateGetOverscan(int state) =>
-      _renderStateGetOverscan(state, RenderStateData.overscan);
-
-  CResult<RenderOverscan> renderStateGetOverscanRequest(int state) =>
-      _renderStateGetOverscan(state, RenderStateData.overscanRequest);
-
-  CResult<RenderOverscan> _renderStateGetOverscan(
-    int state,
-    RenderStateData data,
-  ) {
-    final result = ghostty_render_state_get(
-      Pointer.fromAddress(state),
-      data,
-      _outOverscan.cast(),
-    );
-    if (result != .success) {
-      return (result, const RenderOverscan(above: 0, below: 0));
-    }
-    return (
-      result,
-      RenderOverscan(
-        above: _outOverscan.ref.above,
-        below: _outOverscan.ref.below,
-      ),
-    );
-  }
-
   CResult<RenderStateDirty> renderStateGetDirty(int state) {
     final result = ghostty_render_state_get(
       Pointer.fromAddress(state),
@@ -844,6 +849,12 @@ final class _FfiRenderRaw {
     if (result != .success) return (result, .false$);
     return (result, .fromValue(_outI32.value));
   }
+
+  CResult<RenderOverscan> renderStateGetOverscan(int state) =>
+      _renderStateGetOverscan(state, RenderStateData.overscan);
+
+  CResult<RenderOverscan> renderStateGetOverscanRequest(int state) =>
+      _renderStateGetOverscan(state, RenderStateData.overscanRequest);
 
   CResult<int> renderStateGetRows(int state) {
     return _renderStateGetU16(state, .rows);
@@ -970,18 +981,17 @@ final class _FfiRenderRaw {
   CResult<List<int>> rowCellsGetGraphemes(int cells, int len) {
     if (len <= 0) return (.success, const []);
     final buf = len <= 32 ? _graphemeBuf : calloc<Uint32>(len);
-    final result = ghostty_render_state_row_cells_get(
-      Pointer.fromAddress(cells),
-      .graphemesBuf,
-      buf.cast(),
-    );
-    if (result != .success) {
+    try {
+      final result = ghostty_render_state_row_cells_get(
+        Pointer.fromAddress(cells),
+        .graphemesBuf,
+        buf.cast(),
+      );
+      if (result != .success) return (result, const []);
+      return (result, [for (var i = 0; i < len; i++) buf[i]]);
+    } finally {
       if (len > 32) calloc.free(buf);
-      return (result, const []);
     }
-    final graphemes = [for (var i = 0; i < len; i++) buf[i]];
-    if (len > 32) calloc.free(buf);
-    return (result, graphemes);
   }
 
   CResult<String> rowCellsGetGraphemesUtf8(int cells) {
@@ -1070,22 +1080,20 @@ final class _FfiRenderRaw {
       operation: 'ghostty_render_state_row_cells_get_multi',
     );
     return (
-      rawCell: (_rowCellsMultiOut + 0).value,
+      rawCell: RawCell((_rowCellsMultiOut + 0).value),
       graphemeLen: (_rowCellsMultiOut + 1).cast<Uint32>().value,
       selected: (_rowCellsMultiOut + 2).cast<Bool>().value,
     );
   }
 
   Result rowCellsInit(int cells, int iterator) {
-    return using((arena) {
-      final ptr = arena<Pointer<RenderStateRowCells>>();
-      ptr.value = Pointer.fromAddress(cells);
-      return ghostty_render_state_row_get(
-        Pointer.fromAddress(iterator),
-        .cells,
-        ptr.cast(),
-      );
-    });
+    final ptr = _outU64.cast<RenderStateRowCells>();
+    ptr.value = Pointer.fromAddress(cells);
+    return ghostty_render_state_row_get(
+      Pointer.fromAddress(iterator),
+      .cells,
+      ptr.cast(),
+    );
   }
 
   CResult<int> rowCellsNew() {
@@ -1170,6 +1178,40 @@ final class _FfiRenderRaw {
     return (result, _outBool.value);
   }
 
+  CResult<RenderRowId> rowIteratorGetId(int iterator) {
+    final result = ghostty_render_state_row_get(
+      Pointer.fromAddress(iterator),
+      RenderStateRowData.id,
+      _outRowId.cast(),
+    );
+    if (result != .success) {
+      return (result, RenderRowId(word0: BigInt.zero, word1: BigInt.zero));
+    }
+    final words = _outRowId.ref.bits;
+    final mask = (BigInt.one << 64) - BigInt.one;
+    BigInt readWord(int index) => BigInt.from(words[index]) & mask;
+    return (result, RenderRowId(word0: readWord(0), word1: readWord(1)));
+  }
+
+  bool rowIteratorGetRawCells(int iterator, RawCellsView view) {
+    view.clear();
+    final cellsOut = _multiOut.cast<native.CellsView>();
+    final result = ghostty_render_state_row_get(
+      Pointer.fromAddress(iterator),
+      RenderStateRowData.cellsRaw,
+      cellsOut.cast(),
+    );
+    if (result != .success) return false;
+    final cells = cellsOut.ref;
+    final address = cells.ptr.address;
+    final length = cells.len;
+    if (address == 0 && length != 0) {
+      throw StateError('GhosttyCellsView has a null pointer with cells.');
+    }
+    view.set(address: address, length: length);
+    return true;
+  }
+
   CResult<int> rowIteratorGetRawRow(int iterator) {
     final result = ghostty_render_state_row_get(
       Pointer.fromAddress(iterator),
@@ -1220,7 +1262,7 @@ final class _FfiRenderRaw {
       result,
       (
         dirty: (_multiOut + 0).cast<Bool>().value,
-        rawRow: (_multiOut + 1).value,
+        rawRow: RawRow((_multiOut + 1).value),
       ),
     );
   }
@@ -1235,36 +1277,14 @@ final class _FfiRenderRaw {
     return (result, _outI32.value);
   }
 
-  CResult<RenderRowId> rowIteratorGetId(int iterator) {
-    final result = ghostty_render_state_row_get(
-      Pointer.fromAddress(iterator),
-      RenderStateRowData.id,
-      _outRowId.cast(),
-    );
-    if (result != .success) {
-      return (result, RenderRowId(word0: BigInt.zero, word1: BigInt.zero));
-    }
-    final words = _outRowId.ref.bits;
-    final mask = (BigInt.one << 64) - BigInt.one;
-    BigInt readWord(int index) => BigInt.from(words[index]) & mask;
-    return (result, RenderRowId(word0: readWord(0), word1: readWord(1)));
-  }
-
-  bool rowIteratorGetRawCells(int iterator, RawCellsView view) {
-    view.clear();
-    return false;
-  }
-
   Result rowIteratorInit(int iterator, int renderState) {
-    return using((arena) {
-      final ptr = arena<Pointer<RenderStateRowIterator>>();
-      ptr.value = Pointer.fromAddress(iterator);
-      return ghostty_render_state_get(
-        Pointer.fromAddress(renderState),
-        .rowIterator,
-        ptr.cast(),
-      );
-    });
+    final ptr = _outU64.cast<RenderStateRowIterator>();
+    ptr.value = Pointer.fromAddress(iterator);
+    return ghostty_render_state_get(
+      Pointer.fromAddress(renderState),
+      .rowIterator,
+      ptr.cast(),
+    );
   }
 
   CResult<int> rowIteratorNew() {
@@ -1282,14 +1302,11 @@ final class _FfiRenderRaw {
   }
 
   int? rowIteratorNextDirty(int iterator) {
-    return using((arena) {
-      final outY = arena<Uint16>();
-      final hasNext = ghostty_render_state_row_iterator_next_dirty(
-        Pointer.fromAddress(iterator),
-        outY,
-      );
-      return hasNext ? outY.value : null;
-    });
+    final hasNext = ghostty_render_state_row_iterator_next_dirty(
+      Pointer.fromAddress(iterator),
+      _outU16,
+    );
+    return hasNext ? _outU16.value : null;
   }
 
   Result rowIteratorSetDirty(int iterator, {required bool dirty}) {
@@ -1431,6 +1448,27 @@ final class _FfiRenderRaw {
     final result = ghostty_cell_get(cell, data, _outU32.cast());
     if (result != .success) return (result, 0);
     return (result, _outU32.value);
+  }
+
+  CResult<RenderOverscan> _renderStateGetOverscan(
+    int state,
+    RenderStateData data,
+  ) {
+    final result = ghostty_render_state_get(
+      Pointer.fromAddress(state),
+      data,
+      _outOverscan.cast(),
+    );
+    if (result != .success) {
+      return (result, const RenderOverscan(above: 0, below: 0));
+    }
+    return (
+      result,
+      RenderOverscan(
+        above: _outOverscan.ref.above,
+        below: _outOverscan.ref.below,
+      ),
+    );
   }
 
   CResult<int> _renderStateGetU16(int state, RenderStateData data) {

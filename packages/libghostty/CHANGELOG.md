@@ -37,8 +37,8 @@
 
 - **Kitty graphics geometry**: source rectangles are clipped to image bounds
   before destination sizing.
-- **Render traversal**: bulk Wasm cell reads and dirty-row iteration reduce
-  binding calls during incremental rendering.
+- **Render traversal**: Native cell decoding, bulk Wasm reads, and dirty-row
+  iteration reduce binding overhead.
 - **Error details**: libghostty exceptions include the result code and operation
   context. Unknown result codes are preserved by `UnknownResultException`.
 - **Native and Wasm consistency**: both targets expose the same public behavior,

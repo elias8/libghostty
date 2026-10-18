@@ -37,6 +37,7 @@ final class CellIterator {
   var _rawCellsAvailable = false;
   var _rowPositionGeneration = 0;
   final _rawCellData = RawCellData();
+  RawCell? _fallbackCell;
   var _graphemeLen = 0;
   var _prevStyleId = -1;
   var _cachedStyle = const Style();
@@ -139,9 +140,7 @@ final class CellIterator {
   bool get hasHyperlink {
     _ensureMetadata();
     if (_rawCellsAvailable) return _rawCellData.hasHyperlink;
-    return bindings.render.cellGetHasHyperlink(
-      .fromAddress(_rawCellData.rawCell),
-    );
+    return bindings.render.cellGetHasHyperlink(_fallbackCell!);
   }
 
   /// Whether the current cell has non-default styling attributes.
@@ -164,7 +163,7 @@ final class CellIterator {
   bool get isProtected {
     _ensureMetadata();
     if (_rawCellsAvailable) return _rawCellData.isProtected;
-    return bindings.render.cellGetProtected(.fromAddress(_rawCellData.rawCell));
+    return bindings.render.cellGetProtected(_fallbackCell!);
   }
 
   /// Whether the current cell is contained within the current selection.
@@ -186,9 +185,7 @@ final class CellIterator {
   SemanticContent get semanticContent {
     _ensureMetadata();
     if (_rawCellsAvailable) return _rawCellData.semanticContent;
-    return bindings.render.cellGetSemanticContent(
-      .fromAddress(_rawCellData.rawCell),
-    );
+    return bindings.render.cellGetSemanticContent(_fallbackCell!);
   }
 
   /// Style of the current cell. Cached per style id to avoid redundant
@@ -319,11 +316,13 @@ final class CellIterator {
   }
 
   void _invalidate() {
+    _fallbackCell = null;
     _metadataValid = false;
     _selectedValid = false;
   }
 
   void _refreshMetadata() {
+    _fallbackCell = null;
     if (_rawCellsAvailable) {
       if (bindings.render.decodeRawCell(_rawCells!, _col, _rawCellData)) {
         _graphemeLen = _rawCellData.hasGrapheme
@@ -340,13 +339,13 @@ final class CellIterator {
 
     _rawCellData.hasBackgroundRgb = false;
     final rowCell = bindings.render.rowCellsGetSummary(_handle);
-    final rawCell = LibGhosttyHandle.fromAddress(rowCell.rawCell);
+    final rawCell = rowCell.rawCell;
     _graphemeLen = rowCell.graphemeLen;
     _isSelected = rowCell.selected;
     _selectedValid = true;
 
     final cell = bindings.render.cellGetSummary(rawCell);
-    _rawCellData.rawCell = rowCell.rawCell;
+    _fallbackCell = rawCell;
     _rawCellData.styleId = cell.styleId;
     _rawCellData.codepoint = _graphemeLen > 0 ? cell.codepoint : 0;
     _rawCellData.wide = cell.wide;

@@ -7,6 +7,10 @@ import 'package:meta/meta.dart';
 
 import '../../generated/libghostty_wasm.g.dart';
 
+extension _ExactDataView on JSDataView {
+  external JSBigInt getBigUint64(int byteOffset, JSBoolean littleEndian);
+}
+
 final class Memory {
   final GhosttyExports _exports;
   JSArrayBuffer? _bufferObject;
@@ -69,6 +73,12 @@ final class Memory {
     return lo + hi * 0x100000000;
   }
 
+  JSBigInt readU64BigInt(int addr) {
+    _refresh();
+    _checkRange(addr, 8);
+    return _byteData.toJS.getBigUint64(addr, true.toJS);
+  }
+
   int readU8(int addr) => view.getUint8(addr);
 
   void writeBytes(int addr, List<int> bytes) {
@@ -112,7 +122,7 @@ final class Memory {
     // retain a typed view across that identity change.
     _bufferObject = bufferObject;
     _buffer = bufferObject.toDart;
-    _byteData = _buffer.asByteData();
+    _byteData = JSDataView(bufferObject).toDart;
     _bytes = _buffer.asUint8List();
     _refreshCount++;
   }

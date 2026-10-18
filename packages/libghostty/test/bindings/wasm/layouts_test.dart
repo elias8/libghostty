@@ -1,6 +1,3 @@
-@Tags(['wasm'])
-library;
-
 import 'dart:convert';
 
 import 'package:libghostty/src/bindings/types.dart' show RawCellData;
@@ -90,6 +87,228 @@ void main() {
   }
 
   group('PackedCellLayout', () {
+    test('literal words overwrite every field across all content arms', () {
+      final layout = PackedCellLayout.fromTypes(packedCellTypes());
+      final data = RawCellData();
+      const vectors = [
+        (
+          0x3448d15b,
+          0x8000beaf,
+          CellContentTag.bgColorRgb,
+          0,
+          false,
+          true,
+          0x56,
+          0x34,
+          0x12,
+        ),
+        (
+          0x3407d908,
+          0x8000beaf,
+          CellContentTag.codepoint,
+          128578,
+          false,
+          false,
+          0x42,
+          0xf6,
+          1,
+        ),
+        (
+          0x3407d909,
+          0x8000beaf,
+          CellContentTag.codepointGrapheme,
+          128578,
+          true,
+          false,
+          0x42,
+          0xf6,
+          1,
+        ),
+        (
+          0x340003fe,
+          0x8000beaf,
+          CellContentTag.bgColorPalette,
+          0,
+          false,
+          false,
+          0xff,
+          0,
+          0,
+        ),
+        (
+          0xffffffff,
+          0xffffbfff,
+          CellContentTag.bgColorRgb,
+          0,
+          false,
+          true,
+          0xff,
+          0xff,
+          0xff,
+        ),
+        (0, 0, CellContentTag.codepoint, 0, false, false, 0, 0, 0),
+      ];
+      for (final (lo, hi, tag, codepoint, grapheme, rgb, r, g, b) in vectors) {
+        expect(layout.decodeWordsInto(lo, hi, data), same(data));
+        expect(
+          (
+            data.contentTag,
+            data.codepoint,
+            data.hasGrapheme,
+            data.hasBackgroundRgb,
+            data.backgroundR,
+            data.backgroundG,
+            data.backgroundB,
+          ),
+          (tag, codepoint, grapheme, rgb, r, g, b),
+        );
+        if (hi == 0x8000beaf) {
+          expect(
+            (
+              data.styleId,
+              data.wide,
+              data.isProtected,
+              data.hasHyperlink,
+              data.semanticContent,
+            ),
+            (
+              0xabcd,
+              CellWide.spacerHead,
+              true,
+              true,
+              CellSemanticContent.prompt,
+            ),
+          );
+        } else if (hi == 0) {
+          expect(
+            (
+              data.styleId,
+              data.wide,
+              data.isProtected,
+              data.hasHyperlink,
+              data.semanticContent,
+            ),
+            (0, CellWide.narrow, false, false, CellSemanticContent.output),
+          );
+        }
+      }
+    });
+
+    test('accepts tag at bit62 and widened enum storage at bit61', () {
+      final types = packedCellTypes();
+      final bits =
+          (types['GhosttyCell'] as Map<String, dynamic>)['bits']
+              as Map<String, dynamic>;
+      final tag = bits['content_tag'] as Map<String, dynamic>;
+      tag['lsb'] = 62;
+      final data = RawCellData();
+      PackedCellLayout.fromTypes(
+        types,
+      ).decodeWordsInto(0x0007d908, 0x40000000, data);
+      expect(
+        (data.contentTag, data.codepoint, data.hasGrapheme),
+        (CellContentTag.codepointGrapheme, 128578, true),
+      );
+      tag['lsb'] = 61;
+      tag['width'] = 3;
+      PackedCellLayout.fromTypes(
+        types,
+      ).decodeWordsInto(0x0007d908, 0x20000000, data);
+      expect(
+        (data.contentTag, data.codepoint, data.hasGrapheme),
+        (CellContentTag.codepointGrapheme, 128578, true),
+      );
+    });
+
+    test('decodes a content arm crossing bit32 with tag at bit62', () {
+      final types = packedCellTypes();
+      final bits =
+          (types['GhosttyCell'] as Map<String, dynamic>)['bits']
+              as Map<String, dynamic>;
+      for (final (name, lsb) in [
+        ('content_tag', 62),
+        ('content', 29),
+        ('style_id', 0),
+        ('wide', 16),
+        ('protected', 18),
+        ('hyperlink', 19),
+        ('semantic_content', 20),
+      ]) {
+        (bits[name] as Map<String, dynamic>)['lsb'] = lsb;
+      }
+      final data = RawCellData();
+      PackedCellLayout.fromTypes(
+        types,
+      ).decodeWordsInto(0xc02fabcd, 0xc002468a, data);
+      expect(
+        (
+          data.contentTag,
+          data.codepoint,
+          data.hasGrapheme,
+          data.styleId,
+          data.wide,
+          data.isProtected,
+          data.hasHyperlink,
+          data.semanticContent,
+          data.hasBackgroundRgb,
+          data.backgroundR,
+          data.backgroundG,
+          data.backgroundB,
+        ),
+        (
+          CellContentTag.bgColorRgb,
+          0,
+          false,
+          0xabcd,
+          CellWide.spacerHead,
+          true,
+          true,
+          CellSemanticContent.prompt,
+          true,
+          0x56,
+          0x34,
+          0x12,
+        ),
+      );
+    });
+
+    test('rejects unsupported scalar widths at the metadata boundary', () {
+      for (final (name, width) in [
+        ('style_id', 15),
+        ('protected', 2),
+        ('hyperlink', 2),
+        ('content_tag', 1),
+        ('wide', 1),
+        ('semantic_content', 1),
+      ]) {
+        final types = packedCellTypes();
+        final bits =
+            (types['GhosttyCell'] as Map<String, dynamic>)['bits']
+                as Map<String, dynamic>;
+        (bits[name] as Map<String, dynamic>)['width'] = width;
+        expect(() => PackedCellLayout.fromTypes(types), throwsFormatException);
+      }
+      for (final (arm, field, width) in [
+        ('CODEPOINT', 'codepoint', 20),
+        ('CODEPOINT_GRAPHEME', 'codepoint', 20),
+        ('BG_COLOR_PALETTE', 'index', 7),
+        ('BG_COLOR_RGB', 'r', 7),
+        ('BG_COLOR_RGB', 'g', 7),
+        ('BG_COLOR_RGB', 'b', 7),
+      ]) {
+        final types = packedCellTypes();
+        final bits =
+            (types['GhosttyCell'] as Map<String, dynamic>)['bits']
+                as Map<String, dynamic>;
+        final content = bits['content'] as Map<String, dynamic>;
+        final arms = content['arms'] as Map<String, dynamic>;
+        final descriptor = arms[arm] as Map<String, dynamic>;
+        final fields = descriptor['bits'] as Map<String, dynamic>;
+        (fields[field] as Map<String, dynamic>)['width'] = width;
+        expect(() => PackedCellLayout.fromTypes(types), throwsFormatException);
+      }
+    });
+
     test('decodes codepoint, style, and width from manifest bits', () {
       final types = packedCellTypes();
       final layout = PackedCellLayout.fromTypes(types);
@@ -147,7 +366,6 @@ void main() {
 
       expect(
         (
-          rawCell: data.rawCell,
           contentTag: data.contentTag,
           codepoint: data.codepoint,
           hasGrapheme: data.hasGrapheme,
@@ -156,9 +374,9 @@ void main() {
           isProtected: data.isProtected,
           hasHyperlink: data.hasHyperlink,
           semanticContent: data.semanticContent,
+          hasBackgroundRgb: data.hasBackgroundRgb,
         ),
         (
-          rawCell: raw,
           contentTag: CellContentTag.codepoint,
           codepoint: 0x41,
           hasGrapheme: false,
@@ -167,6 +385,7 @@ void main() {
           isProtected: true,
           hasHyperlink: true,
           semanticContent: CellSemanticContent.prompt,
+          hasBackgroundRgb: false,
         ),
       );
     });
@@ -203,6 +422,86 @@ void main() {
           blue: 0x12,
         ),
       );
+    });
+
+    test('overwrites RGB channels when reusing decoded cell storage', () {
+      final types = packedCellTypes();
+      final layout = PackedCellLayout.fromTypes(types);
+      final data = RawCellData();
+      const cases = [
+        (
+          3,
+          0x123456,
+          CellContentTag.bgColorRgb,
+          0,
+          false,
+          true,
+          0x56,
+          0x34,
+          0x12,
+        ),
+        (0, 0x1F642, CellContentTag.codepoint, 0x1F642, false, false, 0, 0, 0),
+        (
+          3,
+          0xABCDEF,
+          CellContentTag.bgColorRgb,
+          0,
+          false,
+          true,
+          0xEF,
+          0xCD,
+          0xAB,
+        ),
+        (
+          1,
+          0x1F642,
+          CellContentTag.codepointGrapheme,
+          0x1F642,
+          true,
+          false,
+          0,
+          0,
+          0,
+        ),
+        (
+          3,
+          0x123456,
+          CellContentTag.bgColorRgb,
+          0,
+          false,
+          true,
+          0x56,
+          0x34,
+          0x12,
+        ),
+        (2, 0xAB, CellContentTag.bgColorPalette, 0, false, false, 0, 0, 0),
+        (3, 0, CellContentTag.bgColorRgb, 0, false, true, 0, 0, 0),
+      ];
+
+      for (final (tag, payload, contentTag, codepoint, grapheme, rgb, r, g, b)
+          in cases) {
+        final raw = rawCell(
+          types,
+          tag: tag,
+          codepoint: payload,
+          styleId: 0,
+          wide: 0,
+        );
+
+        expect(layout.decodeInto(raw, data), same(data));
+        expect(
+          (
+            data.contentTag,
+            data.codepoint,
+            data.hasGrapheme,
+            data.hasBackgroundRgb,
+            rgb ? data.backgroundR : 0,
+            rgb ? data.backgroundG : 0,
+            rgb ? data.backgroundB : 0,
+          ),
+          (contentTag, codepoint, grapheme, rgb, r, g, b),
+        );
+      }
     });
 
     test('rejects a missing packed field', () {

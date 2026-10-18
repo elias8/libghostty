@@ -87,12 +87,12 @@ final class GridRef {
   /// [CellWidth.spacerTail].
   CellWidth get wide => bindings.render.cellGetWide(_cell);
 
-  LibGhosttyHandle get _cell {
+  RawCell get _cell {
     _terminal._requireHandle();
     return bindings.render.gridRefCell(_value);
   }
 
-  LibGhosttyHandle get _row {
+  RawRow get _row {
     _terminal._requireHandle();
     return bindings.render.gridRefRow(_value);
   }
