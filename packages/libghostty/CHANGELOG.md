@@ -50,6 +50,8 @@
 
 ### Fixed
 
+- **Resource lifetime**: reject stale borrowed handles, release self-capturing
+  callbacks, and roll back failed Wasm construction.
 - **Package analysis**: generated Wasm documentation no longer emits invalid
   HTML lints.
 

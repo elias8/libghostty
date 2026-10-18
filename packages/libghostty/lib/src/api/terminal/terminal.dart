@@ -9,14 +9,14 @@ import '../../generated/libghostty_enums.g.dart';
 import '../../types/types.dart';
 import '../key/kitty_key_flags.dart';
 import '../key/mods.dart';
-import 'native_finalizable_native.dart'
-    if (dart.library.js_interop) 'native_finalizable_web.dart';
+import 'lifetime_native.dart' if (dart.library.js_interop) 'lifetime_web.dart';
 import 'terminal_mode.dart';
 
 part '../key/key_encoder.dart';
 part '../key/key_event.dart';
 part '../mouse/mouse_encoder.dart';
 part '../mouse/mouse_event.dart';
+part 'callback_lifetime.dart';
 part 'cell_iterator.dart';
 part 'formatter.dart';
 part 'grid_ref.dart';
@@ -101,6 +101,9 @@ final class Terminal with ChangeNotifier implements NativeFinalizable {
   static final _finalizer = Finalizer(bindings.terminal.terminalFree);
 
   final LibGhosttyHandle _handle;
+  _TerminalCallbacks? _callbackOwner;
+
+  _TerminalCallbacks get _callbacks => _callbackOwner ??= _TerminalCallbacks();
   bool _disposed;
 
   /// Creates a terminal with the given grid dimensions.
@@ -440,7 +443,8 @@ final class Terminal with ChangeNotifier implements NativeFinalizable {
   ///
   /// Fires synchronously during [write]. Set to null to ignore bell events.
   set onBell(VoidCallback? value) {
-    bindings.terminal.terminalSetOnBell(_requireHandle(), value);
+    final handle = _requireHandle();
+    _callbacks.setBell(handle, value);
   }
 
   /// Registers a callback for clipboard reads requested by terminal content.
@@ -451,7 +455,8 @@ final class Terminal with ChangeNotifier implements NativeFinalizable {
   /// so applications should apply an explicit permission policy. A reply is
   /// required before the callback returns.
   set onClipboardRead(ClipboardReadCallback? value) {
-    bindings.terminal.terminalSetOnClipboardRead(_requireHandle(), value);
+    final handle = _requireHandle();
+    _callbacks.setClipboardRead(handle, value);
   }
 
   /// Registers a callback for clipboard writes requested by terminal content.
@@ -470,7 +475,8 @@ final class Terminal with ChangeNotifier implements NativeFinalizable {
   /// };
   /// ```
   set onClipboardWrite(ClipboardWriteCallback? value) {
-    bindings.terminal.terminalSetOnClipboardWrite(_requireHandle(), value);
+    final handle = _requireHandle();
+    _callbacks.setClipboardWrite(handle, value);
   }
 
   /// Registers a callback for color scheme queries (CSI ? 996 n).
@@ -478,7 +484,8 @@ final class Terminal with ChangeNotifier implements NativeFinalizable {
   /// Return the current [ColorScheme], or null to silently ignore the query.
   /// Fires synchronously during [write].
   set onColorScheme(ValueGetter<ColorScheme?>? value) {
-    bindings.terminal.terminalSetOnColorScheme(_requireHandle(), value);
+    final handle = _requireHandle();
+    _callbacks.setColorScheme(handle, value);
   }
 
   /// Registers a callback for OSC 9 and OSC 777 desktop notifications.
@@ -487,7 +494,8 @@ final class Terminal with ChangeNotifier implements NativeFinalizable {
   /// how to display them. Fires synchronously during [write]. Set to null to
   /// ignore notifications.
   set onDesktopNotification(DesktopNotificationCallback? value) {
-    bindings.terminal.terminalSetOnDesktopNotification(_requireHandle(), value);
+    final handle = _requireHandle();
+    _callbacks.setDesktopNotification(handle, value);
   }
 
   /// Registers a callback for device attributes queries (CSI c / > c / = c).
@@ -495,7 +503,8 @@ final class Terminal with ChangeNotifier implements NativeFinalizable {
   /// Return a [DeviceAttributesResponse], or null to silently ignore the query.
   /// Fires synchronously during [write].
   set onDeviceAttributes(ValueGetter<DeviceAttributesResponse?>? value) {
-    bindings.terminal.terminalSetOnDeviceAttributes(_requireHandle(), value);
+    final handle = _requireHandle();
+    _callbacks.setDeviceAttributes(handle, value);
   }
 
   /// Registers a callback for ENQ character (0x05).
@@ -503,7 +512,8 @@ final class Terminal with ChangeNotifier implements NativeFinalizable {
   /// Return the response bytes to write back to the PTY. Return an empty list
   /// to send no response. Fires synchronously during [write].
   set onEnquiry(ValueGetter<Uint8List>? value) {
-    bindings.terminal.terminalSetOnEnquiry(_requireHandle(), value);
+    final handle = _requireHandle();
+    _callbacks.setEnquiry(handle, value);
   }
 
   /// Registers a callback for validated OSC 7501 program status reports.
@@ -511,14 +521,16 @@ final class Terminal with ChangeNotifier implements NativeFinalizable {
   /// The strings in each report are copied and remain valid after the
   /// callback returns. Set to null to ignore reports.
   set onProgramStatus(TerminalProgramStatusCallback? value) {
-    bindings.terminal.terminalSetOnProgramStatus(_requireHandle(), value);
+    final handle = _requireHandle();
+    _callbacks.setProgramStatus(handle, value);
   }
 
   /// Registers a callback for OSC 9;4 progress reports.
   ///
   /// Fires synchronously during [write]. Set to null to ignore reports.
   set onProgressReport(TerminalProgressCallback? value) {
-    bindings.terminal.terminalSetOnProgressReport(_requireHandle(), value);
+    final handle = _requireHandle();
+    _callbacks.setProgressReport(handle, value);
   }
 
   /// Registers a callback for working-directory changes via OSC 7/9/1337.
@@ -527,7 +539,8 @@ final class Terminal with ChangeNotifier implements NativeFinalizable {
   /// OSC 9 and OSC 1337 values are typically paths. Fires synchronously during
   /// [write].
   set onPwdChanged(VoidCallback? value) {
-    bindings.terminal.terminalSetOnPwdChanged(_requireHandle(), value);
+    final handle = _requireHandle();
+    _callbacks.setPwdChanged(handle, value);
   }
 
   /// Registers a callback when synchronized output starts or ends a render
@@ -536,7 +549,8 @@ final class Terminal with ChangeNotifier implements NativeFinalizable {
   /// The callback receives true when a hold starts and false when it ends.
   /// Set to null to ignore these events.
   set onRenderHold(ValueSetter<bool>? value) {
-    bindings.terminal.terminalSetOnRenderHold(_requireHandle(), value);
+    final handle = _requireHandle();
+    _callbacks.setRenderHold(handle, value);
   }
 
   /// Registers a callback after the program performs a full terminal reset.
@@ -544,7 +558,8 @@ final class Terminal with ChangeNotifier implements NativeFinalizable {
   /// Fires synchronously during [write] when the program sends RIS (`ESC c`).
   /// It does not fire for [reset]. Set to null to ignore reset events.
   set onReset(VoidCallback? value) {
-    bindings.terminal.terminalSetOnReset(_requireHandle(), value);
+    final handle = _requireHandle();
+    _callbacks.setReset(handle, value);
   }
 
   /// Registers a callback for shell integration events reported through
@@ -553,7 +568,8 @@ final class Terminal with ChangeNotifier implements NativeFinalizable {
   /// Command and error strings are copied and remain valid after the callback
   /// returns. Set to null to ignore these events.
   set onSemanticPrompt(TerminalSemanticPromptCallback? value) {
-    bindings.terminal.terminalSetOnSemanticPrompt(_requireHandle(), value);
+    final handle = _requireHandle();
+    _callbacks.setSemanticPrompt(handle, value);
   }
 
   /// Registers a callback for XTWINOPS size queries (CSI 14/16/18 t).
@@ -561,7 +577,8 @@ final class Terminal with ChangeNotifier implements NativeFinalizable {
   /// Return a [TerminalSizeInfo] with the current geometry, or null to
   /// silently ignore the query. Fires synchronously during [write].
   set onSize(ValueGetter<TerminalSizeInfo?>? value) {
-    bindings.terminal.terminalSetOnSize(_requireHandle(), value);
+    final handle = _requireHandle();
+    _callbacks.setSize(handle, value);
   }
 
   /// Registers a callback for title changes via OSC 0 or OSC 2.
@@ -569,7 +586,8 @@ final class Terminal with ChangeNotifier implements NativeFinalizable {
   /// Read the new [title] inside the callback. Fires synchronously during
   /// [write].
   set onTitleChanged(VoidCallback? value) {
-    bindings.terminal.terminalSetOnTitleChanged(_requireHandle(), value);
+    final handle = _requireHandle();
+    _callbacks.setTitleChanged(handle, value);
   }
 
   /// Registers a callback for unsupported string sequences.
@@ -591,7 +609,8 @@ final class Terminal with ChangeNotifier implements NativeFinalizable {
   /// };
   /// ```
   set onUnknownSequence(TerminalUnknownSequenceCallback? value) {
-    bindings.terminal.terminalSetOnUnknownSequence(_requireHandle(), value);
+    final handle = _requireHandle();
+    _callbacks.setUnknownSequence(handle, value);
   }
 
   /// Registers a callback for PTY write-back data.
@@ -602,7 +621,8 @@ final class Terminal with ChangeNotifier implements NativeFinalizable {
   /// responses also use this callback when [setTitleReports] is enabled. Fires
   /// synchronously during [write].
   set onWritePty(ValueSetter<Uint8List>? value) {
-    bindings.terminal.terminalSetOnWritePty(_requireHandle(), value);
+    final handle = _requireHandle();
+    _callbacks.setWritePty(handle, value);
   }
 
   /// Registers a callback for XTVERSION queries (CSI > q).
@@ -611,7 +631,8 @@ final class Terminal with ChangeNotifier implements NativeFinalizable {
   /// string to use the default "libghostty" identifier. Fires synchronously
   /// during [write].
   set onXtversion(ValueGetter<String>? value) {
-    bindings.terminal.terminalSetOnXtversion(_requireHandle(), value);
+    final handle = _requireHandle();
+    _callbacks.setXtversion(handle, value);
   }
 
   /// Current 256-color palette with any active OSC 4 overrides applied.
@@ -835,6 +856,9 @@ final class Terminal with ChangeNotifier implements NativeFinalizable {
   void dispose() {
     if (_disposed) return;
     bindings.terminal.terminalFree(_handle);
+    // JS keeps a dereferenced weak target alive until the current job ends.
+    if (keepsDereferencedTargetsAliveForJob) _callbackOwner?.clear();
+    _callbackOwner = null;
     _finalizer.detach(this);
     _disposed = true;
     super.dispose();
