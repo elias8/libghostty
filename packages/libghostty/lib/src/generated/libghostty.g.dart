@@ -21,9 +21,7 @@ import 'libghostty_enums.g.dart';
 /// allocation failed
 ///
 /// @ingroup allocator
-@ffi.Native<ffi.Pointer<ffi.Uint8> Function(ffi.Pointer<Allocator>, ffi.Size)>(
-  isLeaf: true,
-)
+@ffi.Native<ffi.Pointer<ffi.Uint8> Function(ffi.Pointer<Allocator>, ffi.Size)>()
 external ffi.Pointer<ffi.Uint8> ghostty_alloc(
   ffi.Pointer<Allocator> allocator,
   int len,
@@ -42,7 +40,6 @@ external ffi.Pointer<ffi.Uint8> ghostty_alloc(
 /// @ingroup build_info
 @ffi.Native<ffi.Int Function(ffi.UnsignedInt, ffi.Pointer<ffi.Void>)>(
   symbol: 'ghostty_build_info',
-  isLeaf: true,
 )
 external int _ghostty_build_info(int data, ffi.Pointer<ffi.Void> out);
 
@@ -105,7 +102,7 @@ Result ghostty_cell_get(
     ffi.Pointer<ffi.Pointer<ffi.Void>>,
     ffi.Pointer<ffi.Size>,
   )
->(symbol: 'ghostty_cell_get_multi', isLeaf: true)
+>(symbol: 'ghostty_cell_get_multi')
 external int _ghostty_cell_get_multi(
   int cell,
   int count,
@@ -136,9 +133,7 @@ Result ghostty_cell_get_multi(
 /// @return WCAG contrast ratio in the range 1.0 to 21.0
 ///
 /// @ingroup color
-@ffi.Native<ffi.Double Function(ffi.Pointer<ColorRgb>, ffi.Pointer<ColorRgb>)>(
-  isLeaf: true,
-)
+@ffi.Native<ffi.Double Function(ffi.Pointer<ColorRgb>, ffi.Pointer<ColorRgb>)>()
 external double ghostty_color_contrast(
   ffi.Pointer<ColorRgb> a,
   ffi.Pointer<ColorRgb> b,
@@ -153,7 +148,7 @@ external double ghostty_color_contrast(
 /// @return Relative luminance in the range 0.0 to 1.0
 ///
 /// @ingroup color
-@ffi.Native<ffi.Double Function(ffi.Pointer<ColorRgb>)>(isLeaf: true)
+@ffi.Native<ffi.Double Function(ffi.Pointer<ColorRgb>)>()
 external double ghostty_color_luminance(ffi.Pointer<ColorRgb> color);
 
 /// Get 's built-in default 256-color palette.
@@ -165,7 +160,7 @@ external double ghostty_color_luminance(ffi.Pointer<ColorRgb> color);
 /// ColorRgb values
 ///
 /// @ingroup color
-@ffi.Native<ffi.Void Function(ffi.Pointer<ColorRgb>)>(isLeaf: true)
+@ffi.Native<ffi.Void Function(ffi.Pointer<ColorRgb>)>()
 external void ghostty_color_palette_default(ffi.Pointer<ColorRgb> out);
 
 /// Generate a 256-color palette from base colors.
@@ -203,7 +198,7 @@ external void ghostty_color_palette_default(ffi.Pointer<ColorRgb> out);
     ffi.Bool,
     ffi.Pointer<ColorRgb>,
   )
->(isLeaf: true)
+>()
 external void ghostty_color_palette_generate(
   ffi.Pointer<ColorRgb> base,
   ffi.Pointer<ColorPaletteMask> skip,
@@ -230,7 +225,7 @@ external void ghostty_color_palette_generate(
 /// @ingroup color
 @ffi.Native<
   ffi.Int Function(ffi.Pointer<ffi.Char>, ffi.Size, ffi.Pointer<ColorRgb>)
->(symbol: 'ghostty_color_parse', isLeaf: true)
+>(symbol: 'ghostty_color_parse')
 external int _ghostty_color_parse(
   ffi.Pointer<ffi.Char> value,
   int len,
@@ -267,7 +262,7 @@ Result ghostty_color_parse(
     ffi.Pointer<ffi.Uint8>,
     ffi.Pointer<ColorRgb>,
   )
->(symbol: 'ghostty_color_parse_palette_entry', isLeaf: true)
+>(symbol: 'ghostty_color_parse_palette_entry')
 external int _ghostty_color_parse_palette_entry(
   ffi.Pointer<ffi.Char> value,
   int len,
@@ -301,7 +296,7 @@ Result ghostty_color_parse_palette_entry(
 /// @ingroup color
 @ffi.Native<
   ffi.Int Function(ffi.Pointer<ffi.Char>, ffi.Size, ffi.Pointer<ColorRgb>)
->(symbol: 'ghostty_color_parse_x11', isLeaf: true)
+>(symbol: 'ghostty_color_parse_x11')
 external int _ghostty_color_parse_x11(
   ffi.Pointer<ffi.Char> name,
   int len,
@@ -327,7 +322,7 @@ Result ghostty_color_parse_x11(
 /// @return Perceived luminance in the range 0.0 to 1.0
 ///
 /// @ingroup color
-@ffi.Native<ffi.Double Function(ffi.Pointer<ColorRgb>)>(isLeaf: true)
+@ffi.Native<ffi.Double Function(ffi.Pointer<ColorRgb>)>()
 external double ghostty_color_perceived_luminance(ffi.Pointer<ColorRgb> color);
 
 /// Get the RGB color components.
@@ -349,7 +344,7 @@ external double ghostty_color_perceived_luminance(ffi.Pointer<ColorRgb> color);
     ffi.Pointer<ffi.Uint8>,
     ffi.Pointer<ffi.Uint8>,
   )
->(isLeaf: true)
+>()
 external void ghostty_color_rgb_get(
   ffi.Pointer<ColorRgb> color,
   ffi.Pointer<ffi.Uint8> r,
@@ -385,7 +380,7 @@ external void ghostty_color_rgb_get(
     ffi.Size,
     ffi.Pointer<ffi.Size>,
   )
->(symbol: 'ghostty_color_scheme_report_encode', isLeaf: true)
+>(symbol: 'ghostty_color_scheme_report_encode')
 external int _ghostty_color_scheme_report_encode(
   int scheme,
   ffi.Pointer<ffi.Char> buf,
@@ -417,7 +412,7 @@ Result ghostty_color_scheme_report_encode(
 /// @return Number of X11 color name entries
 ///
 /// @ingroup color
-@ffi.Native<ffi.Size Function()>(isLeaf: true)
+@ffi.Native<ffi.Size Function()>()
 external int ghostty_color_x11_name_count();
 
 /// Get 's X11 color name table.
@@ -440,7 +435,7 @@ external int ghostty_color_x11_name_count();
 /// @return Pointer to the first X11 color entry
 ///
 /// @ingroup color
-@ffi.Native<ffi.Pointer<ColorX11Entry> Function()>(isLeaf: true)
+@ffi.Native<ffi.Pointer<ColorX11Entry> Function()>()
 external ffi.Pointer<ColorX11Entry> ghostty_color_x11_names();
 
 /// Encode a focus event into a terminal escape sequence.
@@ -466,7 +461,7 @@ external ffi.Pointer<ColorX11Entry> ghostty_color_x11_names();
     ffi.Size,
     ffi.Pointer<ffi.Size>,
   )
->(symbol: 'ghostty_focus_encode', isLeaf: true)
+>(symbol: 'ghostty_focus_encode')
 external int _ghostty_focus_encode(
   int event,
   ffi.Pointer<ffi.Char> buf,
@@ -505,7 +500,6 @@ Result ghostty_focus_encode(
 /// @ingroup formatter
 @ffi.Native<ffi.Int Function(Formatter, Writer)>(
   symbol: 'ghostty_formatter_format',
-  isLeaf: true,
 )
 external int _ghostty_formatter_format(Formatter formatter, Writer writer);
 
@@ -538,7 +532,7 @@ Result ghostty_formatter_format(Formatter formatter, Writer writer) {
     ffi.Pointer<ffi.Pointer<ffi.Uint8>>,
     ffi.Pointer<ffi.Size>,
   )
->(symbol: 'ghostty_formatter_format_alloc', isLeaf: true)
+>(symbol: 'ghostty_formatter_format_alloc')
 external int _ghostty_formatter_format_alloc(
   Formatter formatter,
   ffi.Pointer<Allocator> allocator,
@@ -610,7 +604,7 @@ Result ghostty_formatter_format_buf(
 /// @param formatter The formatter handle to free (may be NULL)
 ///
 /// @ingroup formatter
-@ffi.Native<ffi.Void Function(Formatter)>(isLeaf: true)
+@ffi.Native<ffi.Void Function(Formatter)>()
 external void ghostty_formatter_free(Formatter formatter);
 
 /// Create a formatter for a terminal's active screen.
@@ -632,7 +626,7 @@ external void ghostty_formatter_free(Formatter formatter);
     Terminal,
     FormatterTerminalOptions,
   )
->(symbol: 'ghostty_formatter_terminal_new', isLeaf: true)
+>(symbol: 'ghostty_formatter_terminal_new')
 external int _ghostty_formatter_terminal_new(
   ffi.Pointer<Allocator> allocator,
   ffi.Pointer<Formatter> formatter,
@@ -674,7 +668,7 @@ Result ghostty_formatter_terminal_new(
 /// @ingroup allocator
 @ffi.Native<
   ffi.Void Function(ffi.Pointer<Allocator>, ffi.Pointer<ffi.Uint8>, ffi.Size)
->(isLeaf: true)
+>()
 external void ghostty_free(
   ffi.Pointer<Allocator> allocator,
   ffi.Pointer<ffi.Uint8> ptr,
@@ -691,7 +685,6 @@ external void ghostty_free(
 /// @ingroup grid_ref
 @ffi.Native<ffi.Int Function(ffi.Pointer<GridRef>, ffi.Pointer<Cell>)>(
   symbol: 'ghostty_grid_ref_cell',
-  isLeaf: true,
 )
 external int _ghostty_grid_ref_cell(
   ffi.Pointer<GridRef> ref,
@@ -732,7 +725,7 @@ Result ghostty_grid_ref_cell(
     ffi.Size,
     ffi.Pointer<ffi.Size>,
   )
->(symbol: 'ghostty_grid_ref_graphemes', isLeaf: true)
+>(symbol: 'ghostty_grid_ref_graphemes')
 external int _ghostty_grid_ref_graphemes(
   ffi.Pointer<GridRef> ref,
   ffi.Pointer<ffi.Uint32> buf,
@@ -776,7 +769,7 @@ Result ghostty_grid_ref_graphemes(
     ffi.Size,
     ffi.Pointer<ffi.Size>,
   )
->(symbol: 'ghostty_grid_ref_hyperlink_uri', isLeaf: true)
+>(symbol: 'ghostty_grid_ref_hyperlink_uri')
 external int _ghostty_grid_ref_hyperlink_uri(
   ffi.Pointer<GridRef> ref,
   ffi.Pointer<ffi.Uint8> buf,
@@ -805,7 +798,6 @@ Result ghostty_grid_ref_hyperlink_uri(
 /// @ingroup grid_ref
 @ffi.Native<ffi.Int Function(ffi.Pointer<GridRef>, ffi.Pointer<Row>)>(
   symbol: 'ghostty_grid_ref_row',
-  isLeaf: true,
 )
 external int _ghostty_grid_ref_row(
   ffi.Pointer<GridRef> ref,
@@ -829,7 +821,6 @@ Result ghostty_grid_ref_row(
 /// @ingroup grid_ref
 @ffi.Native<ffi.Int Function(ffi.Pointer<GridRef>, ffi.Pointer<Style>)>(
   symbol: 'ghostty_grid_ref_style',
-  isLeaf: true,
 )
 external int _ghostty_grid_ref_style(
   ffi.Pointer<GridRef> ref,
@@ -914,7 +905,7 @@ Result ghostty_grid_ref_style(
     ffi.Size,
     ffi.Pointer<ffi.Size>,
   )
->(symbol: 'ghostty_key_encoder_encode', isLeaf: true)
+>(symbol: 'ghostty_key_encoder_encode')
 external int _ghostty_key_encoder_encode(
   KeyEncoder encoder,
   KeyEvent event,
@@ -943,7 +934,7 @@ Result ghostty_key_encoder_encode(
 /// @param encoder The encoder handle to free (may be NULL)
 ///
 /// @ingroup key
-@ffi.Native<ffi.Void Function(KeyEncoder)>(isLeaf: true)
+@ffi.Native<ffi.Void Function(KeyEncoder)>()
 external void ghostty_key_encoder_free(KeyEncoder encoder);
 
 /// Create a new key encoder instance.
@@ -959,7 +950,6 @@ external void ghostty_key_encoder_free(KeyEncoder encoder);
 /// @ingroup key
 @ffi.Native<ffi.Int Function(ffi.Pointer<Allocator>, ffi.Pointer<KeyEncoder>)>(
   symbol: 'ghostty_key_encoder_new',
-  isLeaf: true,
 )
 external int _ghostty_key_encoder_new(
   ffi.Pointer<Allocator> allocator,
@@ -994,7 +984,7 @@ Result ghostty_key_encoder_new(
 /// @ingroup key
 @ffi.Native<
   ffi.Void Function(KeyEncoder, ffi.UnsignedInt, ffi.Pointer<ffi.Void>)
->(symbol: 'ghostty_key_encoder_setopt', isLeaf: true)
+>(symbol: 'ghostty_key_encoder_setopt')
 external void _ghostty_key_encoder_setopt(
   KeyEncoder encoder,
   int option,
@@ -1038,7 +1028,7 @@ external void ghostty_key_encoder_setopt_from_terminal(
 /// @param event The key event handle to free (may be NULL)
 ///
 /// @ingroup key
-@ffi.Native<ffi.Void Function(KeyEvent)>(isLeaf: true)
+@ffi.Native<ffi.Void Function(KeyEvent)>()
 external void ghostty_key_event_free(KeyEvent event);
 
 /// Get the key action (press, release, repeat).
@@ -1138,7 +1128,6 @@ external ffi.Pointer<ffi.Char> ghostty_key_event_get_utf8(
 /// @ingroup key
 @ffi.Native<ffi.Int Function(ffi.Pointer<Allocator>, ffi.Pointer<KeyEvent>)>(
   symbol: 'ghostty_key_event_new',
-  isLeaf: true,
 )
 external int _ghostty_key_event_new(
   ffi.Pointer<Allocator> allocator,
@@ -1266,7 +1255,7 @@ external void ghostty_key_event_set_utf8(
 /// @ingroup kitty_graphics
 @ffi.Native<
   ffi.Int Function(KittyGraphics, ffi.UnsignedInt, ffi.Pointer<ffi.Void>)
->(symbol: 'ghostty_kitty_graphics_get', isLeaf: true)
+>(symbol: 'ghostty_kitty_graphics_get')
 external int _ghostty_kitty_graphics_get(
   KittyGraphics graphics,
   int data,
@@ -1293,9 +1282,7 @@ Result ghostty_kitty_graphics_get(
 /// @return An opaque image handle, or NULL if not found
 ///
 /// @ingroup kitty_graphics
-@ffi.Native<KittyGraphicsImage Function(KittyGraphics, ffi.Uint32)>(
-  isLeaf: true,
-)
+@ffi.Native<KittyGraphicsImage Function(KittyGraphics, ffi.Uint32)>()
 external KittyGraphicsImage ghostty_kitty_graphics_image(
   KittyGraphics graphics,
   int image_id,
@@ -1314,7 +1301,7 @@ external KittyGraphicsImage ghostty_kitty_graphics_image(
 /// @ingroup kitty_graphics
 @ffi.Native<
   ffi.Int Function(KittyGraphicsImage, ffi.UnsignedInt, ffi.Pointer<ffi.Void>)
->(symbol: 'ghostty_kitty_graphics_image_get', isLeaf: true)
+>(symbol: 'ghostty_kitty_graphics_image_get')
 external int _ghostty_kitty_graphics_image_get(
   KittyGraphicsImage image,
   int data,
@@ -1364,7 +1351,7 @@ Result ghostty_kitty_graphics_image_get(
     ffi.Pointer<ffi.Pointer<ffi.Void>>,
     ffi.Pointer<ffi.Size>,
   )
->(symbol: 'ghostty_kitty_graphics_image_get_multi', isLeaf: true)
+>(symbol: 'ghostty_kitty_graphics_image_get_multi')
 external int _ghostty_kitty_graphics_image_get_multi(
   KittyGraphicsImage image,
   int count,
@@ -1409,7 +1396,7 @@ Result ghostty_kitty_graphics_image_get_multi(
     ffi.UnsignedInt,
     ffi.Pointer<ffi.Void>,
   )
->(symbol: 'ghostty_kitty_graphics_placement_get', isLeaf: true)
+>(symbol: 'ghostty_kitty_graphics_placement_get')
 external int _ghostty_kitty_graphics_placement_get(
   KittyGraphicsPlacementIterator iterator,
   int data,
@@ -1459,7 +1446,7 @@ Result ghostty_kitty_graphics_placement_get(
     ffi.Pointer<ffi.Pointer<ffi.Void>>,
     ffi.Pointer<ffi.Size>,
   )
->(symbol: 'ghostty_kitty_graphics_placement_get_multi', isLeaf: true)
+>(symbol: 'ghostty_kitty_graphics_placement_get_multi')
 external int _ghostty_kitty_graphics_placement_get_multi(
   KittyGraphicsPlacementIterator iterator,
   int count,
@@ -1511,7 +1498,7 @@ Result ghostty_kitty_graphics_placement_get_multi(
     ffi.Pointer<ffi.Uint32>,
     ffi.Pointer<ffi.Uint32>,
   )
->(symbol: 'ghostty_kitty_graphics_placement_grid_size', isLeaf: true)
+>(symbol: 'ghostty_kitty_graphics_placement_grid_size')
 external int _ghostty_kitty_graphics_placement_grid_size(
   KittyGraphicsPlacementIterator iterator,
   KittyGraphicsImage image,
@@ -1543,7 +1530,7 @@ Result ghostty_kitty_graphics_placement_grid_size(
 /// @param iterator The iterator handle to free (may be NULL)
 ///
 /// @ingroup kitty_graphics
-@ffi.Native<ffi.Void Function(KittyGraphicsPlacementIterator)>(isLeaf: true)
+@ffi.Native<ffi.Void Function(KittyGraphicsPlacementIterator)>()
 external void ghostty_kitty_graphics_placement_iterator_free(
   KittyGraphicsPlacementIterator iterator,
 );
@@ -1565,7 +1552,7 @@ external void ghostty_kitty_graphics_placement_iterator_free(
     ffi.Pointer<Allocator>,
     ffi.Pointer<KittyGraphicsPlacementIterator>,
   )
->(symbol: 'ghostty_kitty_graphics_placement_iterator_new', isLeaf: true)
+>(symbol: 'ghostty_kitty_graphics_placement_iterator_new')
 external int _ghostty_kitty_graphics_placement_iterator_new(
   ffi.Pointer<Allocator> allocator,
   ffi.Pointer<KittyGraphicsPlacementIterator> out_iterator,
@@ -1602,7 +1589,7 @@ Result ghostty_kitty_graphics_placement_iterator_new(
     ffi.UnsignedInt,
     ffi.Pointer<ffi.Void>,
   )
->(symbol: 'ghostty_kitty_graphics_placement_iterator_set', isLeaf: true)
+>(symbol: 'ghostty_kitty_graphics_placement_iterator_set')
 external int _ghostty_kitty_graphics_placement_iterator_set(
   KittyGraphicsPlacementIterator iterator,
   int option,
@@ -1633,7 +1620,7 @@ Result ghostty_kitty_graphics_placement_iterator_set(
 /// @return true if advanced to the next placement, false if at the end
 ///
 /// @ingroup kitty_graphics
-@ffi.Native<ffi.Bool Function(KittyGraphicsPlacementIterator)>(isLeaf: true)
+@ffi.Native<ffi.Bool Function(KittyGraphicsPlacementIterator)>()
 external bool ghostty_kitty_graphics_placement_next(
   KittyGraphicsPlacementIterator iterator,
 );
@@ -1662,7 +1649,7 @@ external bool ghostty_kitty_graphics_placement_next(
     ffi.Pointer<ffi.Uint32>,
     ffi.Pointer<ffi.Uint32>,
   )
->(symbol: 'ghostty_kitty_graphics_placement_pixel_size', isLeaf: true)
+>(symbol: 'ghostty_kitty_graphics_placement_pixel_size')
 external int _ghostty_kitty_graphics_placement_pixel_size(
   KittyGraphicsPlacementIterator iterator,
   KittyGraphicsImage image,
@@ -1712,7 +1699,7 @@ Result ghostty_kitty_graphics_placement_pixel_size(
     Terminal,
     ffi.Pointer<Selection>,
   )
->(symbol: 'ghostty_kitty_graphics_placement_rect', isLeaf: true)
+>(symbol: 'ghostty_kitty_graphics_placement_rect')
 external int _ghostty_kitty_graphics_placement_rect(
   KittyGraphicsPlacementIterator iterator,
   KittyGraphicsImage image,
@@ -1760,7 +1747,7 @@ Result ghostty_kitty_graphics_placement_rect(
     Terminal,
     ffi.Pointer<KittyGraphicsPlacementRenderInfo>,
   )
->(symbol: 'ghostty_kitty_graphics_placement_render_info', isLeaf: true)
+>(symbol: 'ghostty_kitty_graphics_placement_render_info')
 external int _ghostty_kitty_graphics_placement_render_info(
   KittyGraphicsPlacementIterator iterator,
   KittyGraphicsImage image,
@@ -1810,7 +1797,7 @@ Result ghostty_kitty_graphics_placement_render_info(
     ffi.Pointer<ffi.Uint32>,
     ffi.Pointer<ffi.Uint32>,
   )
->(symbol: 'ghostty_kitty_graphics_placement_source_rect', isLeaf: true)
+>(symbol: 'ghostty_kitty_graphics_placement_source_rect')
 external int _ghostty_kitty_graphics_placement_source_rect(
   KittyGraphicsPlacementIterator iterator,
   KittyGraphicsImage image,
@@ -1881,7 +1868,7 @@ Result ghostty_kitty_graphics_placement_source_rect(
     ffi.Pointer<ffi.Int32>,
     ffi.Pointer<ffi.Int32>,
   )
->(symbol: 'ghostty_kitty_graphics_placement_viewport_pos', isLeaf: true)
+>(symbol: 'ghostty_kitty_graphics_placement_viewport_pos')
 external int _ghostty_kitty_graphics_placement_viewport_pos(
   KittyGraphicsPlacementIterator iterator,
   KittyGraphicsImage image,
@@ -1935,7 +1922,7 @@ Result ghostty_kitty_graphics_placement_viewport_pos(
     ffi.Size,
     ffi.Pointer<ffi.Size>,
   )
->(symbol: 'ghostty_mode_report_encode', isLeaf: true)
+>(symbol: 'ghostty_mode_report_encode')
 external int _ghostty_mode_report_encode(
   int mode,
   int state,
@@ -1981,7 +1968,7 @@ Result ghostty_mode_report_encode(
     ffi.Size,
     ffi.Pointer<ffi.Size>,
   )
->(symbol: 'ghostty_mouse_encoder_encode', isLeaf: true)
+>(symbol: 'ghostty_mouse_encoder_encode')
 external int _ghostty_mouse_encoder_encode(
   MouseEncoder encoder,
   MouseEvent event,
@@ -2013,7 +2000,7 @@ Result ghostty_mouse_encoder_encode(
 /// @param encoder The encoder handle to free (may be NULL)
 ///
 /// @ingroup mouse
-@ffi.Native<ffi.Void Function(MouseEncoder)>(isLeaf: true)
+@ffi.Native<ffi.Void Function(MouseEncoder)>()
 external void ghostty_mouse_encoder_free(MouseEncoder encoder);
 
 /// Create a new mouse encoder instance.
@@ -2025,7 +2012,7 @@ external void ghostty_mouse_encoder_free(MouseEncoder encoder);
 /// @ingroup mouse
 @ffi.Native<
   ffi.Int Function(ffi.Pointer<Allocator>, ffi.Pointer<MouseEncoder>)
->(symbol: 'ghostty_mouse_encoder_new', isLeaf: true)
+>(symbol: 'ghostty_mouse_encoder_new')
 external int _ghostty_mouse_encoder_new(
   ffi.Pointer<Allocator> allocator,
   ffi.Pointer<MouseEncoder> encoder,
@@ -2045,7 +2032,7 @@ Result ghostty_mouse_encoder_new(
 /// @param encoder The encoder handle (may be NULL)
 ///
 /// @ingroup mouse
-@ffi.Native<ffi.Void Function(MouseEncoder)>(isLeaf: true)
+@ffi.Native<ffi.Void Function(MouseEncoder)>()
 external void ghostty_mouse_encoder_reset(MouseEncoder encoder);
 
 /// Set an option on the mouse encoder.
@@ -2059,7 +2046,7 @@ external void ghostty_mouse_encoder_reset(MouseEncoder encoder);
 /// @ingroup mouse
 @ffi.Native<
   ffi.Void Function(MouseEncoder, ffi.UnsignedInt, ffi.Pointer<ffi.Void>)
->(symbol: 'ghostty_mouse_encoder_setopt', isLeaf: true)
+>(symbol: 'ghostty_mouse_encoder_setopt')
 external void _ghostty_mouse_encoder_setopt(
   MouseEncoder encoder,
   int option,
@@ -2083,7 +2070,7 @@ void ghostty_mouse_encoder_setopt(
 /// @param terminal The terminal handle, must not be NULL
 ///
 /// @ingroup mouse
-@ffi.Native<ffi.Void Function(MouseEncoder, Terminal)>(isLeaf: true)
+@ffi.Native<ffi.Void Function(MouseEncoder, Terminal)>()
 external void ghostty_mouse_encoder_setopt_from_terminal(
   MouseEncoder encoder,
   Terminal terminal,
@@ -2096,7 +2083,7 @@ external void ghostty_mouse_encoder_setopt_from_terminal(
 /// @param event The event handle, must not be NULL
 ///
 /// @ingroup mouse
-@ffi.Native<ffi.Void Function(MouseEvent)>(isLeaf: true)
+@ffi.Native<ffi.Void Function(MouseEvent)>()
 external void ghostty_mouse_event_clear_button(MouseEvent event);
 
 /// Free a mouse event instance.
@@ -2104,7 +2091,7 @@ external void ghostty_mouse_event_clear_button(MouseEvent event);
 /// @param event The mouse event handle to free (may be NULL)
 ///
 /// @ingroup mouse
-@ffi.Native<ffi.Void Function(MouseEvent)>(isLeaf: true)
+@ffi.Native<ffi.Void Function(MouseEvent)>()
 external void ghostty_mouse_event_free(MouseEvent event);
 
 /// Get the event action.
@@ -2115,7 +2102,6 @@ external void ghostty_mouse_event_free(MouseEvent event);
 /// @ingroup mouse
 @ffi.Native<ffi.UnsignedInt Function(MouseEvent)>(
   symbol: 'ghostty_mouse_event_get_action',
-  isLeaf: true,
 )
 external int _ghostty_mouse_event_get_action(MouseEvent event);
 
@@ -2130,9 +2116,7 @@ MouseAction ghostty_mouse_event_get_action(MouseEvent event) {
 /// @return true if a button is set, false if no button is set
 ///
 /// @ingroup mouse
-@ffi.Native<ffi.Bool Function(MouseEvent, ffi.Pointer<ffi.UnsignedInt>)>(
-  isLeaf: true,
-)
+@ffi.Native<ffi.Bool Function(MouseEvent, ffi.Pointer<ffi.UnsignedInt>)>()
 external bool ghostty_mouse_event_get_button(
   MouseEvent event,
   ffi.Pointer<ffi.UnsignedInt> out_button,
@@ -2144,7 +2128,7 @@ external bool ghostty_mouse_event_get_button(
 /// @return Modifier bitmask
 ///
 /// @ingroup mouse
-@ffi.Native<Mods Function(MouseEvent)>(isLeaf: true)
+@ffi.Native<Mods Function(MouseEvent)>()
 external int ghostty_mouse_event_get_mods(MouseEvent event);
 
 /// Get the event position in surface-space pixels.
@@ -2153,7 +2137,7 @@ external int ghostty_mouse_event_get_mods(MouseEvent event);
 /// @return The current event position
 ///
 /// @ingroup mouse
-@ffi.Native<MousePosition Function(MouseEvent)>(isLeaf: true)
+@ffi.Native<MousePosition Function(MouseEvent)>()
 external MousePosition ghostty_mouse_event_get_position(MouseEvent event);
 
 /// Create a new mouse event instance.
@@ -2165,7 +2149,6 @@ external MousePosition ghostty_mouse_event_get_position(MouseEvent event);
 /// @ingroup mouse
 @ffi.Native<ffi.Int Function(ffi.Pointer<Allocator>, ffi.Pointer<MouseEvent>)>(
   symbol: 'ghostty_mouse_event_new',
-  isLeaf: true,
 )
 external int _ghostty_mouse_event_new(
   ffi.Pointer<Allocator> allocator,
@@ -2187,7 +2170,6 @@ Result ghostty_mouse_event_new(
 /// @ingroup mouse
 @ffi.Native<ffi.Void Function(MouseEvent, ffi.UnsignedInt)>(
   symbol: 'ghostty_mouse_event_set_action',
-  isLeaf: true,
 )
 external void _ghostty_mouse_event_set_action(MouseEvent event, int action);
 
@@ -2207,7 +2189,6 @@ void ghostty_mouse_event_set_action(MouseEvent event, MouseAction action) {
 /// @ingroup mouse
 @ffi.Native<ffi.Void Function(MouseEvent, ffi.UnsignedInt)>(
   symbol: 'ghostty_mouse_event_set_button',
-  isLeaf: true,
 )
 external void _ghostty_mouse_event_set_button(MouseEvent event, int button);
 
@@ -2221,7 +2202,7 @@ void ghostty_mouse_event_set_button(MouseEvent event, MouseButton button) {
 /// @param mods Modifier bitmask
 ///
 /// @ingroup mouse
-@ffi.Native<ffi.Void Function(MouseEvent, Mods)>(isLeaf: true)
+@ffi.Native<ffi.Void Function(MouseEvent, Mods)>()
 external void ghostty_mouse_event_set_mods(MouseEvent event, int mods);
 
 /// Set the event position in surface-space pixels.
@@ -2230,7 +2211,7 @@ external void ghostty_mouse_event_set_mods(MouseEvent event, int mods);
 /// @param position The position to set
 ///
 /// @ingroup mouse
-@ffi.Native<ffi.Void Function(MouseEvent, MousePosition)>(isLeaf: true)
+@ffi.Native<ffi.Void Function(MouseEvent, MousePosition)>()
 external void ghostty_mouse_event_set_position(
   MouseEvent event,
   MousePosition position,
@@ -2456,7 +2437,7 @@ Result ghostty_osc_set(
     ffi.Size,
     ffi.Pointer<ffi.Size>,
   )
->(symbol: 'ghostty_paste_encode', isLeaf: true)
+>(symbol: 'ghostty_paste_encode')
 external int _ghostty_paste_encode(
   ffi.Pointer<ffi.Char> data,
   int data_len,
@@ -2494,7 +2475,7 @@ Result ghostty_paste_encode(
 /// @param data The paste data to check (must not be NULL)
 /// @param len The length of the data in bytes
 /// @return true if the data is safe to paste, false otherwise
-@ffi.Native<ffi.Bool Function(ffi.Pointer<ffi.Char>, ffi.Size)>(isLeaf: true)
+@ffi.Native<ffi.Bool Function(ffi.Pointer<ffi.Char>, ffi.Size)>()
 external bool ghostty_paste_is_safe(ffi.Pointer<ffi.Char> data, int len);
 
 /// Begin an update of a render state instance from a terminal.
@@ -2526,7 +2507,6 @@ external bool ghostty_paste_is_safe(ffi.Pointer<ffi.Char> data, int len);
 /// @ingroup render
 @ffi.Native<ffi.Int Function(RenderState, Terminal)>(
   symbol: 'ghostty_render_state_begin_update',
-  isLeaf: true,
 )
 external int _ghostty_render_state_begin_update(
   RenderState state,
@@ -2550,10 +2530,7 @@ Result ghostty_render_state_begin_update(RenderState state, Terminal terminal) {
 /// NULL
 ///
 /// @ingroup render
-@ffi.Native<ffi.Int Function(RenderState)>(
-  symbol: 'ghostty_render_state_clean',
-  isLeaf: true,
-)
+@ffi.Native<ffi.Int Function(RenderState)>(symbol: 'ghostty_render_state_clean')
 external int _ghostty_render_state_clean(RenderState state);
 
 Result ghostty_render_state_clean(RenderState state) {
@@ -2574,7 +2551,6 @@ Result ghostty_render_state_clean(RenderState state) {
 /// @ingroup render
 @ffi.Native<ffi.Int Function(RenderState)>(
   symbol: 'ghostty_render_state_end_update',
-  isLeaf: true,
 )
 external int _ghostty_render_state_end_update(RenderState state);
 
@@ -2590,7 +2566,7 @@ Result ghostty_render_state_end_update(RenderState state) {
 /// @param state The render state handle to free (may be NULL)
 ///
 /// @ingroup render
-@ffi.Native<ffi.Void Function(RenderState)>(isLeaf: true)
+@ffi.Native<ffi.Void Function(RenderState)>()
 external void ghostty_render_state_free(RenderState state);
 
 /// Get a value from a render state.
@@ -2608,7 +2584,7 @@ external void ghostty_render_state_free(RenderState state);
 /// @ingroup render
 @ffi.Native<
   ffi.Int Function(RenderState, ffi.UnsignedInt, ffi.Pointer<ffi.Void>)
->(symbol: 'ghostty_render_state_get', isLeaf: true)
+>(symbol: 'ghostty_render_state_get')
 external int _ghostty_render_state_get(
   RenderState state,
   int data,
@@ -2650,7 +2626,7 @@ Result ghostty_render_state_get(
     ffi.Pointer<ffi.Pointer<ffi.Void>>,
     ffi.Pointer<ffi.Size>,
   )
->(symbol: 'ghostty_render_state_get_multi', isLeaf: true)
+>(symbol: 'ghostty_render_state_get_multi')
 external int _ghostty_render_state_get_multi(
   RenderState state,
   int count,
@@ -2681,7 +2657,6 @@ Result ghostty_render_state_get_multi(
 /// @ingroup render
 @ffi.Native<ffi.Int Function(ffi.Pointer<Allocator>, ffi.Pointer<RenderState>)>(
   symbol: 'ghostty_render_state_new',
-  isLeaf: true,
 )
 external int _ghostty_render_state_new(
   ffi.Pointer<Allocator> allocator,
@@ -2700,7 +2675,7 @@ Result ghostty_render_state_new(
 /// @param cells The row cells handle to free (may be NULL)
 ///
 /// @ingroup render
-@ffi.Native<ffi.Void Function(RenderStateRowCells)>(isLeaf: true)
+@ffi.Native<ffi.Void Function(RenderStateRowCells)>()
 external void ghostty_render_state_row_cells_free(RenderStateRowCells cells);
 
 /// Get a value from the current cell in a render-state row cells iterator.
@@ -2720,7 +2695,7 @@ external void ghostty_render_state_row_cells_free(RenderStateRowCells cells);
 /// @ingroup render
 @ffi.Native<
   ffi.Int Function(RenderStateRowCells, ffi.UnsignedInt, ffi.Pointer<ffi.Void>)
->(symbol: 'ghostty_render_state_row_cells_get', isLeaf: true)
+>(symbol: 'ghostty_render_state_row_cells_get')
 external int _ghostty_render_state_row_cells_get(
   RenderStateRowCells cells,
   int data,
@@ -2764,7 +2739,7 @@ Result ghostty_render_state_row_cells_get(
     ffi.Pointer<ffi.Pointer<ffi.Void>>,
     ffi.Pointer<ffi.Size>,
   )
->(symbol: 'ghostty_render_state_row_cells_get_multi', isLeaf: true)
+>(symbol: 'ghostty_render_state_row_cells_get_multi')
 external int _ghostty_render_state_row_cells_get_multi(
   RenderStateRowCells cells,
   int count,
@@ -2808,7 +2783,7 @@ Result ghostty_render_state_row_cells_get_multi(
 /// @ingroup render
 @ffi.Native<
   ffi.Int Function(ffi.Pointer<Allocator>, ffi.Pointer<RenderStateRowCells>)
->(symbol: 'ghostty_render_state_row_cells_new', isLeaf: true)
+>(symbol: 'ghostty_render_state_row_cells_new')
 external int _ghostty_render_state_row_cells_new(
   ffi.Pointer<Allocator> allocator,
   ffi.Pointer<RenderStateRowCells> out_cells,
@@ -2882,7 +2857,7 @@ Result ghostty_render_state_row_cells_select(RenderStateRowCells cells, int x) {
     ffi.UnsignedInt,
     ffi.Pointer<ffi.Void>,
   )
->(symbol: 'ghostty_render_state_row_get', isLeaf: true)
+>(symbol: 'ghostty_render_state_row_get')
 external int _ghostty_render_state_row_get(
   RenderStateRowIterator iterator,
   int data,
@@ -2926,7 +2901,7 @@ Result ghostty_render_state_row_get(
     ffi.Pointer<ffi.Pointer<ffi.Void>>,
     ffi.Pointer<ffi.Size>,
   )
->(symbol: 'ghostty_render_state_row_get_multi', isLeaf: true)
+>(symbol: 'ghostty_render_state_row_get_multi')
 external int _ghostty_render_state_row_get_multi(
   RenderStateRowIterator iterator,
   int count,
@@ -2958,7 +2933,7 @@ Result ghostty_render_state_row_get_multi(
 /// @param iterator The iterator handle to free (may be NULL)
 ///
 /// @ingroup render
-@ffi.Native<ffi.Void Function(RenderStateRowIterator)>(isLeaf: true)
+@ffi.Native<ffi.Void Function(RenderStateRowIterator)>()
 external void ghostty_render_state_row_iterator_free(
   RenderStateRowIterator iterator,
 );
@@ -2977,7 +2952,7 @@ external void ghostty_render_state_row_iterator_free(
 /// @ingroup render
 @ffi.Native<
   ffi.Int Function(ffi.Pointer<Allocator>, ffi.Pointer<RenderStateRowIterator>)
->(symbol: 'ghostty_render_state_row_iterator_new', isLeaf: true)
+>(symbol: 'ghostty_render_state_row_iterator_new')
 external int _ghostty_render_state_row_iterator_new(
   ffi.Pointer<Allocator> allocator,
   ffi.Pointer<RenderStateRowIterator> out_iterator,
@@ -3032,9 +3007,9 @@ external bool ghostty_render_state_row_iterator_next(
 /// rows
 ///
 /// @ingroup render
-@ffi.Native<ffi.Bool Function(RenderStateRowIterator, ffi.Pointer<ffi.Uint16>)>(
-  isLeaf: true,
-)
+@ffi.Native<
+  ffi.Bool Function(RenderStateRowIterator, ffi.Pointer<ffi.Uint16>)
+>()
 external bool ghostty_render_state_row_iterator_next_dirty(
   RenderStateRowIterator iterator,
   ffi.Pointer<ffi.Uint16> out_y,
@@ -3062,7 +3037,7 @@ external bool ghostty_render_state_row_iterator_next_dirty(
     ffi.UnsignedInt,
     ffi.Pointer<ffi.Void>,
   )
->(symbol: 'ghostty_render_state_row_set', isLeaf: true)
+>(symbol: 'ghostty_render_state_row_set')
 external int _ghostty_render_state_row_set(
   RenderStateRowIterator iterator,
   int option,
@@ -3094,7 +3069,7 @@ Result ghostty_render_state_row_set(
 /// @ingroup render
 @ffi.Native<
   ffi.Int Function(RenderState, ffi.UnsignedInt, ffi.Pointer<ffi.Void>)
->(symbol: 'ghostty_render_state_set', isLeaf: true)
+>(symbol: 'ghostty_render_state_set')
 external int _ghostty_render_state_set(
   RenderState state,
   int option,
@@ -3131,7 +3106,6 @@ Result ghostty_render_state_set(
 /// @ingroup render
 @ffi.Native<ffi.Int Function(RenderState, Terminal)>(
   symbol: 'ghostty_render_state_update',
-  isLeaf: true,
 )
 external int _ghostty_render_state_update(RenderState state, Terminal terminal);
 
@@ -3194,7 +3168,7 @@ Result ghostty_row_get(
     ffi.Pointer<ffi.Pointer<ffi.Void>>,
     ffi.Pointer<ffi.Size>,
   )
->(symbol: 'ghostty_row_get_multi', isLeaf: true)
+>(symbol: 'ghostty_row_get_multi')
 external int _ghostty_row_get_multi(
   int row,
   int count,
@@ -3234,10 +3208,7 @@ Result ghostty_row_get_multi(
 /// search is NULL or the terminal was freed
 ///
 /// @ingroup search
-@ffi.Native<ffi.Int Function(Search)>(
-  symbol: 'ghostty_search_feed',
-  isLeaf: true,
-)
+@ffi.Native<ffi.Int Function(Search)>(symbol: 'ghostty_search_feed')
 external int _ghostty_search_feed(Search search);
 
 Result ghostty_search_feed(Search search) {
@@ -3255,7 +3226,7 @@ Result ghostty_search_feed(Search search) {
 /// @param search Search handle to free
 ///
 /// @ingroup search
-@ffi.Native<ffi.Void Function(Search)>(isLeaf: true)
+@ffi.Native<ffi.Void Function(Search)>()
 external void ghostty_search_free(Search search);
 
 /// Read a data field from a search.
@@ -3279,7 +3250,6 @@ external void ghostty_search_free(Search search);
 /// @ingroup search
 @ffi.Native<ffi.Int Function(Search, ffi.UnsignedInt, ffi.Pointer<ffi.Void>)>(
   symbol: 'ghostty_search_get',
-  isLeaf: true,
 )
 external int _ghostty_search_get(
   Search search,
@@ -3327,7 +3297,7 @@ Result ghostty_search_get(
     ffi.Pointer<ffi.Pointer<ffi.Void>>,
     ffi.Pointer<ffi.Size>,
   )
->(symbol: 'ghostty_search_get_multi', isLeaf: true)
+>(symbol: 'ghostty_search_get_multi')
 external int _ghostty_search_get_multi(
   Search search,
   int count,
@@ -3372,7 +3342,7 @@ Result ghostty_search_get_multi(
 /// @ingroup search
 @ffi.Native<
   ffi.Int Function(ffi.Pointer<Allocator>, ffi.Pointer<Search>, Terminal)
->(symbol: 'ghostty_search_new', isLeaf: true)
+>(symbol: 'ghostty_search_new')
 external int _ghostty_search_new(
   ffi.Pointer<Allocator> allocator,
   ffi.Pointer<Search> out_search,
@@ -3404,10 +3374,7 @@ Result ghostty_search_new(
 /// search is NULL or the terminal was freed
 ///
 /// @ingroup search
-@ffi.Native<ffi.Int Function(Search)>(
-  symbol: 'ghostty_search_run',
-  isLeaf: true,
-)
+@ffi.Native<ffi.Int Function(Search)>(symbol: 'ghostty_search_run')
 external int _ghostty_search_run(Search search);
 
 Result ghostty_search_run(Search search) {
@@ -3435,7 +3402,6 @@ Result ghostty_search_run(Search search) {
 /// @ingroup search
 @ffi.Native<ffi.Int Function(Search, ffi.UnsignedInt, ffi.Pointer<ffi.Void>)>(
   symbol: 'ghostty_search_set',
-  isLeaf: true,
 )
 external int _ghostty_search_set(
   Search search,
@@ -3468,7 +3434,6 @@ Result ghostty_search_set(
 /// @ingroup search
 @ffi.Native<ffi.Int Function(Search, ffi.Pointer<ffi.UnsignedInt>)>(
   symbol: 'ghostty_search_tick',
-  isLeaf: true,
 )
 external int _ghostty_search_tick(
   Search search,
@@ -3532,7 +3497,7 @@ Result ghostty_search_tick(
     SelectionGestureEvent,
     ffi.Pointer<Selection>,
   )
->(symbol: 'ghostty_selection_gesture_event', isLeaf: true)
+>(symbol: 'ghostty_selection_gesture_event')
 external int _ghostty_selection_gesture_event(
   SelectionGesture gesture,
   Terminal terminal,
@@ -3558,7 +3523,7 @@ Result ghostty_selection_gesture_event(
 /// @param event Selection gesture event handle to free
 ///
 /// @ingroup selection
-@ffi.Native<ffi.Void Function(SelectionGestureEvent)>(isLeaf: true)
+@ffi.Native<ffi.Void Function(SelectionGestureEvent)>()
 external void ghostty_selection_gesture_event_free(SelectionGestureEvent event);
 
 /// Create a reusable selection gesture event object.
@@ -3576,7 +3541,7 @@ external void ghostty_selection_gesture_event_free(SelectionGestureEvent event);
     ffi.Pointer<SelectionGestureEvent>,
     ffi.UnsignedInt,
   )
->(symbol: 'ghostty_selection_gesture_event_new', isLeaf: true)
+>(symbol: 'ghostty_selection_gesture_event_new')
 external int _ghostty_selection_gesture_event_new(
   ffi.Pointer<Allocator> allocator,
   ffi.Pointer<SelectionGestureEvent> out_event,
@@ -3612,7 +3577,7 @@ Result ghostty_selection_gesture_event_new(
     ffi.UnsignedInt,
     ffi.Pointer<ffi.Void>,
   )
->(symbol: 'ghostty_selection_gesture_event_set', isLeaf: true)
+>(symbol: 'ghostty_selection_gesture_event_set')
 external int _ghostty_selection_gesture_event_set(
   SelectionGestureEvent event,
   int option,
@@ -3647,7 +3612,7 @@ Result ghostty_selection_gesture_event_set(
 /// the terminal has already been freed
 ///
 /// @ingroup selection
-@ffi.Native<ffi.Void Function(SelectionGesture, Terminal)>(isLeaf: true)
+@ffi.Native<ffi.Void Function(SelectionGesture, Terminal)>()
 external void ghostty_selection_gesture_free(
   SelectionGesture gesture,
   Terminal terminal,
@@ -3676,7 +3641,7 @@ external void ghostty_selection_gesture_free(
     ffi.UnsignedInt,
     ffi.Pointer<ffi.Void>,
   )
->(symbol: 'ghostty_selection_gesture_get', isLeaf: true)
+>(symbol: 'ghostty_selection_gesture_get')
 external int _ghostty_selection_gesture_get(
   SelectionGesture gesture,
   Terminal terminal,
@@ -3725,7 +3690,7 @@ Result ghostty_selection_gesture_get(
     ffi.Pointer<ffi.Pointer<ffi.Void>>,
     ffi.Pointer<ffi.Size>,
   )
->(symbol: 'ghostty_selection_gesture_get_multi', isLeaf: true)
+>(symbol: 'ghostty_selection_gesture_get_multi')
 external int _ghostty_selection_gesture_get_multi(
   SelectionGesture gesture,
   Terminal terminal,
@@ -3769,7 +3734,7 @@ Result ghostty_selection_gesture_get_multi(
 /// @ingroup selection
 @ffi.Native<
   ffi.Int Function(ffi.Pointer<Allocator>, ffi.Pointer<SelectionGesture>)
->(symbol: 'ghostty_selection_gesture_new', isLeaf: true)
+>(symbol: 'ghostty_selection_gesture_new')
 external int _ghostty_selection_gesture_new(
   ffi.Pointer<Allocator> allocator,
   ffi.Pointer<SelectionGesture> out_gesture,
@@ -3794,7 +3759,7 @@ Result ghostty_selection_gesture_new(
 /// @param terminal Terminal used to release tracked gesture state
 ///
 /// @ingroup selection
-@ffi.Native<ffi.Void Function(SelectionGesture, Terminal)>(isLeaf: true)
+@ffi.Native<ffi.Void Function(SelectionGesture, Terminal)>()
 external void ghostty_selection_gesture_reset(
   SelectionGesture gesture,
   Terminal terminal,
@@ -3846,7 +3811,7 @@ external ffi.Pointer<SgrAttributeValue> ghostty_sgr_attribute_value(
 /// @param parser The parser handle to free (may be NULL)
 ///
 /// @ingroup sgr
-@ffi.Native<ffi.Void Function(SgrParser)>(isLeaf: true)
+@ffi.Native<ffi.Void Function(SgrParser)>()
 external void ghostty_sgr_free(SgrParser parser);
 
 /// Create a new SGR parser instance.
@@ -3863,7 +3828,6 @@ external void ghostty_sgr_free(SgrParser parser);
 /// @ingroup sgr
 @ffi.Native<ffi.Int Function(ffi.Pointer<Allocator>, ffi.Pointer<SgrParser>)>(
   symbol: 'ghostty_sgr_new',
-  isLeaf: true,
 )
 external int _ghostty_sgr_new(
   ffi.Pointer<Allocator> allocator,
@@ -3888,9 +3852,7 @@ Result ghostty_sgr_new(
 /// @return true if an attribute was returned, false if no more attributes
 ///
 /// @ingroup sgr
-@ffi.Native<ffi.Bool Function(SgrParser, ffi.Pointer<SgrAttribute>)>(
-  isLeaf: true,
-)
+@ffi.Native<ffi.Bool Function(SgrParser, ffi.Pointer<SgrAttribute>)>()
 external bool ghostty_sgr_next(
   SgrParser parser,
   ffi.Pointer<SgrAttribute> attr,
@@ -3943,7 +3905,7 @@ external void ghostty_sgr_reset(SgrParser parser);
     ffi.Pointer<ffi.Char>,
     ffi.Size,
   )
->(symbol: 'ghostty_sgr_set_params', isLeaf: true)
+>(symbol: 'ghostty_sgr_set_params')
 external int _ghostty_sgr_set_params(
   SgrParser parser,
   ffi.Pointer<ffi.Uint16> params,
@@ -4025,7 +3987,7 @@ external int ghostty_sgr_unknown_partial(
     ffi.Size,
     ffi.Pointer<ffi.Size>,
   )
->(symbol: 'ghostty_size_report_encode', isLeaf: true)
+>(symbol: 'ghostty_size_report_encode')
 external int _ghostty_size_report_encode(
   int style,
   SizeReportSize size,
@@ -4073,7 +4035,6 @@ Result ghostty_size_report_encode(
 /// @ingroup snapshot
 @ffi.Native<ffi.Int Function(SnapshotDecoder, ffi.Pointer<Terminal>)>(
   symbol: 'ghostty_snapshot_decoder_decode',
-  isLeaf: true,
 )
 external int _ghostty_snapshot_decoder_decode(
   SnapshotDecoder decoder,
@@ -4096,7 +4057,7 @@ Result ghostty_snapshot_decoder_decode(
 /// @param decoder Decoder to free (may be NULL)
 ///
 /// @ingroup snapshot
-@ffi.Native<ffi.Void Function(SnapshotDecoder)>(isLeaf: true)
+@ffi.Native<ffi.Void Function(SnapshotDecoder)>()
 external void ghostty_snapshot_decoder_free(SnapshotDecoder decoder);
 
 /// Get typed data from a snapshot decoder.
@@ -4113,7 +4074,7 @@ external void ghostty_snapshot_decoder_free(SnapshotDecoder decoder);
 /// @ingroup snapshot
 @ffi.Native<
   ffi.Int Function(SnapshotDecoder, ffi.UnsignedInt, ffi.Pointer<ffi.Void>)
->(symbol: 'ghostty_snapshot_decoder_get', isLeaf: true)
+>(symbol: 'ghostty_snapshot_decoder_get')
 external int _ghostty_snapshot_decoder_get(
   SnapshotDecoder decoder,
   int data,
@@ -4154,7 +4115,7 @@ Result ghostty_snapshot_decoder_get(
     ffi.Pointer<ffi.Pointer<ffi.Void>>,
     ffi.Pointer<ffi.Size>,
   )
->(symbol: 'ghostty_snapshot_decoder_get_multi', isLeaf: true)
+>(symbol: 'ghostty_snapshot_decoder_get_multi')
 external int _ghostty_snapshot_decoder_get_multi(
   SnapshotDecoder decoder,
   int count,
@@ -4203,7 +4164,7 @@ Result ghostty_snapshot_decoder_get_multi(
 /// @ingroup snapshot
 @ffi.Native<
   ffi.Int Function(ffi.Pointer<Allocator>, ffi.Pointer<SnapshotDecoder>, Reader)
->(symbol: 'ghostty_snapshot_decoder_new', isLeaf: true)
+>(symbol: 'ghostty_snapshot_decoder_new')
 external int _ghostty_snapshot_decoder_new(
   ffi.Pointer<Allocator> allocator,
   ffi.Pointer<SnapshotDecoder> decoder,
@@ -4241,7 +4202,7 @@ Result ghostty_snapshot_decoder_new(
     ffi.Pointer<ffi.Uint8>,
     ffi.Size,
   )
->(symbol: 'ghostty_snapshot_decoder_new_buf', isLeaf: true)
+>(symbol: 'ghostty_snapshot_decoder_new_buf')
 external int _ghostty_snapshot_decoder_new_buf(
   ffi.Pointer<Allocator> allocator,
   ffi.Pointer<SnapshotDecoder> decoder,
@@ -4287,7 +4248,6 @@ Result ghostty_snapshot_decoder_new_buf(
 /// @ingroup snapshot
 @ffi.Native<ffi.Int Function(SnapshotDecoder)>(
   symbol: 'ghostty_snapshot_decoder_next',
-  isLeaf: true,
 )
 external int _ghostty_snapshot_decoder_next(SnapshotDecoder decoder);
 
@@ -4330,7 +4290,6 @@ Result ghostty_snapshot_decoder_next(SnapshotDecoder decoder) {
 /// @ingroup snapshot
 @ffi.Native<ffi.Int Function(SnapshotDecoder, ffi.Pointer<Terminal>)>(
   symbol: 'ghostty_snapshot_decoder_ready',
-  isLeaf: true,
 )
 external int _ghostty_snapshot_decoder_ready(
   SnapshotDecoder decoder,
@@ -4358,7 +4317,7 @@ Result ghostty_snapshot_decoder_ready(
 /// @ingroup snapshot
 @ffi.Native<
   ffi.Int Function(SnapshotDecoder, ffi.UnsignedInt, ffi.Pointer<ffi.Void>)
->(symbol: 'ghostty_snapshot_decoder_set', isLeaf: true)
+>(symbol: 'ghostty_snapshot_decoder_set')
 external int _ghostty_snapshot_decoder_set(
   SnapshotDecoder decoder,
   int option,
@@ -4400,7 +4359,6 @@ Result ghostty_snapshot_decoder_set(
 /// @ingroup snapshot
 @ffi.Native<ffi.Int Function(Terminal, Writer)>(
   symbol: 'ghostty_snapshot_encode',
-  isLeaf: true,
 )
 external int _ghostty_snapshot_encode(Terminal terminal, Writer writer);
 
@@ -4433,7 +4391,7 @@ Result ghostty_snapshot_encode(Terminal terminal, Writer writer) {
     ffi.Pointer<ffi.Pointer<ffi.Uint8>>,
     ffi.Pointer<ffi.Size>,
   )
->(symbol: 'ghostty_snapshot_encode_alloc', isLeaf: true)
+>(symbol: 'ghostty_snapshot_encode_alloc')
 external int _ghostty_snapshot_encode_alloc(
   Terminal terminal,
   ffi.Pointer<Allocator> allocator,
@@ -4480,7 +4438,7 @@ Result ghostty_snapshot_encode_alloc(
     ffi.Size,
     ffi.Pointer<ffi.Size>,
   )
->(symbol: 'ghostty_snapshot_encode_buf', isLeaf: true)
+>(symbol: 'ghostty_snapshot_encode_buf')
 external int _ghostty_snapshot_encode_buf(
   Terminal terminal,
   ffi.Pointer<ffi.Uint8> buf,
@@ -4506,7 +4464,7 @@ Result ghostty_snapshot_encode_buf(
 /// @param style Pointer to the style to initialize
 ///
 /// @ingroup style
-@ffi.Native<ffi.Void Function(ffi.Pointer<Style>)>(isLeaf: true)
+@ffi.Native<ffi.Void Function(ffi.Pointer<Style>)>()
 external void ghostty_style_default(ffi.Pointer<Style> style);
 
 /// Check if a style is the default style.
@@ -4517,7 +4475,7 @@ external void ghostty_style_default(ffi.Pointer<Style> style);
 /// @return true if the style is the default style
 ///
 /// @ingroup style
-@ffi.Native<ffi.Bool Function(ffi.Pointer<Style>)>(isLeaf: true)
+@ffi.Native<ffi.Bool Function(ffi.Pointer<Style>)>()
 external bool ghostty_style_is_default(ffi.Pointer<Style> style);
 
 /// Built-in log callback that writes to stderr.
@@ -4537,7 +4495,7 @@ external bool ghostty_style_is_default(ffi.Pointer<Style> style);
     ffi.Pointer<ffi.Uint8>,
     ffi.Size,
   )
->(symbol: 'ghostty_sys_log_stderr', isLeaf: true)
+>(symbol: 'ghostty_sys_log_stderr')
 external void _ghostty_sys_log_stderr(
   ffi.Pointer<ffi.Void> userdata,
   int level,
@@ -4578,7 +4536,6 @@ void ghostty_sys_log_stderr(
 /// option is not recognized
 @ffi.Native<ffi.Int Function(ffi.UnsignedInt, ffi.Pointer<ffi.Void>)>(
   symbol: 'ghostty_sys_set',
-  isLeaf: true,
 )
 external int _ghostty_sys_set(int option, ffi.Pointer<ffi.Void> value);
 
@@ -4613,7 +4570,7 @@ Result ghostty_sys_set(SysOption option, ffi.Pointer<ffi.Void> value) {
 /// @ingroup terminal
 @ffi.Native<
   ffi.Int Function(Terminal, ffi.UnsignedInt, ffi.Pointer<ffi.UnsignedInt>)
->(symbol: 'ghostty_terminal_compress', isLeaf: true)
+>(symbol: 'ghostty_terminal_compress')
 external int _ghostty_terminal_compress(
   Terminal terminal,
   int mode,
@@ -4648,7 +4605,6 @@ Result ghostty_terminal_compress(
 /// @ingroup terminal
 @ffi.Native<ffi.Int Function(Terminal, ffi.Pointer<ffi.Uint64>)>(
   symbol: 'ghostty_terminal_compression_activity',
-  isLeaf: true,
 )
 external int _ghostty_terminal_compression_activity(
   Terminal terminal,
@@ -4694,7 +4650,7 @@ Result ghostty_terminal_compression_activity(
     ffi.Pointer<ffi.Pointer<ffi.Uint8>>,
     ffi.Pointer<ffi.Size>,
   )
->(symbol: 'ghostty_terminal_continuation_alloc', isLeaf: true)
+>(symbol: 'ghostty_terminal_continuation_alloc')
 external int _ghostty_terminal_continuation_alloc(
   Terminal terminal,
   ffi.Pointer<Allocator> allocator,
@@ -4744,7 +4700,7 @@ Result ghostty_terminal_continuation_alloc(
     ffi.Size,
     ffi.Pointer<ffi.Size>,
   )
->(symbol: 'ghostty_terminal_continuation_buf', isLeaf: true)
+>(symbol: 'ghostty_terminal_continuation_buf')
 external int _ghostty_terminal_continuation_buf(
   Terminal terminal,
   ffi.Pointer<ffi.Uint8> buf,
@@ -4808,7 +4764,7 @@ Result ghostty_terminal_continuation_write(Terminal terminal, Writer writer) {
 /// @param terminal The terminal handle to free (may be NULL)
 ///
 /// @ingroup terminal
-@ffi.Native<ffi.Void Function(Terminal)>(isLeaf: true)
+@ffi.Native<ffi.Void Function(Terminal)>()
 external void ghostty_terminal_free(Terminal terminal);
 
 /// Get data from a terminal instance.
@@ -4827,7 +4783,6 @@ external void ghostty_terminal_free(Terminal terminal);
 /// @ingroup terminal
 @ffi.Native<ffi.Int Function(Terminal, ffi.UnsignedInt, ffi.Pointer<ffi.Void>)>(
   symbol: 'ghostty_terminal_get',
-  isLeaf: true,
 )
 external int _ghostty_terminal_get(
   Terminal terminal,
@@ -4876,7 +4831,7 @@ Result ghostty_terminal_get(
     ffi.Pointer<ffi.Pointer<ffi.Void>>,
     ffi.Pointer<ffi.Size>,
   )
->(symbol: 'ghostty_terminal_get_multi', isLeaf: true)
+>(symbol: 'ghostty_terminal_get_multi')
 external int _ghostty_terminal_get_multi(
   Terminal terminal,
   int count,
@@ -4923,7 +4878,6 @@ Result ghostty_terminal_get_multi(
 /// @ingroup terminal
 @ffi.Native<ffi.Int Function(Terminal, Point, ffi.Pointer<GridRef>)>(
   symbol: 'ghostty_terminal_grid_ref',
-  isLeaf: true,
 )
 external int _ghostty_terminal_grid_ref(
   Terminal terminal,
@@ -4966,7 +4920,6 @@ Result ghostty_terminal_grid_ref(
 /// @ingroup terminal
 @ffi.Native<ffi.Int Function(Terminal, Point, ffi.Pointer<TrackedGridRef>)>(
   symbol: 'ghostty_terminal_grid_ref_track',
-  isLeaf: true,
 )
 external int _ghostty_terminal_grid_ref_track(
   Terminal terminal,
@@ -5004,7 +4957,7 @@ Result ghostty_terminal_grid_ref_track(
     ffi.Uint16,
     ffi.Uint16,
   )
->(symbol: 'ghostty_terminal_new', isLeaf: true)
+>(symbol: 'ghostty_terminal_new')
 external int _ghostty_terminal_new(
   ffi.Pointer<Allocator> allocator,
   ffi.Pointer<Terminal> terminal,
@@ -5100,7 +5053,7 @@ Result ghostty_terminal_paste(
     ffi.UnsignedInt,
     ffi.Pointer<PointCoordinate>,
   )
->(symbol: 'ghostty_terminal_point_from_grid_ref', isLeaf: true)
+>(symbol: 'ghostty_terminal_point_from_grid_ref')
 external int _ghostty_terminal_point_from_grid_ref(
   Terminal terminal,
   ffi.Pointer<GridRef> ref,
@@ -5131,7 +5084,7 @@ Result ghostty_terminal_point_from_grid_ref(
 /// @param terminal The terminal handle (may be NULL, in which case this is a no-op)
 ///
 /// @ingroup terminal
-@ffi.Native<ffi.Void Function(Terminal)>(isLeaf: true)
+@ffi.Native<ffi.Void Function(Terminal)>()
 external void ghostty_terminal_reset(Terminal terminal);
 
 /// Resize the terminal to the given dimensions.
@@ -5203,7 +5156,7 @@ Result ghostty_terminal_resize(
 /// @param behavior The scroll behavior as a tagged union
 ///
 /// @ingroup terminal
-@ffi.Native<ffi.Void Function(Terminal, TerminalScrollViewport)>(isLeaf: true)
+@ffi.Native<ffi.Void Function(Terminal, TerminalScrollViewport)>()
 external void ghostty_terminal_scroll_viewport(
   Terminal terminal,
   TerminalScrollViewport behavior,
@@ -5223,7 +5176,6 @@ external void ghostty_terminal_scroll_viewport(
 /// @ingroup selection
 @ffi.Native<ffi.Int Function(Terminal, ffi.Pointer<Selection>)>(
   symbol: 'ghostty_terminal_select_all',
-  isLeaf: true,
 )
 external int _ghostty_terminal_select_all(
   Terminal terminal,
@@ -5259,7 +5211,7 @@ Result ghostty_terminal_select_all(
     ffi.Pointer<TerminalSelectLineOptions>,
     ffi.Pointer<Selection>,
   )
->(symbol: 'ghostty_terminal_select_line', isLeaf: true)
+>(symbol: 'ghostty_terminal_select_line')
 external int _ghostty_terminal_select_line(
   Terminal terminal,
   ffi.Pointer<TerminalSelectLineOptions> options,
@@ -5291,7 +5243,6 @@ Result ghostty_terminal_select_line(
 /// @ingroup selection
 @ffi.Native<ffi.Int Function(Terminal, GridRef, ffi.Pointer<Selection>)>(
   symbol: 'ghostty_terminal_select_output',
-  isLeaf: true,
 )
 external int _ghostty_terminal_select_output(
   Terminal terminal,
@@ -5329,7 +5280,7 @@ Result ghostty_terminal_select_output(
     ffi.Pointer<TerminalSelectWordOptions>,
     ffi.Pointer<Selection>,
   )
->(symbol: 'ghostty_terminal_select_word', isLeaf: true)
+>(symbol: 'ghostty_terminal_select_word')
 external int _ghostty_terminal_select_word(
   Terminal terminal,
   ffi.Pointer<TerminalSelectWordOptions> options,
@@ -5379,7 +5330,7 @@ Result ghostty_terminal_select_word(
     ffi.Pointer<TerminalSelectWordBetweenOptions>,
     ffi.Pointer<Selection>,
   )
->(symbol: 'ghostty_terminal_select_word_between', isLeaf: true)
+>(symbol: 'ghostty_terminal_select_word_between')
 external int _ghostty_terminal_select_word_between(
   Terminal terminal,
   ffi.Pointer<TerminalSelectWordBetweenOptions> options,
@@ -5421,7 +5372,7 @@ Result ghostty_terminal_select_word_between(
 /// @ingroup selection
 @ffi.Native<
   ffi.Int Function(Terminal, ffi.Pointer<Selection>, ffi.UnsignedInt)
->(symbol: 'ghostty_terminal_selection_adjust', isLeaf: true)
+>(symbol: 'ghostty_terminal_selection_adjust')
 external int _ghostty_terminal_selection_adjust(
   Terminal terminal,
   ffi.Pointer<Selection> selection,
@@ -5466,7 +5417,7 @@ Result ghostty_terminal_selection_adjust(
     Point,
     ffi.Pointer<ffi.Bool>,
   )
->(symbol: 'ghostty_terminal_selection_contains', isLeaf: true)
+>(symbol: 'ghostty_terminal_selection_contains')
 external int _ghostty_terminal_selection_contains(
   Terminal terminal,
   ffi.Pointer<Selection> selection,
@@ -5519,7 +5470,7 @@ Result ghostty_terminal_selection_contains(
     ffi.Pointer<Selection>,
     ffi.Pointer<ffi.Bool>,
   )
->(symbol: 'ghostty_terminal_selection_equal', isLeaf: true)
+>(symbol: 'ghostty_terminal_selection_equal')
 external int _ghostty_terminal_selection_equal(
   Terminal terminal,
   ffi.Pointer<Selection> a,
@@ -5572,7 +5523,7 @@ Result ghostty_terminal_selection_equal(
     ffi.Pointer<ffi.Pointer<ffi.Uint8>>,
     ffi.Pointer<ffi.Size>,
   )
->(symbol: 'ghostty_terminal_selection_format_alloc', isLeaf: true)
+>(symbol: 'ghostty_terminal_selection_format_alloc')
 external int _ghostty_terminal_selection_format_alloc(
   Terminal terminal,
   ffi.Pointer<Allocator> allocator,
@@ -5683,7 +5634,7 @@ Result ghostty_terminal_selection_format_buf(
     ffi.Pointer<Selection>,
     ffi.Pointer<ffi.UnsignedInt>,
   )
->(symbol: 'ghostty_terminal_selection_order', isLeaf: true)
+>(symbol: 'ghostty_terminal_selection_order')
 external int _ghostty_terminal_selection_order(
   Terminal terminal,
   ffi.Pointer<Selection> selection,
@@ -5731,7 +5682,7 @@ Result ghostty_terminal_selection_order(
     ffi.UnsignedInt,
     ffi.Pointer<Selection>,
   )
->(symbol: 'ghostty_terminal_selection_ordered', isLeaf: true)
+>(symbol: 'ghostty_terminal_selection_ordered')
 external int _ghostty_terminal_selection_ordered(
   Terminal terminal,
   ffi.Pointer<Selection> selection,
@@ -5849,7 +5800,7 @@ external void ghostty_terminal_vt_write(
     ffi.Size,
     ffi.Pointer<ffi.Size>,
   )
->(symbol: 'ghostty_terminal_vt_write_until_ground', isLeaf: true)
+>(symbol: 'ghostty_terminal_vt_write_until_ground')
 external int _ghostty_terminal_vt_write_until_ground(
   Terminal terminal,
   ffi.Pointer<ffi.Uint8> data,
@@ -5876,7 +5827,7 @@ Result ghostty_terminal_vt_write_until_ground(
 /// @param ref Tracked grid reference to free.
 ///
 /// @ingroup grid_ref
-@ffi.Native<ffi.Void Function(TrackedGridRef)>(isLeaf: true)
+@ffi.Native<ffi.Void Function(TrackedGridRef)>()
 external void ghostty_tracked_grid_ref_free(TrackedGridRef ref);
 
 /// Return whether a tracked grid reference currently has a meaningful value.
@@ -5888,7 +5839,7 @@ external void ghostty_tracked_grid_ref_free(TrackedGridRef ref);
 /// @return true if the reference currently has a meaningful value.
 ///
 /// @ingroup grid_ref
-@ffi.Native<ffi.Bool Function(TrackedGridRef)>(isLeaf: true)
+@ffi.Native<ffi.Bool Function(TrackedGridRef)>()
 external bool ghostty_tracked_grid_ref_has_value(TrackedGridRef ref);
 
 /// Convert a tracked grid reference to a point in the requested coordinate
@@ -5921,7 +5872,7 @@ external bool ghostty_tracked_grid_ref_has_value(TrackedGridRef ref);
     ffi.UnsignedInt,
     ffi.Pointer<PointCoordinate>,
   )
->(symbol: 'ghostty_tracked_grid_ref_point', isLeaf: true)
+>(symbol: 'ghostty_tracked_grid_ref_point')
 external int _ghostty_tracked_grid_ref_point(
   TrackedGridRef ref,
   int tag,
@@ -5959,7 +5910,6 @@ Result ghostty_tracked_grid_ref_point(
 /// @ingroup grid_ref
 @ffi.Native<ffi.Int Function(TrackedGridRef, Terminal, Point)>(
   symbol: 'ghostty_tracked_grid_ref_set',
-  isLeaf: true,
 )
 external int _ghostty_tracked_grid_ref_set(
   TrackedGridRef ref,
@@ -5996,7 +5946,6 @@ Result ghostty_tracked_grid_ref_set(
 /// @ingroup grid_ref
 @ffi.Native<ffi.Int Function(TrackedGridRef, ffi.Pointer<GridRef>)>(
   symbol: 'ghostty_tracked_grid_ref_snapshot',
-  isLeaf: true,
 )
 external int _ghostty_tracked_grid_ref_snapshot(
   TrackedGridRef ref,
@@ -6063,7 +6012,7 @@ Result ghostty_tracked_grid_ref_snapshot(
 /// The returned pointer is valid for the lifetime of the process.
 ///
 /// @return Pointer to the null-terminated JSON string.
-@ffi.Native<ffi.Pointer<ffi.Char> Function()>(isLeaf: true)
+@ffi.Native<ffi.Pointer<ffi.Char> Function()>()
 external ffi.Pointer<ffi.Char> ghostty_type_json();
 
 /// Returns the terminal display width of a Unicode codepoint in
@@ -6095,7 +6044,7 @@ external ffi.Pointer<ffi.Char> ghostty_type_json();
 ///
 /// @param cp The Unicode codepoint to measure
 /// @return Display width in cells: 0, 1, or 2
-@ffi.Native<ffi.Uint8 Function(ffi.Uint32)>(isLeaf: true)
+@ffi.Native<ffi.Uint8 Function(ffi.Uint32)>()
 external int ghostty_unicode_codepoint_width(int cp);
 
 /// Measures the terminal display width of the first grapheme cluster in a
@@ -6171,7 +6120,7 @@ external int ghostty_unicode_codepoint_width(int cp);
 /// @return Number of codepoints in the first grapheme cluster
 @ffi.Native<
   ffi.Size Function(ffi.Pointer<ffi.Uint32>, ffi.Size, ffi.Pointer<ffi.Uint8>)
->(isLeaf: true)
+>()
 external int ghostty_unicode_grapheme_width(
   ffi.Pointer<ffi.Uint32> cps,
   int len,

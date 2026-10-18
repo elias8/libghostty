@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:libghostty/libghostty.dart';
@@ -7,6 +8,23 @@ import '../helpers/setup.dart';
 
 void main() {
   setUp(() => testEnvironment);
+
+  test('formats empty, single ASCII and multibyte output after updates', () {
+    final terminal = Terminal(cols: 8, rows: 1);
+    addTearDown(terminal.dispose);
+    final formatter = Formatter(
+      terminal: terminal,
+      format: FormatterFormat.plain,
+      trim: true,
+    );
+    addTearDown(formatter.dispose);
+    for (final text in ['', 'A', '~', 'é', '€', '😀', 'Z', '']) {
+      terminal.write(
+        Uint8List.fromList([27, 91, 50, 74, 27, 91, 72, ...utf8.encode(text)]),
+      );
+      expect(formatter.format(), text);
+    }
+  });
 
   group('Formatter', () {
     late Terminal terminal;

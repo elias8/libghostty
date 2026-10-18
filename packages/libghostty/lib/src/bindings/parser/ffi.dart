@@ -138,15 +138,17 @@ final class FfiParserBindings implements ParserBindings {
 
   @override
   SgrAttribute? sgrNext(LibGhosttyHandle parser) {
-    return using((arena) {
-      final out = arena<native.SgrAttribute>();
+    final out = calloc<native.SgrAttribute>();
+    try {
       final present = native.ghostty_sgr_next(
         Pointer.fromAddress(parser.value),
         out,
       );
       if (!present) return null;
       return _readSgrAttribute(out.ref);
-    });
+    } finally {
+      calloc.free(out);
+    }
   }
 
   @override

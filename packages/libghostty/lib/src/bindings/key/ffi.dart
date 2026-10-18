@@ -16,10 +16,12 @@ final class FfiKeyBindings implements KeyBindings {
 
   @override
   String keyEncoderEncode(LibGhosttyHandle encoder, LibGhosttyHandle event) {
-    return using((arena) {
-      final length = arena<Size>();
-      var capacity = 128;
-      var buffer = arena<Char>(capacity);
+    final lengthBytes = sizeOf<Size>();
+    var capacity = 128;
+    var allocation = calloc<Uint8>(lengthBytes + capacity);
+    try {
+      var length = allocation.cast<Size>();
+      var buffer = (allocation + lengthBytes).cast<Char>();
       var result = ghostty_key_encoder_encode(
         Pointer.fromAddress(encoder.value),
         Pointer.fromAddress(event.value),
@@ -29,7 +31,11 @@ final class FfiKeyBindings implements KeyBindings {
       );
       if (result == .outOfSpace) {
         capacity = length.value;
-        buffer = arena<Char>(capacity);
+        calloc.free(allocation);
+        allocation = nullptr;
+        allocation = calloc<Uint8>(lengthBytes + capacity);
+        length = allocation.cast<Size>();
+        buffer = (allocation + lengthBytes).cast<Char>();
         result = ghostty_key_encoder_encode(
           Pointer.fromAddress(encoder.value),
           Pointer.fromAddress(event.value),
@@ -40,7 +46,9 @@ final class FfiKeyBindings implements KeyBindings {
       }
       checkResultCode(result.value, operation: 'ghostty_key_encoder_encode');
       return utf8.decode(buffer.cast<Uint8>().asTypedList(length.value));
-    });
+    } finally {
+      calloc.free(allocation);
+    }
   }
 
   @override
