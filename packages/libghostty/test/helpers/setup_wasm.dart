@@ -1,6 +1,8 @@
 import 'package:libghostty/libghostty.dart';
 import 'package:test/test.dart';
 
+const isBrowser = true;
+
 Future<void> setUpTestEnvironment() => setUpWasm();
 
 Future<void> setUpWasm() async {

@@ -4,6 +4,10 @@
 
 ### Breaking
 
+- **Paste requests**: `Terminal.paste` now accepts `PasteRequest` and returns
+  whether output was written. Replace String arguments with `PasteRequest.text`.
+  Use `PasteRequest.mime` for clipboard source, location, MIME preferences, and
+  lazy readers. Set `allowUnsafe` on the request.
 - **Typed public values**: callback payloads, terminal geometry, decoded images,
   and X11 colors use named, immutable classes. Replace record literals with the
   corresponding class constructors.

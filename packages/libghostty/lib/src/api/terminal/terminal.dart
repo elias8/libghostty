@@ -895,19 +895,22 @@ final class Terminal with ChangeNotifier implements NativeFinalizable {
     );
   }
 
-  /// Pastes [text] according to the terminal's current modes.
+  /// Pastes [request] according to the terminal's clipboard and text modes.
   ///
-  /// The text is supplied as a clipboard-like MIME representation and is
-  /// written through [onWritePty]. By default unsafe command-injecting text is
-  /// rejected before any output is written; set [allowUnsafe] only after the
-  /// application has confirmed the paste with the user.
-  void paste(String text, {bool allowUnsafe = false}) {
-    final written = bindings.terminal.terminalPasteText(
-      _requireHandle(),
-      text,
-      allowUnsafe: allowUnsafe,
-    );
+  /// Returns whether text or a paste event was written through [onWritePty].
+  /// Returns false when no event or non-empty supported text was written.
+  /// A reader returning false throws [IoException].
+  /// Clipboard events advertise MIME names and defer content requests to
+  /// [onClipboardRead]. Otherwise Ghostty selects a supported text MIME and
+  /// applies safety checks, sanitization, and bracketed paste framing.
+  ///
+  /// Reader and output callback exceptions are rethrown after the native call.
+  /// A reader failure or safety rejection writes no paste payload. Output
+  /// callback failures can occur after output has already been delivered.
+  bool paste(PasteRequest request) {
+    final written = bindings.terminal.terminalPaste(_requireHandle(), request);
     if (written) notifyListeners();
+    return written;
   }
 
   /// Performs a full reset (RIS): resets modes, scrollback, scrolling region,
