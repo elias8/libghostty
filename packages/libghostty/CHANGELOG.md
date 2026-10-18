@@ -52,6 +52,7 @@
 
 - **Resource lifetime**: reject stale borrowed handles, release self-capturing
   callbacks, and roll back failed Wasm construction.
+- **Key event text**: leave the event usable when UTF-8 allocation fails.
 - **Package analysis**: generated Wasm documentation no longer emits invalid
   HTML lints.
 

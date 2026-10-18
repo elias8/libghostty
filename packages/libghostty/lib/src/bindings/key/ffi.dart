@@ -3,7 +3,7 @@ import 'dart:ffi';
 
 import 'package:ffi/ffi.dart';
 
-import '../../generated/libghostty.g.dart' hide String;
+import '../../generated/libghostty.g.dart' hide Allocator, String;
 import '../../generated/libghostty_enums.g.dart';
 import '../result_helpers.dart';
 import '../types.dart';
@@ -12,7 +12,10 @@ import 'key.dart';
 final class FfiKeyBindings implements KeyBindings {
   final _utf8Pointers = <int, Pointer<Char>>{};
 
-  FfiKeyBindings();
+  final Allocator _textAllocator;
+
+  FfiKeyBindings({Allocator textAllocator = calloc})
+    : _textAllocator = textAllocator;
 
   @override
   String keyEncoderEncode(LibGhosttyHandle encoder, LibGhosttyHandle event) {
@@ -120,7 +123,7 @@ final class FfiKeyBindings implements KeyBindings {
   @override
   void keyEventFree(LibGhosttyHandle event) {
     final text = _utf8Pointers.remove(event.value);
-    if (text != null) calloc.free(text);
+    if (text != null) _textAllocator.free(text);
     ghostty_key_event_free(Pointer.fromAddress(event.value));
   }
 
@@ -219,19 +222,26 @@ final class FfiKeyBindings implements KeyBindings {
 
   @override
   void keyEventSetUtf8(LibGhosttyHandle event, String? text) {
-    final previous = _utf8Pointers.remove(event.value);
-    if (previous != null) calloc.free(previous);
-
     final pointer = Pointer<KeyEventImpl>.fromAddress(event.value);
-    if (text == null) {
-      ghostty_key_event_set_utf8(pointer, nullptr, 0);
-      return;
-    }
+    final previous = _utf8Pointers.remove(event.value);
+    if (previous != null) _textAllocator.free(previous);
 
-    final encoded = utf8.encode(text);
-    final utf8Pointer = calloc<Char>(encoded.length);
-    utf8Pointer.cast<Uint8>().asTypedList(encoded.length).setAll(0, encoded);
-    _utf8Pointers[event.value] = utf8Pointer;
-    ghostty_key_event_set_utf8(pointer, utf8Pointer, encoded.length);
+    Pointer<Char>? replacement;
+    try {
+      if (text == null || text.isEmpty) {
+        ghostty_key_event_set_utf8(pointer, nullptr, 0);
+        return;
+      }
+      final encoded = utf8.encode(text);
+      replacement = _textAllocator<Char>(encoded.length);
+      replacement.cast<Uint8>().asTypedList(encoded.length).setAll(0, encoded);
+      _utf8Pointers[event.value] = replacement;
+      ghostty_key_event_set_utf8(pointer, replacement, encoded.length);
+    } on Object {
+      ghostty_key_event_set_utf8(pointer, nullptr, 0);
+      _utf8Pointers.remove(event.value);
+      if (replacement != null) _textAllocator.free(replacement);
+      rethrow;
+    }
   }
 }

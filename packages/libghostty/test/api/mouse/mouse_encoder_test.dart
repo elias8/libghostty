@@ -50,8 +50,7 @@ void main() {
           ..setPosition(x: 24.0, y: 32.0);
 
         final result = encoder.encode(event);
-        expect(result, startsWith('\x1b[<'));
-        expect(result, endsWith('M'));
+        expect(result, '\x1b[<0;4;3M');
       });
 
       test('returns SGR sequence with manual tracking and format', () {
@@ -72,8 +71,7 @@ void main() {
           ..setPosition(x: 24.0, y: 32.0);
 
         final result = encoder.encode(event);
-        expect(result, startsWith('\x1b[<'));
-        expect(result, endsWith('M'));
+        expect(result, '\x1b[<0;4;3M');
       });
     });
 
@@ -97,11 +95,30 @@ void main() {
     });
 
     group('reset', () {
-      test('clears manually configured tracking mode', () {
-        encoder.setTrackingMode(MouseTracking.normal);
-        encoder.setFormat(MouseFormat.sgr);
+      test('clears motion deduplication and preserves configured options', () {
+        encoder
+          ..setTrackingMode(MouseTracking.any)
+          ..setFormat(MouseFormat.sgr)
+          ..setSize(
+            const MouseEncoderSize(
+              screenWidth: 640,
+              screenHeight: 384,
+              cellWidth: 8,
+              cellHeight: 16,
+            ),
+          )
+          ..setTrackLastCell(enabled: true);
+        event
+          ..action = MouseAction.motion
+          ..clearButton()
+          ..setPosition(x: 24.0, y: 32.0);
+
+        expect(encoder.encode(event), '\x1b[<35;4;3M');
+        expect(encoder.encode(event), isEmpty);
+
         encoder.reset();
 
+        expect(encoder.encode(event), '\x1b[<35;4;3M');
         expect(encoder.encode(event), isEmpty);
       });
     });
