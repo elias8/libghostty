@@ -32,6 +32,7 @@ void main() {
       test('rejects all operations after terminal disposal', () {
         terminal.dispose();
 
+        expect(() => terminal.scrollViewport(0), throwsStateError);
         expect(() => terminal.title, throwsStateError);
         expect(() => terminal.scrollToPrompt(0), throwsStateError);
         expect(() => terminal.scrollToPrompt(1), throwsStateError);
@@ -51,6 +52,35 @@ void main() {
 
         expect(terminal.dispose, returnsNormally);
       });
+    });
+
+    group('cursor state', () {
+      test(
+        'reads active coordinates, pending wrap, and visibility directly',
+        () {
+          expect(terminal.cursorPosition, const Position(row: 0, col: 0));
+          expect(terminal.cursorPendingWrap, isFalse);
+          expect(terminal.cursorVisible, isTrue);
+
+          terminal.write(Uint8List.fromList('\x1b[3;5H'.codeUnits));
+          expect(terminal.cursorPosition, const Position(row: 2, col: 4));
+
+          terminal.write(Uint8List.fromList('\x1b[1;80HX\x1b[?25l'.codeUnits));
+          expect(terminal.cursorPosition, const Position(row: 0, col: 79));
+          expect(terminal.cursorPendingWrap, isTrue);
+          expect(terminal.cursorVisible, isFalse);
+
+          terminal.write(Uint8List.fromList('Y\x1b[?25h'.codeUnits));
+          expect(terminal.cursorPosition, const Position(row: 1, col: 1));
+          expect(terminal.cursorPendingWrap, isFalse);
+          expect(terminal.cursorVisible, isTrue);
+
+          terminal.dispose();
+          expect(() => terminal.cursorPosition, throwsStateError);
+          expect(() => terminal.cursorPendingWrap, throwsStateError);
+          expect(() => terminal.cursorVisible, throwsStateError);
+        },
+      );
     });
 
     group('geometry', () {

@@ -60,6 +60,34 @@ void main() {
       cells.next();
     }
 
+    test('rejects cells after their render state is disposed', () {
+      terminal.write(Uint8List.fromList('hello'.codeUnits));
+      bindFirstCell();
+      expect(cells.content, 'h');
+
+      renderState.dispose();
+
+      expect(() => cells.content, throwsStateError);
+      expect(() => cells.col, throwsStateError);
+      expect(cells.next, throwsStateError);
+      expect(() => cells.select(0), throwsStateError);
+    });
+
+    test('rejects cells until rebound after a render update', () {
+      terminal.write(Uint8List.fromList('hello'.codeUnits));
+      bindFirstCell();
+      expect(cells.content, 'h');
+
+      renderState.update(terminal);
+      expect(() => cells.content, throwsStateError);
+      rows.reset(renderState);
+      expect(rows.next(), isTrue);
+      expect(() => cells.content, throwsStateError);
+      cells.reset(rows);
+      expect(cells.next(), isTrue);
+      expect(cells.content, 'h');
+    });
+
     group('isSelected', () {
       test('returns true for a selected cell', () {
         installSelection();

@@ -37,6 +37,37 @@ void main() {
     });
 
     group('properties', () {
+      test('rejects rows after their render state is disposed', () {
+        renderState.update(terminal);
+        rows.reset(renderState);
+        expect(rows.next(), isTrue);
+        expect(rows.index, 0);
+
+        renderState.dispose();
+
+        expect(() => rows.index, throwsStateError);
+        expect(() => rows.wrap, throwsStateError);
+        expect(rows.next, throwsStateError);
+        expect(rows.nextDirty, throwsStateError);
+      });
+
+      test('rejects an old snapshot until rebound after a render update', () {
+        renderState.update(terminal);
+        rows.reset(renderState);
+        expect(rows.next(), isTrue);
+        expect(rows.index, 0);
+
+        terminal.write(Uint8List.fromList('updated'.codeUnits));
+        renderState.update(terminal);
+
+        expect(() => rows.index, throwsStateError);
+        expect(rows.next, throwsStateError);
+        rows.reset(renderState);
+        expect(rows.next(), isTrue);
+        expect(rows.hasStyled, isFalse);
+        expect(rows.index, 0);
+      });
+
       test('rejects properties before the first successful next', () {
         renderState.update(terminal);
         rows.reset(renderState);

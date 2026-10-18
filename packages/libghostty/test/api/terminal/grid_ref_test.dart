@@ -21,6 +21,20 @@ void main() {
       terminal.dispose();
     });
 
+    test('rejects borrowed cell reads after terminal disposal', () {
+      final ref = GridRef.at(terminal, const Position(row: 0, col: 0));
+      expect(ref.content, 'H');
+
+      terminal.dispose();
+
+      expect(() => ref.content, throwsStateError);
+      expect(() => ref.graphemes, throwsStateError);
+      expect(() => ref.hyperlinkUri, throwsStateError);
+      expect(() => ref.style, throwsStateError);
+      expect(() => ref.rowWrap, throwsStateError);
+      expect(() => ref.wide, throwsStateError);
+    });
+
     group('at', () {
       test('returns content for a resolved cell', () {
         final ref = GridRef.at(terminal, const Position(row: 0, col: 0));

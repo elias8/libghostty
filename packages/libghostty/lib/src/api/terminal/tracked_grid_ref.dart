@@ -28,8 +28,7 @@ final class TrackedGridRef {
   static final _finalizer = Finalizer(bindings.render.trackedGridRefFree);
 
   final LibGhosttyHandle _handle;
-  final Terminal _terminal;
-  var _disposed = false;
+  Terminal? _terminal;
 
   /// Resolves and tracks the grid cell at [position] in the coordinate
   /// space identified by [pointTag].
@@ -47,7 +46,7 @@ final class TrackedGridRef {
     PointTag pointTag = .active,
   }) : _terminal = terminal,
        _handle = bindings.render.terminalGridRefTrack(
-         terminal._terminalHandle,
+         terminal._requireHandle(),
          pointTag,
          position,
        ) {
@@ -56,18 +55,18 @@ final class TrackedGridRef {
 
   /// Whether this reference currently resolves to a meaningful grid position.
   bool get hasValue {
-    _ensureAlive();
-    return bindings.render.trackedGridRefHasValue(_handle);
+    return bindings.render.trackedGridRefHasValue(_requireHandle());
   }
 
   /// Releases the native tracked grid reference handle.
   ///
   /// It is safe to dispose after the creating terminal has been disposed.
   void dispose() {
-    if (_disposed) return;
+    final terminal = _terminal;
+    if (terminal == null) return;
     bindings.render.trackedGridRefFree(_handle);
     _finalizer.detach(this);
-    _disposed = true;
+    _terminal = null;
   }
 
   /// Converts this tracked reference to coordinates in the given coordinate
@@ -76,8 +75,7 @@ final class TrackedGridRef {
   /// Returns null if the tracked location has been discarded or cannot be
   /// represented in [pointTag].
   Position? positionIn(PointTag pointTag) {
-    _ensureAlive();
-    return bindings.render.trackedGridRefPoint(_handle, pointTag);
+    return bindings.render.trackedGridRefPoint(_requireHandle(), pointTag);
   }
 
   /// Moves this tracked reference to a new position.
@@ -85,10 +83,9 @@ final class TrackedGridRef {
   /// The new position is resolved against the same terminal that created this
   /// tracked reference. The terminal must not have been disposed.
   void set(Position position, {PointTag pointTag = .active}) {
-    _ensureAlive();
     bindings.render.trackedGridRefSet(
-      _handle,
-      _terminal._terminalHandle,
+      _requireHandle(),
+      _terminal!._requireHandle(),
       pointTag,
       position,
     );
@@ -99,12 +96,12 @@ final class TrackedGridRef {
   /// The returned [GridRef] follows normal grid-reference lifetime rules.
   /// Returns null if this tracked reference no longer has a meaningful value.
   GridRef? snapshot() {
-    _ensureAlive();
-    final ref = bindings.render.trackedGridRefSnapshot(_handle);
-    return ref == null ? null : GridRef._fromValue(_terminal, ref);
+    final ref = bindings.render.trackedGridRefSnapshot(_requireHandle());
+    return ref == null ? null : GridRef._fromValue(_terminal!, ref);
   }
 
-  void _ensureAlive() {
-    if (_disposed) throw StateError('TrackedGridRef has been disposed');
+  LibGhosttyHandle _requireHandle() {
+    if (_terminal == null) throw StateError('TrackedGridRef has been disposed');
+    return _handle;
   }
 }

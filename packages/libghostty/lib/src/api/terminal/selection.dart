@@ -59,7 +59,7 @@ final class Selection {
   SelectionOrder get order {
     final terminal = start._terminal;
     return bindings.selection.terminalSelectionOrder(
-      terminal._terminalHandle,
+      terminal._requireHandle(),
       _raw,
     );
   }
@@ -81,7 +81,7 @@ final class Selection {
     return Selection._fromRaw(
       terminal,
       bindings.selection.terminalSelectionAdjust(
-        terminal._terminalHandle,
+        terminal._requireHandle(),
         _raw,
         adjustment,
       ),
@@ -92,7 +92,7 @@ final class Selection {
   bool contains(Position position, {PointTag pointTag = .active}) {
     final terminal = start._terminal;
     return bindings.selection.terminalSelectionContains(
-      terminal._terminalHandle,
+      terminal._requireHandle(),
       _raw,
       pointTag,
       position,
@@ -104,7 +104,7 @@ final class Selection {
     final terminal = start._terminal;
     _checkSameTerminal(other, terminal);
     return bindings.selection.terminalSelectionEqual(
-      terminal._terminalHandle,
+      terminal._requireHandle(),
       _raw,
       other._raw,
     );
@@ -118,7 +118,7 @@ final class Selection {
   }) {
     final terminal = start._terminal;
     return bindings.selection.terminalSelectionFormat(
-      terminal._terminalHandle,
+      terminal._requireHandle(),
       format,
       unwrap: unwrap,
       trim: trim,
@@ -132,7 +132,7 @@ final class Selection {
     return Selection._fromRaw(
       terminal,
       bindings.selection.terminalSelectionOrdered(
-        terminal._terminalHandle,
+        terminal._requireHandle(),
         _raw,
         desired,
       ),

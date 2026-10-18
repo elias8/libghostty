@@ -151,7 +151,7 @@ final class MouseEncoder {
   /// size or any-button state.
   void sync(Terminal terminal) {
     final handle = _requireHandle();
-    final terminalHandle = terminal._terminalHandle;
+    final terminalHandle = terminal._requireHandle();
     bindings.mouse.mouseEncoderSetOptFromTerminal(handle, terminalHandle);
   }
 

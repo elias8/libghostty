@@ -110,6 +110,21 @@ void main() {
       });
     });
 
+    test('rejects formatting after its terminal is disposed', () {
+      terminal.write(Uint8List.fromList('owned content'.codeUnits));
+      final formatter = Formatter(
+        terminal: terminal,
+        format: FormatterFormat.plain,
+        trim: true,
+      );
+      addTearDown(formatter.dispose);
+      expect(formatter.format(), contains('owned content'));
+
+      terminal.dispose();
+
+      expect(formatter.format, throwsStateError);
+    });
+
     group('dispose', () {
       test('is idempotent', () {
         final formatter = Formatter(

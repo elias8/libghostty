@@ -169,6 +169,25 @@ void main() {
       });
     });
 
+    test('loses its value after terminal disposal', () {
+      final tracked = TrackedGridRef.at(
+        terminal,
+        const Position(row: 0, col: 0),
+      );
+      addTearDown(tracked.dispose);
+
+      terminal.dispose();
+
+      expect(tracked.hasValue, isFalse);
+      expect(tracked.snapshot(), isNull);
+      expect(tracked.positionIn(.active), isNull);
+      expect(
+        () => tracked.set(const Position(row: 0, col: 1)),
+        throwsStateError,
+      );
+      expect(tracked.dispose, returnsNormally);
+    });
+
     group('dispose', () {
       test('is idempotent', () {
         final tracked = TrackedGridRef.at(

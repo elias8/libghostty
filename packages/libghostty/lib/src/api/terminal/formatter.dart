@@ -5,7 +5,7 @@ part of 'terminal.dart';
 /// Captures a reference to a [Terminal] and reads its current state on each
 /// [format] call. The [Terminal] must outlive this formatter.
 /// Calling [dispose] more than once is safe; [format] throws [StateError]
-/// after disposal.
+/// after either this formatter or its terminal is disposed.
 ///
 /// ```dart
 /// final formatter = Formatter(
@@ -19,7 +19,7 @@ final class Formatter {
   static final _finalizer = Finalizer(bindings.formatter.formatterFree);
 
   final LibGhosttyHandle _handle;
-  var _disposed = false;
+  Terminal? _terminal;
 
   /// Creates a formatter for [terminal].
   ///
@@ -38,16 +38,18 @@ final class Formatter {
     bool trim = false,
     FormatterExtra extra = const FormatterExtra(),
     Selection? selection,
-  }) : _handle = _create(terminal, format, unwrap, trim, extra, selection) {
+  }) : _terminal = terminal,
+       _handle = _create(terminal, format, unwrap, trim, extra, selection) {
     _finalizer.attach(this, _handle, detach: this);
   }
 
   /// Releases the native formatter handle.
   void dispose() {
-    if (_disposed) return;
+    final terminal = _terminal;
+    if (terminal == null) return;
     bindings.formatter.formatterFree(_handle);
     _finalizer.detach(this);
-    _disposed = true;
+    _terminal = null;
   }
 
   /// Formats the terminal's current active screen content and returns the
@@ -62,8 +64,14 @@ final class Formatter {
     return bindings.formatter.formatterFormat(handle);
   }
 
-  LibGhosttyHandle _requireHandle() =>
-      _disposed ? throw StateError('Formatter has been disposed') : _handle;
+  LibGhosttyHandle _requireHandle() {
+    final terminal = _terminal;
+    if (terminal == null) throw StateError('Formatter has been disposed');
+    if (terminal._disposed) {
+      throw StateError('Formatter terminal is disposed');
+    }
+    return _handle;
+  }
 
   static LibGhosttyHandle _create(
     Terminal terminal,
@@ -75,7 +83,7 @@ final class Formatter {
   ) {
     if (selection == null) {
       return bindings.formatter.formatterTerminalNew(
-        terminal._terminalHandle,
+        terminal._requireHandle(),
         format,
         unwrap: unwrap,
         trim: trim,
@@ -92,7 +100,7 @@ final class Formatter {
     }
 
     return bindings.formatter.formatterTerminalNew(
-      terminal._terminalHandle,
+      terminal._requireHandle(),
       format,
       unwrap: unwrap,
       trim: trim,
