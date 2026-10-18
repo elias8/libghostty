@@ -4,6 +4,7 @@ library;
 import 'dart:convert';
 
 import 'package:flterm/src/controller/terminal_controller.dart';
+import 'package:flterm/src/links/link_interaction.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart' show KeyEventResult;
 import 'package:flutter_test/flutter_test.dart';
@@ -15,17 +16,20 @@ void main() {
   group('Ctrl+Space', () {
     late TerminalController controller;
     late ViewAttachment attachment;
+    late LinkInteraction links;
     late List<int> output;
 
     setUp(() {
       controller = TerminalController();
-      attachment = ViewAttachment(controller);
+      links = LinkInteraction();
+      attachment = ViewAttachment(controller, links: links);
       output = <int>[];
       controller.onOutput = output.addAll;
     });
 
     tearDown(() {
       attachment.dispose();
+      links.dispose();
       controller.dispose();
       HardwareKeyboard.instance.clearState();
     });

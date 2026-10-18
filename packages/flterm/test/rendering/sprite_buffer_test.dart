@@ -17,6 +17,7 @@ void main() {
     srcRight: srcRight,
     srcBottom: srcBottom,
     bearingY: 0,
+    lane: .text,
   );
 
   ShapedRun shapedRun(String text) {

@@ -27,6 +27,20 @@ import 'painters/underline_painter.dart';
 typedef SurfaceGeometryCallback =
     SurfaceGeometry? Function(SurfaceMeasurement measurement);
 
+sealed class _PresentationState {}
+
+enum _PresentationPhase implements _PresentationState {
+  ready,
+  awaitingFreshPaint,
+  disposed,
+}
+
+final class _HeldPicture implements _PresentationState {
+  final Picture picture;
+
+  _HeldPicture(this.picture);
+}
+
 /// Owns the mutable render state and resources for one terminal surface.
 ///
 /// The render box supplies Flutter lifecycle signals and terminal frame
@@ -68,9 +82,7 @@ final class TerminalSurface {
   var _submitGeometry = false;
   var _needsTerminalSync = true;
   var _searchDirty = true;
-  Picture? _renderHoldPicture;
-  var _isContentInteractionReady = true;
-  var _disposed = false;
+  _PresentationState _presentation = _PresentationPhase.ready;
 
   TerminalSurface({
     required AtlasPool atlasPool,
@@ -138,7 +150,12 @@ final class TerminalSurface {
 
   int get rows => _state.rows;
 
-  bool get isContentInteractionReady => _isContentInteractionReady;
+  bool get isContentInteractionReady => switch (_presentation) {
+    _PresentationPhase.ready => true,
+    _HeldPicture() ||
+    _PresentationPhase.awaitingFreshPaint ||
+    _PresentationPhase.disposed => false,
+  };
 
   Rect get textInputCaretRect {
     final metrics = _state.metrics;
@@ -175,10 +192,10 @@ final class TerminalSurface {
   }
 
   void dispose() {
-    if (_disposed) return;
-    _disposed = true;
-    _renderHoldPicture?.dispose();
-    _renderHoldPicture = null;
+    final presentation = _presentation;
+    if (presentation == _PresentationPhase.disposed) return;
+    _presentation = _PresentationPhase.disposed;
+    if (presentation case _HeldPicture(:final picture)) picture.dispose();
     _kittyImageCache.dispose();
     _frameBuilder.dispose();
     _sprites.dispose();
@@ -190,28 +207,30 @@ final class TerminalSurface {
     Terminal terminal, {
     LinkSnapshot linkSnapshot = .empty,
   }) {
+    if (_presentation == _PresentationPhase.disposed) return;
     if (_lastMeasuredRows <= 0 ||
         _lastMeasuredCols <= 0 ||
         _state.rows <= 0 ||
         _state.cols <= 0) {
       return;
     }
-    final renderHoldPicture = _renderHoldPicture;
-    if (renderHoldPicture != null) {
-      canvas.drawPicture(renderHoldPicture);
+    if (_presentation case _HeldPicture(:final picture)) {
+      canvas.drawPicture(picture);
       return;
     }
     _prepare(terminal, linkSnapshot: linkSnapshot);
     _paint(canvas);
-    _isContentInteractionReady = true;
+    if (_presentation == _PresentationPhase.awaitingFreshPaint) {
+      _presentation = _PresentationPhase.ready;
+    }
   }
 
   bool captureRenderHold(
     Terminal terminal, {
     LinkSnapshot linkSnapshot = .empty,
   }) {
-    if (_disposed) return false;
-    if (_renderHoldPicture != null) return true;
+    if (_presentation == _PresentationPhase.disposed) return false;
+    if (_presentation is _HeldPicture) return true;
     if (_lastMeasuredRows <= 0 ||
         _lastMeasuredCols <= 0 ||
         _state.rows <= 0 ||
@@ -224,8 +243,7 @@ final class TerminalSurface {
     final recorder = PictureRecorder();
     try {
       _paint(Canvas(recorder));
-      _renderHoldPicture = recorder.endRecording();
-      _isContentInteractionReady = false;
+      _presentation = _HeldPicture(recorder.endRecording());
       return true;
     } finally {
       if (recorder.isRecording) recorder.endRecording().dispose();
@@ -233,11 +251,11 @@ final class TerminalSurface {
   }
 
   void releaseRenderHold() {
-    final picture = _renderHoldPicture;
-    if (picture == null) return;
-    _renderHoldPicture = null;
-    picture.dispose();
-    _needsTerminalSync = true;
+    if (_presentation case _HeldPicture(:final picture)) {
+      _presentation = _PresentationPhase.awaitingFreshPaint;
+      picture.dispose();
+      _needsTerminalSync = true;
+    }
   }
 
   void invalidateGeometry() {
@@ -251,6 +269,7 @@ final class TerminalSurface {
     required EdgeInsets surfacePadding,
     required SurfaceGeometryCallback onGeometryChanged,
   }) {
+    if (_presentation == _PresentationPhase.disposed) return false;
     final metrics = _state.metrics;
     final maxW = constraints.hasBoundedWidth ? constraints.maxWidth : 0.0;
     final maxH = constraints.hasBoundedHeight ? constraints.maxHeight : 0.0;
@@ -285,6 +304,7 @@ final class TerminalSurface {
             ),
           )
         : null;
+    if (_presentation == _PresentationPhase.disposed) return false;
     _submitGeometry = false;
     final nativeGeometry = terminal.geometry;
     final renderCols = acceptedGeometry?.cols ?? nativeGeometry.cols;
@@ -306,6 +326,7 @@ final class TerminalSurface {
   void requestTerminalSync() => _needsTerminalSync = true;
 
   bool updateAtlasPool(AtlasPool value) {
+    if (_presentation == _PresentationPhase.disposed) return false;
     if (identical(value, _atlasPool)) return false;
     _atlasPool = value;
     _rebindAtlas(_atlasPool.acquireAtlas(_atlasConfig));

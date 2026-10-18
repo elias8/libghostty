@@ -11,6 +11,7 @@ import 'package:flterm/src/input/selection_handles.dart'
     show TerminalSelectionHandles;
 import 'package:flterm/src/input/selection_session.dart'
     show SelectionAutoscrollPolicy, SelectionEndpoint, SelectionInteraction;
+import 'package:flterm/src/links/link_interaction.dart' show LinkInteraction;
 import 'package:flutter/foundation.dart'
     show ChangeNotifier, Listenable, ValueListenable;
 import 'package:flutter/services.dart';
@@ -466,6 +467,7 @@ final class _Fixture {
   static const endHandle = ValueKey(SelectionEndpoint.end);
 
   late final ViewAttachment attachment;
+  final links = LinkInteraction();
   final TerminalController controller;
 
   SelectionInteraction get selection => attachment.selectionInput;
@@ -474,7 +476,7 @@ final class _Fixture {
     : controller = TerminalController(
         config: const TerminalConfig(cols: 8, rows: 3),
       ) {
-    attachment = ViewAttachment(controller)
+    attachment = ViewAttachment(controller, links: links)
       ..commitGeometry(
         const SurfaceMeasurement(
           cols: 8,
@@ -492,6 +494,7 @@ final class _Fixture {
 
   void dispose() {
     attachment.dispose();
+    links.dispose();
     controller.dispose();
   }
 

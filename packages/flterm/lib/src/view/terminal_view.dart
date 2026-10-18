@@ -8,6 +8,7 @@ import '../controller/terminal_controller.dart';
 import '../foundation.dart';
 import '../foundation/viewport_selection.dart';
 import '../input/interaction_region.dart';
+import '../links/link_interaction.dart';
 import '../links/link_settings.dart';
 import '../rendering.dart';
 import 'shortcut_scope.dart';
@@ -184,6 +185,7 @@ final class _TerminalViewState extends State<TerminalView>
   late TerminalTheme _theme;
   var _active = true;
   int? _viewId;
+  final _links = LinkInteraction();
 
   TerminalController get _controller => widget.controller;
 
@@ -346,6 +348,7 @@ final class _TerminalViewState extends State<TerminalView>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    _attachment.tickerEnabled = TickerMode.valuesOf(context).enabled;
     _updateGestureScrollPhysics();
 
     final viewId = View.of(context).viewId;
@@ -385,6 +388,7 @@ final class _TerminalViewState extends State<TerminalView>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     if (_active) _disposeAttachment();
+    _links.dispose();
     if (widget.focusNode == null) _focusNode.dispose();
     if (widget.scrollController == null) _scrollController.dispose();
     super.dispose();
@@ -445,7 +449,7 @@ final class _TerminalViewState extends State<TerminalView>
   }
 
   void _initializeAttachment({required bool initial}) {
-    _attachment = ViewAttachment(_controller);
+    _attachment = ViewAttachment(_controller, links: _links);
     _attachment.applyTheme(_theme, initial: initial);
     _attachment.mouseAutoHide = widget.mouseAutoHide;
     _resizeDeferred = _attachment.resizeDeferred;
@@ -571,7 +575,8 @@ final class _TerminalViewState extends State<TerminalView>
     }
 
     if (controllerChanged) {
-      _attachment = ViewAttachment(_controller);
+      _attachment = ViewAttachment(_controller, links: _links);
+      _attachment.tickerEnabled = TickerMode.valuesOf(context).enabled;
       _attachment.addListener(_onControllerChanged);
       _resizeDeferred = _attachment.resizeDeferred;
     }

@@ -5,8 +5,7 @@ part of '../controller/terminal_controller.dart';
 /// The attachment is the only bridge that subscribes view resources to a
 /// controller. It wires focus and text input, frame invalidation, scroll-aware
 /// compression, and theme reporting. Input and selection behavior belong to
-/// their focused owners. Disposing the attachment releases the controller's
-/// single-view lease and every view resource it created.
+/// their focused owners.
 @internal
 final class ViewAttachment extends ChangeNotifier {
   static const _space = 0x20;
@@ -14,8 +13,8 @@ final class ViewAttachment extends ChangeNotifier {
   static const _macFunctionKeyStart = 0xF700;
   static const _macFunctionKeyEnd = 0xF8FF;
 
-  final Object _viewToken;
-  final links = LinkInteraction();
+  final _ViewLease _viewLease;
+  final LinkInteraction links;
   final TerminalSession _controller;
   final _textInput = TextInputSession();
   late final SelectionInteraction selectionInput;
@@ -25,6 +24,7 @@ final class ViewAttachment extends ChangeNotifier {
   Timer? _blinkTimer;
   Duration _blinkInterval = const CursorTheme().blinkInterval;
   var _blinkVisible = true;
+  var _tickerEnabled = true;
   var _mouseCursorHidden = false;
   MouseAutoHide _mouseAutoHide = .onInput;
   LinkSettings _linkSettings = const .new();
@@ -36,10 +36,14 @@ final class ViewAttachment extends ChangeNotifier {
   ScrollController? _scrollController;
   var _disposed = false;
 
-  factory ViewAttachment(TerminalController controller) =>
-      ViewAttachment._(controller as TerminalSession);
+  factory ViewAttachment(
+    TerminalController controller, {
+    required LinkInteraction links,
+  }) => ViewAttachment._(controller as TerminalSession, links: links);
 
-  ViewAttachment._(this._controller) : _viewToken = _controller.attachView() {
+  ViewAttachment._(this._controller, {required this.links})
+    : _viewLease = _controller._acquireViewLease() {
+    links.invalidateContent();
     _textInput
       ..onTextCommitted = _controller._handleTextCommitted
       ..onDelete = _controller._handleTextDeleted
@@ -56,6 +60,12 @@ final class ViewAttachment extends ChangeNotifier {
   }
 
   bool get blinkVisible => _blinkVisible;
+
+  set tickerEnabled(bool value) {
+    if (_tickerEnabled == value) return;
+    _tickerEnabled = value;
+    _syncBlink();
+  }
 
   SurfaceGeometry? get committedGeometry => _controller.committedGeometry;
 
@@ -229,12 +239,12 @@ final class ViewAttachment extends ChangeNotifier {
       _controller._setRenderSurfaceCallbacks(null);
     }
     _scrollController?.removeListener(_handleScrollChanged);
-    links.dispose();
+    links.cancel();
     _compressionScheduler.dispose();
     selectionInput.dispose();
     _detachInput();
     _interaction.dispose();
-    _controller.detachView(_viewToken);
+    _viewLease.release();
     super.dispose();
   }
 
@@ -473,7 +483,8 @@ final class ViewAttachment extends ChangeNotifier {
   void _syncBlink() {
     _blinkTimer?.cancel();
     if (_disposed || _controller.isDisposed) return;
-    _blinkTimer = (_focusNode?.hasFocus ?? false) && cursorBlinkEnabled
+    _blinkTimer =
+        _tickerEnabled && (_focusNode?.hasFocus ?? false) && cursorBlinkEnabled
         ? Timer.periodic(_blinkInterval, (_) {
             _blinkVisible = !_blinkVisible;
             notifyListeners();

@@ -40,6 +40,6 @@ final class AtlasEntry {
     required this.srcBottom,
     required this.bearingY,
     this.bearingX = 0.0,
-    this.lane = .text,
+    required this.lane,
   });
 }

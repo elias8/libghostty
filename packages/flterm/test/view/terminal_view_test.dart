@@ -645,6 +645,219 @@ void main() {
       expect(utf8.decode(output.single), 'a');
     });
 
+    testWidgets('reattaches the same render box and keeps painting and input', (
+      tester,
+    ) async {
+      final theme = TerminalTheme.dark();
+      const surfaceKey = ValueKey('reattached terminal surface');
+
+      Widget host() => MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 800,
+            height: 480,
+            child: RepaintBoundary(
+              key: surfaceKey,
+              child: TerminalView(
+                controller: controller,
+                theme: theme,
+                padding: EdgeInsets.zero,
+                autofocus: true,
+              ),
+            ),
+          ),
+        ),
+      );
+
+      Future<Uint8List> capturePixels() async {
+        final boundary = tester.renderObject<RenderRepaintBoundary>(
+          find.byKey(surfaceKey),
+        );
+        final bytes = await tester.runAsync(() async {
+          final image = await boundary.toImage();
+          try {
+            final data = await image.toByteData();
+            return Uint8List.fromList(
+              data!.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
+            );
+          } finally {
+            image.dispose();
+          }
+        });
+        return bytes!;
+      }
+
+      await tester.pumpWidget(host());
+      writeUtf8(controller, '\x1b[48;2;40;50;60m \x1b[0mBEFORE');
+      await tester.pump();
+      final pixelsBefore = await capturePixels();
+      expect(pixelsBefore.take(4), [40, 50, 60, 255]);
+      final renderBoxBefore = tester.renderObject<TerminalRenderBox>(
+        find.byType(TerminalRenderer),
+      );
+
+      final renderView = tester.binding.renderViews.single;
+      final pipelineOwner = renderView.owner!;
+      renderView.detach();
+      expect(renderBoxBefore.attached, isFalse);
+      renderView.attach(pipelineOwner);
+      final renderBoxAfter = tester.renderObject<TerminalRenderBox>(
+        find.byType(TerminalRenderer),
+      );
+      expect(identical(renderBoxAfter, renderBoxBefore), isTrue);
+      expect(renderBoxAfter.attached, isTrue);
+
+      writeUtf8(controller, '\r\x1b[2K\x1b[48;2;11;22;33m \x1b[0mAFTER');
+      await tester.pump();
+      final pixelsAfter = await capturePixels();
+      expect(pixelsAfter, hasLength(pixelsBefore.length));
+      expect(pixelsAfter, isNot(orderedEquals(pixelsBefore)));
+      expect(pixelsAfter.take(4), [11, 22, 33, 255]);
+
+      final output = <Uint8List>[];
+      controller.onOutput = output.add;
+      await tester.tap(find.byType(TerminalView));
+      output.clear();
+      tester.testTextInput.enterText('x');
+      await tester.pump();
+      expect(output, hasLength(1));
+      expect(output.single, utf8.encode('x'));
+    });
+
+    testWidgets('reparents one view state with live links, paint, and input', (
+      tester,
+    ) async {
+      final replacement = TerminalController();
+      addTearDown(replacement.dispose);
+      final key = GlobalKey();
+      final output = <Uint8List>[];
+      final links = <ActivatedLink>[];
+      controller.onOutput = output.add;
+      replacement.onOutput = output.add;
+
+      Future<Uint8List> capturePixels() async {
+        final boundary = tester.renderObject<RenderRepaintBoundary>(
+          find.byKey(const ValueKey('reparented terminal surface')),
+        );
+        final bytes = await tester.runAsync(() async {
+          final image = await boundary.toImage();
+          try {
+            final data = await image.toByteData();
+            return Uint8List.fromList(
+              data!.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
+            );
+          } finally {
+            image.dispose();
+          }
+        });
+        return bytes!;
+      }
+
+      Widget terminalWithBoundary(TerminalController target) => RepaintBoundary(
+        key: const ValueKey('reparented terminal surface'),
+        child: TerminalView(
+          key: key,
+          controller: target,
+          padding: EdgeInsets.zero,
+          autofocus: true,
+          linkSettings: LinkSettings(
+            modifier: .none,
+            types: const {LinkType.osc8},
+            onActivate: links.add,
+          ),
+        ),
+      );
+
+      Widget host({required bool right, required TerminalController target}) =>
+          MaterialApp(
+            home: Scaffold(
+              body: SizedBox(
+                width: 800,
+                height: 480,
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: right
+                          ? const SizedBox()
+                          : terminalWithBoundary(target),
+                    ),
+                    Expanded(
+                      child: right
+                          ? terminalWithBoundary(target)
+                          : const SizedBox(),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+
+      await tester.pumpWidget(host(right: false, target: controller));
+      final state = key.currentState;
+      final renderBoxBefore = tester.renderObject<TerminalRenderBox>(
+        find.byType(TerminalRenderer),
+      );
+      writeUtf8(
+        controller,
+        '\x1b]8;;https://before.example\x07BEFORE\x1b]8;;\x07',
+      );
+      await tester.pump();
+      final pixelsBefore = await capturePixels();
+      await tester.tapAt(
+        tester.getTopLeft(find.byType(TerminalView)) + const Offset(4, 8),
+      );
+      expect(links.single.uri, Uri.parse('https://before.example'));
+      links.clear();
+
+      await tester.pumpWidget(host(right: true, target: controller));
+      expect(tester.takeException(), isNull);
+      expect(key.currentState, same(state));
+      final renderBoxAfter = tester.renderObject<TerminalRenderBox>(
+        find.byType(TerminalRenderer),
+      );
+      expect(renderBoxAfter, same(renderBoxBefore));
+
+      writeUtf8(
+        controller,
+        '\r\x1b[2K\x1b]8;;https://after.example\x07AFTER\x1b]8;;\x07',
+      );
+      await tester.pump();
+      final pixelsAfter = await capturePixels();
+      expect(pixelsAfter, hasLength(pixelsBefore.length));
+      expect(pixelsAfter, isNot(orderedEquals(pixelsBefore)));
+      await tester.tapAt(
+        tester.getTopLeft(find.byType(TerminalView)) + const Offset(4, 8),
+      );
+      expect(links.single.uri, Uri.parse('https://after.example'));
+      links.clear();
+
+      tester.testTextInput.enterText('reparented');
+      await tester.pump();
+      expect(decodeOutput(output), 'reparented');
+
+      writeUtf8(
+        replacement,
+        '\x1b]8;;https://replacement.example\x07REPLACED\x1b]8;;\x07',
+      );
+      await tester.pumpWidget(host(right: false, target: replacement));
+      expect(tester.takeException(), isNull);
+      controller.dispose();
+      await tester.tapAt(
+        tester.getTopLeft(find.byType(TerminalView)) + const Offset(4, 8),
+      );
+      expect(links.single.uri, Uri.parse('https://replacement.example'));
+      output.clear();
+      tester.testTextInput.enterText('replacement');
+      await tester.pump();
+      expect(decodeOutput(output), 'replacement');
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(host(right: false, target: replacement));
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+
     testWidgets('text input applies virtual ctrl to single-char commit', (
       tester,
     ) async {

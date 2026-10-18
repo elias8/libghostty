@@ -60,7 +60,7 @@ final class TerminalSession extends TerminalController with ChangeNotifier {
   var _restorationState = RestorationState.none;
   Timer? _restorationWork;
   SnapshotDecoder? _snapshotDecoder;
-  Object? _viewToken;
+  _ViewLease? _viewLease;
   Mods _virtualMods = const .none();
 
   factory TerminalSession({TerminalConfig config = const TerminalConfig()}) {
@@ -374,14 +374,14 @@ final class TerminalSession extends TerminalController with ChangeNotifier {
     return effectiveBackground;
   }
 
-  Object attachView() {
+  _ViewLease _acquireViewLease() {
     _checkNotDisposed();
-    if (_viewToken != null) {
+    if (_viewLease != null) {
       throw StateError('TerminalController already has an active view.');
     }
-    final token = Object();
-    _viewToken = token;
-    return token;
+    final lease = _ViewLease(this);
+    _viewLease = lease;
+    return lease;
   }
 
   @override
@@ -427,7 +427,7 @@ final class TerminalSession extends TerminalController with ChangeNotifier {
 
   SelectionInteraction createSelectionInteraction() {
     _checkNotDisposed();
-    if (_viewToken == null) {
+    if (_viewLease == null) {
       throw StateError('TerminalController has no active view.');
     }
     final interaction = _selection.createInteraction();
@@ -436,13 +436,12 @@ final class TerminalSession extends TerminalController with ChangeNotifier {
     return interaction;
   }
 
-  void detachView(Object token) {
-    if (_disposed) return;
-    if (!identical(_viewToken, token)) return;
+  void _releaseViewLease(_ViewLease lease) {
+    if (_disposed || !identical(_viewLease, lease)) return;
     try {
       _selection.disposeInteraction();
     } finally {
-      _viewToken = null;
+      _viewLease = null;
     }
   }
 
@@ -452,6 +451,7 @@ final class TerminalSession extends TerminalController with ChangeNotifier {
     final releaseRenderHold = _renderHoldPhase != .released;
     final renderSurfaceCallbacks = _renderSurfaceCallbacks;
     _disposed = true;
+    _viewLease = null;
     _renderHoldPhase = _RenderHoldPhase.released;
     _renderHoldTimeout?.cancel();
     _renderHoldTimeout = null;
@@ -472,7 +472,6 @@ final class TerminalSession extends TerminalController with ChangeNotifier {
           ),
         );
       }
-      _viewToken = null;
       _terminal.removeListener(_onTerminalChanged);
       _selection.disposeInteraction();
       _search.dispose();
@@ -1017,5 +1016,18 @@ final class TerminalSession extends TerminalController with ChangeNotifier {
     _terminal.onEnquiry = enquiry.isEmpty
         ? null
         : () => .fromList(utf8.encode(enquiry));
+  }
+}
+
+final class _ViewLease {
+  final TerminalSession _controller;
+  var _released = false;
+
+  _ViewLease(this._controller);
+
+  void release() {
+    if (_released) return;
+    _released = true;
+    _controller._releaseViewLease(this);
   }
 }

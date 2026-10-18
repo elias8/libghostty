@@ -64,7 +64,7 @@ class AtlasTexture {
     required double height,
     required double bearingY,
     double bearingX = 0.0,
-    AtlasEntryLane lane = .text,
+    required AtlasEntryLane lane,
   }) {
     _pack(width, height);
 

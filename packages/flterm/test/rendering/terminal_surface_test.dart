@@ -71,6 +71,115 @@ void main() {
       terminal.dispose();
     });
 
+    group('presentation lifetime', () {
+      test('retains one captured picture until release and fresh paint', () {
+        writeUtf8('READY');
+        expect(pipeline.captureRenderHold(terminal), isTrue);
+        expect(pipeline.isContentInteractionReady, isFalse);
+        final held = TestRecordingCanvas();
+        pipeline.draw(held, terminal);
+        final picture =
+            held.invocations.single.invocation.positionalArguments.single
+                as Picture;
+        expect(picture.debugDisposed, isFalse);
+
+        expect(pipeline.captureRenderHold(terminal), isTrue);
+        final repeated = TestRecordingCanvas();
+        pipeline.draw(repeated, terminal);
+        expect(
+          repeated.invocations.single.invocation.positionalArguments.single,
+          same(picture),
+        );
+
+        pipeline.releaseRenderHold();
+        expect(picture.debugDisposed, isTrue);
+        expect(pipeline.isContentInteractionReady, isFalse);
+        pipeline.releaseRenderHold();
+        expect(pipeline.isContentInteractionReady, isFalse);
+
+        writeUtf8('FRESH');
+        paint(pipeline, terminal);
+        expect(pipeline.isContentInteractionReady, isTrue);
+        expect(pipeline.textInputCaretRect, const Rect.fromLTWH(16, 16, 8, 16));
+      });
+
+      test('an empty paint cannot make a released frame interactive', () {
+        expect(pipeline.captureRenderHold(terminal), isTrue);
+        pipeline.releaseRenderHold();
+        pipeline.layout(
+          terminal: terminal,
+          constraints: const BoxConstraints.tightFor(width: 0, height: 0),
+          surfacePadding: .zero,
+          onGeometryChanged: SurfaceGeometry.tryFrom,
+        );
+        final canvas = TestRecordingCanvas();
+        pipeline.draw(canvas, terminal);
+        expect(canvas.invocations, isEmpty);
+        expect(pipeline.isContentInteractionReady, isFalse);
+        expect(pipeline.captureRenderHold(terminal), isFalse);
+
+        pipeline.layout(
+          terminal: terminal,
+          constraints: const BoxConstraints.tightFor(width: 64, height: 32),
+          surfacePadding: .zero,
+          onGeometryChanged: SurfaceGeometry.tryFrom,
+        );
+        paint(pipeline, terminal);
+        expect(pipeline.isContentInteractionReady, isTrue);
+      });
+
+      test(
+        'disposal ends interaction readiness and prevents further paint',
+        () {
+          paint(pipeline, terminal);
+          expect(pipeline.isContentInteractionReady, isTrue);
+
+          pipeline.dispose();
+          expect(pipeline.isContentInteractionReady, isFalse);
+          expect(pipeline.captureRenderHold(terminal), isFalse);
+          final canvas = TestRecordingCanvas();
+          pipeline.draw(canvas, terminal);
+          expect(canvas.invocations, isEmpty);
+          pipeline.releaseRenderHold();
+          pipeline.dispose();
+          expect(pipeline.isContentInteractionReady, isFalse);
+        },
+      );
+
+      test('disposal releases a captured picture exactly once', () {
+        expect(pipeline.captureRenderHold(terminal), isTrue);
+        final canvas = TestRecordingCanvas();
+        pipeline.draw(canvas, terminal);
+        final picture =
+            canvas.invocations.single.invocation.positionalArguments.single
+                as Picture;
+
+        pipeline.dispose();
+        expect(picture.debugDisposed, isTrue);
+        pipeline.releaseRenderHold();
+        pipeline.dispose();
+        expect(pipeline.isContentInteractionReady, isFalse);
+        expect(pipeline.captureRenderHold(terminal), isFalse);
+      });
+
+      test('stops layout if the geometry callback disposes the surface', () {
+        pipeline.layout(
+          terminal: terminal,
+          constraints: const BoxConstraints.tightFor(width: 72, height: 32),
+          surfacePadding: .zero,
+          onGeometryChanged: (measurement) {
+            pipeline.dispose();
+            return SurfaceGeometry.tryFrom(measurement);
+          },
+        );
+
+        expect(pipeline.isContentInteractionReady, isFalse);
+        final canvas = TestRecordingCanvas();
+        pipeline.draw(canvas, terminal);
+        expect(canvas.invocations, isEmpty);
+      });
+    });
+
     group('undersized surfaces', () {
       for (final (name, size) in [
         ('zero width', const Size(0, 32)),

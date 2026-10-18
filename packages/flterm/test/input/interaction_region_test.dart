@@ -74,8 +74,12 @@ void main() {
 
     ViewAttachment bindingFor(TerminalController controller) {
       return adapters.putIfAbsent(controller, () {
-        final adapter = ViewAttachment(controller);
-        addTearDown(adapter.dispose);
+        final links = LinkInteraction();
+        final adapter = ViewAttachment(controller, links: links);
+        addTearDown(() {
+          adapter.dispose();
+          links.dispose();
+        });
         return adapter;
       });
     }

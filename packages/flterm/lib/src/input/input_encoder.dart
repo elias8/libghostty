@@ -1,6 +1,7 @@
 import 'package:libghostty/libghostty.dart';
 
-import '../foundation.dart';
+import '../foundation/key_codepoints.dart';
+import '../foundation/surface_geometry.dart';
 import 'input_message.dart';
 
 /// Owns the reusable terminal resources that encode normalized input.
