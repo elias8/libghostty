@@ -529,6 +529,73 @@ void main() {
       );
     });
 
+    group('focusGesture', () {
+      Future<FocusNode> pumpWith(
+        WidgetTester tester,
+        TerminalFocusGesture focusGesture,
+      ) async {
+        final focusNode = FocusNode();
+        addTearDown(focusNode.dispose);
+        await tester.pumpWidget(
+          wrapInApp(
+            controller: controller,
+            focusNode: focusNode,
+            gestureSettings: TerminalGestureSettings(
+              focusGesture: focusGesture,
+            ),
+          ),
+        );
+        writeNumberedLines(80);
+        await tester.pump();
+        return focusNode;
+      }
+
+      testWidgets('tap focuses on release', (tester) async {
+        final focusNode = await pumpWith(tester, .tap);
+        final gesture = await tester.startGesture(
+          tester.getCenter(find.byType(TerminalView)),
+        );
+        await tester.pump(const Duration(milliseconds: 200));
+
+        expect(focusNode.hasFocus, isFalse);
+
+        await gesture.up();
+        await tester.pumpAndSettle();
+
+        expect(focusNode.hasFocus, isTrue);
+      });
+
+      testWidgets('tap leaves a touch scroll unfocused', (tester) async {
+        final focusNode = await pumpWith(tester, .tap);
+        final gesture = await tester.startGesture(
+          tester.getCenter(find.byType(TerminalView)),
+        );
+        await tester.pump(const Duration(milliseconds: 200));
+        await gesture.moveBy(const Offset(0, 120));
+        await tester.pump();
+        await gesture.up();
+        await tester.pumpAndSettle();
+
+        expect(focusNode.hasFocus, isFalse);
+      });
+
+      testWidgets('tap leaves a long press unfocused', (tester) async {
+        final focusNode = await pumpWith(tester, .tap);
+        await tester.longPress(find.byType(TerminalView));
+        await tester.pumpAndSettle();
+
+        expect(focusNode.hasFocus, isFalse);
+      });
+
+      testWidgets('none ignores a tap', (tester) async {
+        final focusNode = await pumpWith(tester, .none);
+        await tester.tap(find.byType(TerminalView));
+        await tester.pumpAndSettle();
+
+        expect(focusNode.hasFocus, isFalse);
+      });
+    });
+
     testWidgets('alternate screen keeps soft keyboard enabled', (tester) async {
       final calls = recordTextInputCalls();
       await tester.pumpWidget(
