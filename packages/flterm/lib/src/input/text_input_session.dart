@@ -34,6 +34,16 @@ final class TextInputSession with DeltaTextInputClient {
   static final _newlinePattern = RegExp(r'\r\n|[\n\r]');
   static final _onlyNewlinesPattern = RegExp(r'^(?:\r\n|[\n\r])+$');
 
+  /// Ceiling on the retained buffer: autocorrect only ever looks at the
+  /// current word, so a runaway line gets cut loose instead of growing.
+  static const _bufferLimit = 512;
+
+  var _autocorrect = false;
+
+  /// How much of the retained buffer already went to the host. Only grows
+  /// while [autocorrect] keeps the buffer alive; [_resetBuffer] clears it.
+  var _sentFromBuffer = 0;
+
   _CommittedCompositionEdit _committedCompositionEdit = .none;
   TextInputConnection? _connection;
   var _hadVisiblePreeditText = false;
@@ -47,6 +57,22 @@ final class TextInputSession with DeltaTextInputClient {
   ValueChanged<String>? _onTextCommitted;
   TextEditingValue _value = _sentinel;
   int? _viewId;
+
+  /// Lets the platform keyboard autocorrect typed words. Off by default.
+  ///
+  /// The platform rewrites a word after it was typed, and those bytes already
+  /// went to the host, so a replacement is undone with backspaces first. That
+  /// edits the line where the host reads one, a shell prompt, not a TUI's
+  /// keymap. To keep the word visible to the platform, the editing buffer is
+  /// retained until the line ends instead of reset after every character.
+  set autocorrect(bool value) {
+    if (_autocorrect == value) return;
+    _autocorrect = value;
+    final connection = _connection;
+    if (connection != null && connection.attached) {
+      connection.updateConfig(_configuration);
+    }
+  }
 
   @override
   AutofillScope? get currentAutofillScope => null;
@@ -104,13 +130,13 @@ final class TextInputSession with DeltaTextInputClient {
     }
     return TextInputConfiguration(
       viewId: viewId,
-      autocorrect: false,
+      autocorrect: _autocorrect,
       inputType: .multiline,
       inputAction: .newline,
       smartDashesType: .disabled,
       smartQuotesType: .disabled,
       enableDeltaModel: true,
-      enableSuggestions: false,
+      enableSuggestions: _autocorrect,
       enableInlinePrediction: false,
       enableInteractiveSelection: false,
       enableIMEPersonalizedLearning: false,
@@ -168,6 +194,9 @@ final class TextInputSession with DeltaTextInputClient {
       return;
     }
     _onNewline?.call();
+    // The line is gone to the host: start the next one from a clean buffer,
+    // or a retained one would keep growing across commands.
+    if (_autocorrect) _resetBuffer();
     _newlineDeltasToSuppress++;
     _armNewlineActionDedupeTimer();
   }
@@ -264,7 +293,12 @@ final class TextInputSession with DeltaTextInputClient {
   }
 
   void _commitEndedCompositionFromValue() {
-    final committed = _value.terminalCommittedText;
+    final all = _value.terminalCommittedText;
+    // A retained buffer already sent its earlier characters; only the tail
+    // the IME just committed is new.
+    final committed = all.length > _sentFromBuffer
+        ? all.substring(_sentFromBuffer)
+        : '';
     if (committed.isEmpty) {
       _clearCommittedCompositionEdit();
       return;
@@ -278,6 +312,18 @@ final class TextInputSession with DeltaTextInputClient {
         text.isNotEmpty && (fromComposition || text.isImeLikeCommit)
         ? .pending
         : .none;
+    // Autocorrect fixes a word only while the platform can still see it, so
+    // the buffer is kept until the line ends. Composition keeps the reset:
+    // an IME owns its own preedit state.
+    final keepBuffer =
+        _autocorrect &&
+        !fromComposition &&
+        !_newlinePattern.hasMatch(text) &&
+        _value.text.length <= _bufferLimit;
+    if (keepBuffer) {
+      _sentFromBuffer += text.length;
+      return;
+    }
     _resetBuffer();
   }
 
@@ -350,6 +396,18 @@ final class TextInputSession with DeltaTextInputClient {
     };
 
     if (committedText != null) {
+      // Take back exactly what the platform is replacing before sending the
+      // correction. Gated on the setting: without it a replacement delta can
+      // only come from an IME path that must not see stray backspaces.
+      if (_autocorrect &&
+          delta is TextEditingDeltaReplacement &&
+          !_hadVisiblePreeditText) {
+        final replaced = delta.replacedRange.end - delta.replacedRange.start;
+        if (replaced > 0) {
+          _onDelete?.call(replaced);
+          _sentFromBuffer = (_sentFromBuffer - replaced).clamp(0, _bufferLimit);
+        }
+      }
       _commitInputText(committedText, fromComposition: fromCompositionInBatch);
       committedFromDelta = true;
     } else if (delta is TextEditingDeltaDeletion &&
@@ -368,7 +426,15 @@ final class TextInputSession with DeltaTextInputClient {
       _clearNewlineActionSuppression();
       _onDelete?.call(count);
       _clearCommittedCompositionEdit();
-      _resetBuffer();
+      // Keep shrinking a retained buffer while it still holds typed text.
+      // Once it is down to the sentinel the platform sees an empty field and
+      // stops reporting Backspace, but the host may still have a line to
+      // erase (pasted text never entered the buffer). Re-prime instead.
+      if (_autocorrect && _value.text.length > _sentinel.text.length) {
+        _sentFromBuffer = (_sentFromBuffer - count).clamp(0, _bufferLimit);
+      } else {
+        _resetBuffer();
+      }
     }
 
     if (hasVisiblePreeditText) {
@@ -405,6 +471,7 @@ final class TextInputSession with DeltaTextInputClient {
 
   void _resetBuffer() {
     _value = _sentinel;
+    _sentFromBuffer = 0;
     final connection = _connection;
     if (connection != null && connection.attached) {
       connection.setEditingState(_value);
@@ -415,6 +482,7 @@ final class TextInputSession with DeltaTextInputClient {
     final hadVisiblePreeditText =
         _hadVisiblePreeditText || _value.terminalComposingText.isNotEmpty;
     _value = _sentinel;
+    _sentFromBuffer = 0;
     _clearNewlineActionSuppression();
     _clearCommittedCompositionEdit();
     _hadVisiblePreeditText = false;

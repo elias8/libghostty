@@ -73,6 +73,13 @@ class TerminalView extends StatefulWidget {
   /// and IME composition while focused.
   final bool showKeyboard;
 
+  /// Whether the platform keyboard may autocorrect typed words.
+  ///
+  /// Defaults to false. A correction arrives after the typed bytes reached the
+  /// host, so it is undone with backspaces first: right at a shell prompt,
+  /// wrong inside a TUI that reads those keys as commands.
+  final bool autocorrect;
+
   /// When to auto-hide the mouse cursor.
   ///
   /// The view follows OSC 22 pointer shapes when visible. It keeps the text
@@ -160,6 +167,7 @@ class TerminalView extends StatefulWidget {
     this.overlayBuilder,
     this.autofocus = false,
     this.showKeyboard = true,
+    this.autocorrect = false,
     this.padding = const .all(8),
     this.mouseAutoHide = .onInput,
     this.linkSettings = const LinkSettings(),
@@ -448,6 +456,7 @@ final class _TerminalViewState extends State<TerminalView>
     _attachment = ViewAttachment(_controller);
     _attachment.applyTheme(_theme, initial: initial);
     _attachment.mouseAutoHide = widget.mouseAutoHide;
+    _attachment.autocorrect = widget.autocorrect;
     _resizeDeferred = _attachment.resizeDeferred;
     _attachment.addListener(_onControllerChanged);
     _bindViewListenables();
@@ -502,6 +511,7 @@ final class _TerminalViewState extends State<TerminalView>
 
   void _syncAppearance(TerminalView oldWidget, bool controllerChanged) {
     _attachment.mouseAutoHide = widget.mouseAutoHide;
+    _attachment.autocorrect = widget.autocorrect;
     final oldTheme = _theme;
     final themeChanged = widget.theme != oldWidget.theme;
     if (themeChanged) {

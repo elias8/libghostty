@@ -163,6 +163,7 @@ void main() {
       TerminalScrollController? scrollController,
       bool autofocus = false,
       bool showKeyboard = true,
+      bool autocorrect = false,
       MouseAutoHide mouseAutoHide = .onInput,
       TerminalGestureSettings gestureSettings = const TerminalGestureSettings(),
       LinkSettings linkSettings = const LinkSettings(),
@@ -185,6 +186,7 @@ void main() {
               scrollController: scrollController,
               autofocus: autofocus,
               showKeyboard: showKeyboard,
+              autocorrect: autocorrect,
               mouseAutoHide: mouseAutoHide,
               gestureSettings: gestureSettings,
               linkSettings: linkSettings,
@@ -1637,6 +1639,25 @@ void main() {
         hasLength(1),
       );
       expect(calls.where((call) => call.method == 'TextInput.show'), isEmpty);
+    });
+
+    testWidgets('autocorrect reaches the text input configuration', (
+      tester,
+    ) async {
+      final calls = recordTextInputCalls();
+      await tester.pumpWidget(
+        wrapInApp(controller: controller, autofocus: true, autocorrect: true),
+      );
+      await tester.pump();
+
+      final args =
+          calls
+                  .lastWhere((call) => call.method == 'TextInput.setClient')
+                  .arguments
+              as List<Object?>;
+      final config = args[1]! as Map<Object?, Object?>;
+      expect(config['autocorrect'], isTrue);
+      expect(config['enableSuggestions'], isTrue);
     });
 
     group('text input connection', () {
