@@ -62,6 +62,46 @@ void main() {
       cells.next();
     }
 
+    test('independent iterators preserve rows when another row is bound', () {
+      final otherRows = RowIterator();
+      final otherCells = CellIterator();
+      addTearDown(() {
+        otherCells.dispose();
+        otherRows.dispose();
+      });
+      terminal.write(Uint8List.fromList(utf8.encode('alpha\r\nbravo')));
+      renderState.update(terminal);
+      rows.reset(renderState);
+      expect(rows.next(), isTrue);
+      cells.reset(rows);
+      otherRows.reset(renderState);
+      expect(otherRows.next(), isTrue);
+      expect(otherRows.next(), isTrue);
+      otherCells.reset(otherRows);
+      for (var col = 0; col < 5; col++) {
+        expect(cells.next(), isTrue);
+        expect(cells.content, 'alpha'[col]);
+        expect(otherCells.next(), isTrue);
+        expect(otherCells.content, 'bravo'[col]);
+      }
+      terminal.write(Uint8List.fromList(utf8.encode('\x1b[HGAMMA')));
+      renderState.update(terminal);
+      expect(otherCells.next, throwsStateError);
+      rows.reset(renderState);
+      expect(rows.next(), isTrue);
+      cells.reset(rows);
+      for (var col = 0; col < 5; col++) {
+        expect(cells.next(), isTrue);
+        expect(cells.content, 'GAMMA'[col]);
+      }
+      otherRows.reset(renderState);
+      expect(otherRows.next(), isTrue);
+      expect(otherRows.next(), isTrue);
+      otherCells.reset(otherRows);
+      expect(otherCells.next(), isTrue);
+      expect(otherCells.content, 'b');
+    });
+
     test('rejects cells after their render state is disposed', () {
       terminal.write(Uint8List.fromList('hello'.codeUnits));
       bindFirstCell();

@@ -11,6 +11,10 @@ extension _ExactDataView on JSDataView {
   external JSBigInt getBigUint64(int byteOffset, JSBoolean littleEndian);
 }
 
+extension _ByteCopy on JSUint8Array {
+  external void set(JSUint8Array source);
+}
+
 final class Memory {
   final GhosttyExports _exports;
   JSArrayBuffer? _bufferObject;
@@ -84,7 +88,12 @@ final class Memory {
   void writeBytes(int addr, List<int> bytes) {
     _refresh();
     _checkRange(addr, bytes.length);
-    _bytes.buffer.asUint8List(addr, bytes.length).setAll(0, bytes);
+    final destination = _bytes.buffer.asUint8List(addr, bytes.length);
+    if (bytes is Uint8List) {
+      destination.toJS.set(bytes.toJS);
+    } else {
+      destination.setAll(0, bytes);
+    }
   }
 
   void writeF32(int addr, double val) => view.setFloat32(addr, val, .little);

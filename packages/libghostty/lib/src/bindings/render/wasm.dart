@@ -872,16 +872,17 @@ final class _WasmRenderRaw {
       );
       if (result != .success) return (result, _emptyTerminalColors);
 
+      final bytes = _memory.view;
       RgbColor rgbAt(int offset) => RgbColor(
-        _memory.readU8(colorsPtr + offset),
-        _memory.readU8(colorsPtr + offset + 1),
-        _memory.readU8(colorsPtr + offset + 2),
+        bytes.getUint8(colorsPtr + offset),
+        bytes.getUint8(colorsPtr + offset + 1),
+        bytes.getUint8(colorsPtr + offset + 2),
       );
 
       final bg = rgbAt(_layout.colorsBg);
       final fg = rgbAt(_layout.colorsFg);
       final cursorHasValue =
-          _memory.readU8(colorsPtr + _layout.colorsCursorHasValue) != 0;
+          bytes.getUint8(colorsPtr + _layout.colorsCursorHasValue) != 0;
       final cursor = cursorHasValue ? rgbAt(_layout.colorsCursor) : null;
 
       final palette = <RgbColor>[
@@ -1658,6 +1659,17 @@ final class _WasmRenderRaw {
       if (address == 0 && length != 0) {
         throw StateError('GhosttyCellsView has a null pointer with cells.');
       }
+      final byteLength = length * _layout.cellLayout.size;
+      var copiedCells = view.copiedCells;
+      if (copiedCells == null || copiedCells.lengthInBytes != byteLength) {
+        copiedCells = ByteData(byteLength);
+        view.copiedCells = copiedCells;
+      }
+      copiedCells.buffer.asUint8List().setRange(
+        0,
+        byteLength,
+        _memory.readBytes(address, byteLength),
+      );
       final selection = rowIteratorGetSelection(iterator);
       final hasSelection = checkOptionalCode(
         selection.$1.value,
@@ -1676,8 +1688,8 @@ final class _WasmRenderRaw {
 
   bool decodeRawCell(RawCellsView view, int index, RawCellData output) {
     if (index < 0 || index >= view.length) return false;
-    final address = view.address + index * _layout.cellLayout.size;
-    final bytes = _memory.view;
+    final address = index * _layout.cellLayout.size;
+    final bytes = view.copiedCells!;
     _layout.cellLayout.decodeWordsInto(
       bytes.getUint32(address, Endian.little),
       bytes.getUint32(address + 4, Endian.little),
@@ -1978,34 +1990,41 @@ final class _WasmRenderRaw {
     );
   }
 
-  RawColor _readRawColor(int addr) {
+  RawColor _readRawColor(ByteData bytes, int addr) {
     return (
-      tag: StyleColorTag.fromValue(_memory.readU32(addr)),
-      palette: _memory.readU8(addr + _layout.styleColorR),
-      r: _memory.readU8(addr + _layout.styleColorR),
-      g: _memory.readU8(addr + _layout.styleColorG),
-      b: _memory.readU8(addr + _layout.styleColorB),
+      tag: StyleColorTag.fromValue(bytes.getUint32(addr, Endian.little)),
+      palette: bytes.getUint8(addr + _layout.styleColorR),
+      r: bytes.getUint8(addr + _layout.styleColorR),
+      g: bytes.getUint8(addr + _layout.styleColorG),
+      b: bytes.getUint8(addr + _layout.styleColorB),
     );
   }
 
   Style _readStyle(int stylePtr) {
-    final ulRaw = _readRawColor(stylePtr + _layout.styleUnderlineColor);
+    final bytes = _memory.view;
+    final ulRaw = _readRawColor(bytes, stylePtr + _layout.styleUnderlineColor);
     return Style(
-      foreground: cellColorFromRaw(_readRawColor(stylePtr + _layout.styleFg)),
-      background: cellColorFromRaw(_readRawColor(stylePtr + _layout.styleBg)),
+      foreground: cellColorFromRaw(
+        _readRawColor(bytes, stylePtr + _layout.styleFg),
+      ),
+      background: cellColorFromRaw(
+        _readRawColor(bytes, stylePtr + _layout.styleBg),
+      ),
       underlineColor: switch (ulRaw.tag) {
         .rgb || .palette => cellColorFromRaw(ulRaw),
         .none => null,
       },
-      bold: _memory.readU8(stylePtr + _layout.styleBold) != 0,
-      italic: _memory.readU8(stylePtr + _layout.styleItalic) != 0,
-      faint: _memory.readU8(stylePtr + _layout.styleFaint) != 0,
-      blink: _memory.readU8(stylePtr + _layout.styleBlink) != 0,
-      inverse: _memory.readU8(stylePtr + _layout.styleInverse) != 0,
-      invisible: _memory.readU8(stylePtr + _layout.styleInvisible) != 0,
-      strikethrough: _memory.readU8(stylePtr + _layout.styleStrikethrough) != 0,
-      overline: _memory.readU8(stylePtr + _layout.styleOverline) != 0,
-      underline: .fromValue(_memory.readI32(stylePtr + _layout.styleUnderline)),
+      bold: bytes.getUint8(stylePtr + _layout.styleBold) != 0,
+      italic: bytes.getUint8(stylePtr + _layout.styleItalic) != 0,
+      faint: bytes.getUint8(stylePtr + _layout.styleFaint) != 0,
+      blink: bytes.getUint8(stylePtr + _layout.styleBlink) != 0,
+      inverse: bytes.getUint8(stylePtr + _layout.styleInverse) != 0,
+      invisible: bytes.getUint8(stylePtr + _layout.styleInvisible) != 0,
+      strikethrough: bytes.getUint8(stylePtr + _layout.styleStrikethrough) != 0,
+      overline: bytes.getUint8(stylePtr + _layout.styleOverline) != 0,
+      underline: .fromValue(
+        bytes.getInt32(stylePtr + _layout.styleUnderline, Endian.little),
+      ),
     );
   }
 
