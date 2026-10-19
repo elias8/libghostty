@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:libghostty/libghostty.dart' show GridRef, Position, Selection;
@@ -185,6 +186,11 @@ final class _TerminalViewState extends State<TerminalView>
   var _active = true;
   int? _viewId;
 
+  /// Held hardware key whose auto-repeat this view synthesizes on iOS, and
+  /// the timer driving it. See [_trackKeyRepeat].
+  KeyDownEvent? _repeatingKey;
+  Timer? _keyRepeatTimer;
+
   TerminalController get _controller => widget.controller;
 
   @override
@@ -337,6 +343,7 @@ final class _TerminalViewState extends State<TerminalView>
 
   @override
   void deactivate() {
+    _stopKeyRepeat();
     _active = false;
     WidgetsBinding.instance.removeObserver(this);
     _disposeAttachment();
@@ -383,6 +390,7 @@ final class _TerminalViewState extends State<TerminalView>
 
   @override
   void dispose() {
+    _stopKeyRepeat();
     WidgetsBinding.instance.removeObserver(this);
     if (_active) _disposeAttachment();
     if (widget.focusNode == null) _focusNode.dispose();
@@ -422,11 +430,69 @@ final class _TerminalViewState extends State<TerminalView>
   }
 
   void _handleFocusChange(bool focused) {
+    if (!focused) _stopKeyRepeat();
     if (focused && widget.showKeyboard) _attachment.showKeyboard();
   }
 
-  KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) =>
-      _attachment.handleKeyEvent(event);
+  KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
+    final result = _attachment.handleKeyEvent(event);
+    _trackKeyRepeat(event, result);
+    return result;
+  }
+
+  /// UIKit delivers a hardware key press once and leaves auto-repeat to the
+  /// text system, which the terminal bypasses, so a held key on iOS never
+  /// produces a [KeyRepeatEvent]. Synthesize the repeats; other platforms
+  /// report their own.
+  ///
+  /// A release always stops the repeat: one key repeats at a time, and a
+  /// modifier's release must not leave the previous key running. A press
+  /// repeats only when the terminal consumed it.
+  void _trackKeyRepeat(KeyEvent event, KeyEventResult result) {
+    if (defaultTargetPlatform != .iOS) return;
+    if (event is KeyRepeatEvent) return;
+    _stopKeyRepeat();
+    if (event is! KeyDownEvent) return;
+    if (result != .handled && result != .skipRemainingHandlers) return;
+    _repeatingKey = event;
+    // iOS's own defaults: ~500 ms to the first repeat, then ~50 ms apart.
+    _keyRepeatTimer = Timer(const Duration(milliseconds: 500), () {
+      _keyRepeatTimer = Timer.periodic(
+        const Duration(milliseconds: 50),
+        (_) => _fireKeyRepeat(),
+      );
+      _fireKeyRepeat();
+    });
+  }
+
+  void _fireKeyRepeat() {
+    final held = _repeatingKey;
+    // The release may never reach us: the app went to the background
+    // mid-press, or an overlay took focus.
+    if (held == null ||
+        !_focusNode.hasFocus ||
+        !HardwareKeyboard.instance.physicalKeysPressed.contains(
+          held.physicalKey,
+        )) {
+      _stopKeyRepeat();
+      return;
+    }
+    _attachment.handleKeyEvent(
+      KeyRepeatEvent(
+        physicalKey: held.physicalKey,
+        logicalKey: held.logicalKey,
+        character: held.character,
+        timeStamp: held.timeStamp,
+        deviceType: held.deviceType,
+      ),
+    );
+  }
+
+  void _stopKeyRepeat() {
+    _keyRepeatTimer?.cancel();
+    _keyRepeatTimer = null;
+    _repeatingKey = null;
+  }
 
   void _handleMouseExit(PointerExitEvent event) =>
       _attachment.links.cancelHover();

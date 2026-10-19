@@ -1639,6 +1639,57 @@ void main() {
       expect(calls.where((call) => call.method == 'TextInput.show'), isEmpty);
     });
 
+    group('iOS key repeat', () {
+      Future<List<Uint8List>> pumpFocused(WidgetTester tester) async {
+        await tester.pumpWidget(
+          wrapInApp(controller: controller, autofocus: true),
+        );
+        await tester.pump();
+        final output = <Uint8List>[];
+        controller.onOutput = output.add;
+        return output;
+      }
+
+      testWidgets('a held key repeats', (tester) async {
+        final output = await pumpFocused(tester);
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.keyA);
+        await tester.pump(const Duration(milliseconds: 620));
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.keyA);
+        await tester.pump(const Duration(milliseconds: 200));
+
+        // The press, then a repeat at 500 ms and every 50 ms after it.
+        expect(decodeOutput(output), 'aaaa');
+      }, variant: TargetPlatformVariant.only(TargetPlatform.iOS));
+
+      testWidgets('a quick press does not repeat', (tester) async {
+        final output = await pumpFocused(tester);
+        await tester.sendKeyEvent(LogicalKeyboardKey.keyA);
+        await tester.pump(const Duration(seconds: 1));
+
+        expect(decodeOutput(output), 'a');
+      }, variant: TargetPlatformVariant.only(TargetPlatform.iOS));
+
+      testWidgets('focus leaving stops the repeat', (tester) async {
+        final output = await pumpFocused(tester);
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.keyA);
+        await tester.pump(const Duration(milliseconds: 520));
+        FocusManager.instance.primaryFocus?.unfocus();
+        await tester.pump(const Duration(milliseconds: 200));
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.keyA);
+
+        expect(decodeOutput(output), 'aa');
+      }, variant: TargetPlatformVariant.only(TargetPlatform.iOS));
+
+      testWidgets('other platforms report their own repeats', (tester) async {
+        final output = await pumpFocused(tester);
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.keyA);
+        await tester.pump(const Duration(milliseconds: 620));
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.keyA);
+
+        expect(decodeOutput(output), 'a');
+      }, variant: TargetPlatformVariant.only(TargetPlatform.android));
+    });
+
     group('text input connection', () {
       List<MethodCall> lifecycleCalls(List<MethodCall> calls) {
         return calls
