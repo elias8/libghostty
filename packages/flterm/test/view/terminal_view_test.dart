@@ -3771,18 +3771,21 @@ void main() {
         return pixels!;
       }
 
-      Widget wrappedPixelSurface() => MaterialApp(
-        home: Scaffold(
-          body: RepaintBoundary(
-            key: const ValueKey('synchronized output surface'),
-            child: SizedBox(
-              width: 800,
-              height: 480,
-              child: TerminalView(controller: controller),
+      Widget wrappedPixelSurface({TerminalController? pixelController}) =>
+          MaterialApp(
+            home: Scaffold(
+              body: RepaintBoundary(
+                key: const ValueKey('synchronized output surface'),
+                child: SizedBox(
+                  width: 800,
+                  height: 480,
+                  child: TerminalView(
+                    controller: pixelController ?? controller,
+                  ),
+                ),
+              ),
             ),
-          ),
-        ),
-      );
+          );
 
       testWidgets('shows the captured frame until the deadline', (
         tester,
@@ -3800,6 +3803,128 @@ void main() {
 
         expect(controller.modeGet(syncOutput), isFalse);
         expect(await surfacePixels(tester), isNot(orderedEquals(readyFrame)));
+      });
+
+      testWidgets('preserves a captured hold when an output callback throws', (
+        tester,
+      ) async {
+        await tester.pumpWidget(wrappedPixelSurface());
+        writeUtf8(controller, '\x1b[?12lREADY');
+        await tester.pump();
+        final readyFrame = await surfacePixels(tester);
+        final error = StateError('bell callback');
+        controller.onBell = () => throw error;
+
+        expect(
+          () => writeUtf8(controller, '\x1b[?2026h\x1b[2J\x1b[HPARTIAL\x07'),
+          throwsA(same(error)),
+        );
+        expect(controller.modeGet(syncOutput), isTrue);
+        await tester.pump();
+        expect(await surfacePixels(tester), orderedEquals(readyFrame));
+
+        controller.onBell = null;
+        writeUtf8(controller, '\x1b[?2026l');
+        await tester.pump();
+        expect(controller.modeGet(syncOutput), isFalse);
+        expect(await surfacePixels(tester), isNot(orderedEquals(readyFrame)));
+      });
+
+      testWidgets('preserves unpainted bytes before a completed hold', (
+        tester,
+      ) async {
+        const initial = '\x1b[?12l\x1b[HREADY';
+        const before = '\x1b[2;1H\x1b[31;44mBEFORE\x1b[0m';
+        const after = '\x1b[3;1H\x1b[32mAFTER\x1b[0m';
+        await tester.pumpWidget(wrappedPixelSurface());
+        writeUtf8(controller, initial);
+        await tester.pump();
+
+        writeUtf8(controller, '$before\x1b[?2026h$after\x1b[?2026l');
+        await tester.pump();
+        final completedFrame = await surfacePixels(tester);
+
+        final oracle = TerminalController();
+        addTearDown(oracle.dispose);
+        await tester.pumpWidget(wrappedPixelSurface(pixelController: oracle));
+        writeUtf8(oracle, '$initial$before$after');
+        await tester.pump();
+
+        expect(completedFrame, orderedEquals(await surfacePixels(tester)));
+      });
+
+      testWidgets('captures unpainted styled cells and the wide cursor cell', (
+        tester,
+      ) async {
+        const initial = '\x1b[?12l\x1b[HREADY';
+        const before =
+            '\x1b[2;1H\x1b[31;44mBEFORE'
+            '\x1b[3;1H界Z\x1b[0m\x1b[3;2H\x1b[32m';
+        const after = '\x1b[0m\x1b[2J\x1b[HAFTER\x1b[4;8H';
+        final oracle = TerminalController();
+        addTearDown(oracle.dispose);
+        await tester.pumpWidget(wrappedPixelSurface(pixelController: oracle));
+        writeUtf8(oracle, '$initial$before');
+        await tester.pump();
+        final callbackFrame = await surfacePixels(tester);
+
+        await tester.pumpWidget(wrappedPixelSurface());
+        writeUtf8(controller, initial);
+        await tester.pump();
+        final readyFrame = await surfacePixels(tester);
+        expect(callbackFrame, isNot(orderedEquals(readyFrame)));
+
+        writeUtf8(controller, '$before\x1b[?2026h');
+        writeUtf8(controller, after);
+        await tester.pump();
+        expect(await surfacePixels(tester), orderedEquals(callbackFrame));
+
+        writeUtf8(controller, '\x1b[?2026l');
+        await tester.pump();
+        final releasedFrame = await surfacePixels(tester);
+        expect(releasedFrame, isNot(orderedEquals(callbackFrame)));
+
+        await tester.pumpWidget(wrappedPixelSurface(pixelController: oracle));
+        writeUtf8(oracle, after);
+        await tester.pump();
+        expect(releasedFrame, orderedEquals(await surfacePixels(tester)));
+      });
+
+      testWidgets('preserves rows through completed holds without painting', (
+        tester,
+      ) async {
+        const initial = '\x1b[?12l\x1b[HREADY';
+        final before = <String>[
+          for (var row = 2; row <= 9; row++)
+            '\x1b[$row;1H\x1b[31;44mBEFORE $row\x1b[0m',
+        ];
+        final after = <String>[
+          for (var row = 2; row <= 9; row++)
+            '\x1b[$row;20H\x1b[32mAFTER $row\x1b[0m',
+        ];
+        await tester.pumpWidget(wrappedPixelSurface());
+        writeUtf8(controller, initial);
+        await tester.pump();
+
+        for (var index = 0; index < before.length; index++) {
+          writeUtf8(
+            controller,
+            '${before[index]}\x1b[?2026h${after[index]}\x1b[?2026l',
+          );
+        }
+        await tester.pump();
+        final completedFrame = await surfacePixels(tester);
+
+        final oracle = TerminalController();
+        addTearDown(oracle.dispose);
+        await tester.pumpWidget(wrappedPixelSurface(pixelController: oracle));
+        writeUtf8(oracle, initial);
+        for (var index = 0; index < before.length; index++) {
+          writeUtf8(oracle, '${before[index]}${after[index]}');
+        }
+        await tester.pump();
+
+        expect(completedFrame, orderedEquals(await surfacePixels(tester)));
       });
 
       testWidgets(

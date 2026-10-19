@@ -261,6 +261,7 @@ final class TerminalRenderBox extends RenderBox
 
   late final RenderSurfaceCallbacks _renderSurfaceCallbacks = (
     onRenderHold: _handleRenderHold,
+    onWriteComplete: () => _surface.completeRenderHold(),
     isContentInteractionReady: () => _surface.isContentInteractionReady,
   );
 

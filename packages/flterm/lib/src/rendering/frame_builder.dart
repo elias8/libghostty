@@ -19,6 +19,23 @@ part 'frame_row_cache.dart';
 part 'frame_rows.dart';
 part 'frame_style.dart';
 
+/// Copied metadata for the native snapshot retained by its frame builder.
+final class CapturedFrame {
+  final DirtyState dirty;
+  final Scrollbar scrollbar;
+  final RenderStateCursor cursor;
+  final ({String content, Style style, bool wide})? cursorCell;
+  final RgbColor? cursorColor;
+
+  CapturedFrame(
+    this.dirty,
+    this.scrollbar,
+    this.cursor,
+    this.cursorCell,
+    this.cursorColor,
+  );
+}
+
 /// Builds terminal visual layers for the current frame.
 ///
 /// Reads terminal cells and writes [SpriteBuffer] channels for text, emoji,
@@ -137,7 +154,7 @@ class FrameBuilder {
         dirty = .full;
       }
 
-      _syncCursor(terminal, scrollbar);
+      _applyCursor(_captureCursor(terminal, scrollbar));
     }
 
     // Preedit text is render-only state. It can dirty rows even when the
@@ -157,6 +174,72 @@ class FrameBuilder {
     }
     // Cursor-only focus/blink changes can admit ink while every row is clean.
     _atlas.ensureImage();
+  }
+
+  /// Updates the native snapshot without decoding cells or admitting glyphs.
+  CapturedFrame capture(Terminal terminal) {
+    final changed = _bindTerminal(terminal);
+    _renderState.update(terminal);
+    if (changed) _renderState.dirty = .full;
+    return _captureCursor(terminal, terminal.scrollbar);
+  }
+
+  /// Preserves captured changes until the next live sync.
+  ///
+  /// A missing frame means capture failed or materialization already began,
+  /// so decoded data and paint buffers can no longer be reused selectively.
+  void discardCaptured(CapturedFrame? frame) {
+    switch (frame?.dirty ?? DirtyState.full) {
+      case DirtyState.clean:
+        return;
+      case DirtyState.partial:
+        _rows.reset(_renderState);
+        while (_rows.nextDirty()) {
+          final row = _rows.viewportY;
+          if (row < 0 || row >= _state.rows) continue;
+          _decodedRows.remove(_rows.id);
+          _dirtyRows.markRow(row);
+        }
+      case DirtyState.full:
+        _decodedRows.clear();
+        _dirtyRows.markAll();
+    }
+  }
+
+  /// Builds the retained snapshot using only its copied presentation inputs.
+  void buildCaptured(
+    CapturedFrame frame, {
+    required List<Selection> searchMatches,
+    required Selection? selectedSearchMatch,
+    required String preeditText,
+    required LinkSnapshot links,
+  }) {
+    _state.updateTerminalColors(_renderState.colors);
+    _state.viewportOffset = frame.scrollbar.offset;
+    _applyCursor(frame);
+    _rowBuilder.updateSearch(
+      searchMatches,
+      selectedSearchMatch,
+      viewportOffset: frame.scrollbar.offset,
+      dirtyRows: _dirtyRows,
+    );
+    final preedit = _rowBuilder.updatePreedit(
+      preeditText,
+      cursor: _state.cursor,
+    );
+    _state.preeditActive = preedit.active;
+    _decodedRows.clear();
+    _build(.full, links);
+    _atlas.ensureImage();
+    _renderState.clean();
+  }
+
+  void _applyCursor(CapturedFrame frame) {
+    _cursorBuilder.sync(
+      frame.cursor,
+      cell: frame.cursorCell,
+      color: frame.cursorColor,
+    );
   }
 
   void _build(DirtyState dirty, LinkSnapshot links) {
@@ -214,7 +297,7 @@ class FrameBuilder {
     return decoded;
   }
 
-  void _syncCursor(Terminal terminal, Scrollbar scrollbar) {
+  CapturedFrame _captureCursor(Terminal terminal, Scrollbar scrollbar) {
     final cursor = _renderState.cursor;
     final scrollbackLen = scrollbar.total - scrollbar.visible;
     final inViewport =
@@ -226,8 +309,7 @@ class FrameBuilder {
         cursor.viewportX >= 0 &&
         cursor.viewportX < _state.cols;
     if (!inViewport) {
-      _cursorBuilder.sync(cursor, cell: null);
-      return;
+      return CapturedFrame(_renderState.dirty, scrollbar, cursor, null, null);
     }
 
     final adjustedCursor = cursor.wideTail && cursor.viewportX > 0
@@ -240,11 +322,11 @@ class FrameBuilder {
       terminal,
       Position(row: effectiveCursor.viewportY, col: effectiveCursor.viewportX),
     );
-    _cursorBuilder.sync(
-      effectiveCursor,
-      cell: (content: ref.content, style: ref.style, wide: ref.isWide),
-      color: terminal.cursorColor,
-    );
+    return CapturedFrame(_renderState.dirty, scrollbar, effectiveCursor, (
+      content: ref.content,
+      style: ref.style,
+      wide: ref.isWide,
+    ), terminal.cursorColor);
   }
 }
 

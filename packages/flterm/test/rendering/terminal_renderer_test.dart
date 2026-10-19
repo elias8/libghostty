@@ -581,6 +581,128 @@ void main() {
       expect(await _surfacePixels(tester), isNot(orderedEquals(heldFrame)));
     });
 
+    testWidgets('keeps callback pixels through a synchronous font change', (
+      tester,
+    ) async {
+      const initial = 'READY';
+      const before = '\x1b[2;1H\x1b[31;44mBEFORE\x1b[0m';
+      const after = '\x1b[3;1HAFTER';
+      final oracle = Terminal(cols: defaultCols, rows: defaultRows);
+      addTearDown(oracle.dispose);
+      await tester.pumpWidget(wrap(oracle, blinkVisible: false));
+      oracle.write(Uint8List.fromList(utf8.encode('$initial$before')));
+      await tester.pump();
+      final callbackFrame = await _surfacePixels(tester);
+
+      final terminal = Terminal(cols: defaultCols, rows: defaultRows);
+      addTearDown(terminal.dispose);
+      RenderHoldCallback? onRenderHold;
+      await tester.pumpWidget(
+        wrap(
+          terminal,
+          blinkVisible: false,
+          onRenderSurfaceCallbacksChanged: (callbacks) =>
+              onRenderHold = callbacks?.onRenderHold,
+        ),
+      );
+      final box = tester.renderObject<TerminalRenderBox>(
+        find.byType(TerminalRenderer),
+      );
+      final changedTheme = TerminalTheme.dark().copyWith(fontSize: 15);
+      var captured = false;
+      terminal.onRenderHold = (held) {
+        final accepted = onRenderHold?.call(held: held) ?? false;
+        if (held) {
+          captured = accepted;
+          box.theme = changedTheme;
+        }
+      };
+      terminal.write(Uint8List.fromList(utf8.encode(initial)));
+      await tester.pump();
+      expect(await _surfacePixels(tester), isNot(orderedEquals(callbackFrame)));
+
+      terminal.write(
+        Uint8List.fromList(utf8.encode('$before\x1b[?2026h$after')),
+      );
+      expect(captured, isTrue);
+      await tester.pump();
+      expect(await _surfacePixels(tester), orderedEquals(callbackFrame));
+
+      terminal.write(Uint8List.fromList(utf8.encode('\x1b[?2026l')));
+      await tester.pump();
+      final releasedFrame = await _surfacePixels(tester);
+      expect(releasedFrame, isNot(orderedEquals(callbackFrame)));
+
+      await tester.pumpWidget(
+        wrap(oracle, blinkVisible: false, theme: changedTheme),
+      );
+      oracle.write(Uint8List.fromList(utf8.encode(after)));
+      await tester.pump();
+      expect(releasedFrame, orderedEquals(await _surfacePixels(tester)));
+    });
+
+    testWidgets(
+      'keeps callback pixels through a synchronous atlas replacement',
+      (tester) async {
+        const initial = 'READY';
+        const before = '\x1b[2;1H\x1b[31;44mBEFORE\x1b[0m';
+        const after = '\x1b[3;1HAFTER';
+        final oracle = Terminal(cols: defaultCols, rows: defaultRows);
+        addTearDown(oracle.dispose);
+        await tester.pumpWidget(wrap(oracle, blinkVisible: false));
+        oracle.write(Uint8List.fromList(utf8.encode('$initial$before')));
+        await tester.pump();
+        final callbackFrame = await _surfacePixels(tester);
+
+        final terminal = Terminal(cols: defaultCols, rows: defaultRows);
+        addTearDown(terminal.dispose);
+        final replacementPool = createAtlasPool();
+        RenderHoldCallback? onRenderHold;
+        await tester.pumpWidget(
+          wrap(
+            terminal,
+            blinkVisible: false,
+            onRenderSurfaceCallbacksChanged: (callbacks) =>
+                onRenderHold = callbacks?.onRenderHold,
+          ),
+        );
+        final box = tester.renderObject<TerminalRenderBox>(
+          find.byType(TerminalRenderer),
+        );
+        var captured = false;
+        terminal.onRenderHold = (held) {
+          final accepted = onRenderHold?.call(held: held) ?? false;
+          if (held) {
+            captured = accepted;
+            box.atlasPool = replacementPool;
+          }
+        };
+        terminal.write(Uint8List.fromList(utf8.encode(initial)));
+        await tester.pump();
+        expect(
+          await _surfacePixels(tester),
+          isNot(orderedEquals(callbackFrame)),
+        );
+
+        terminal.write(
+          Uint8List.fromList(utf8.encode('$before\x1b[?2026h$after')),
+        );
+        expect(captured, isTrue);
+        await tester.pump();
+        expect(await _surfacePixels(tester), orderedEquals(callbackFrame));
+
+        terminal.write(Uint8List.fromList(utf8.encode('\x1b[?2026l')));
+        await tester.pump();
+        final releasedFrame = await _surfacePixels(tester);
+        expect(releasedFrame, isNot(orderedEquals(callbackFrame)));
+
+        await tester.pumpWidget(wrap(oracle, blinkVisible: false));
+        oracle.write(Uint8List.fromList(utf8.encode(after)));
+        await tester.pump();
+        expect(releasedFrame, orderedEquals(await _surfacePixels(tester)));
+      },
+    );
+
     testWidgets('keeps Kitty pixels after the live image is deleted', (
       tester,
     ) async {

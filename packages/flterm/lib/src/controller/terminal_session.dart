@@ -48,6 +48,8 @@ final class TerminalSession extends TerminalController with ChangeNotifier {
   var _renderHoldPhase = _RenderHoldPhase.released;
   Timer? _renderHoldTimeout;
   RenderSurfaceCallbacks? _renderSurfaceCallbacks;
+  var _writeDepth = 0;
+  var _renderHoldEpoch = 0;
   late _TerminalSessionState _state;
   ClipboardWriteCallback? _onClipboardWrite;
   ClipboardReadCallback? _onClipboardRead;
@@ -671,10 +673,31 @@ final class TerminalSession extends TerminalController with ChangeNotifier {
   @override
   void write(Uint8List data) {
     _checkNotDisposed();
+    _writeDepth++;
+    Object? writeError;
     try {
       _terminal.write(data);
+    } on Object catch (error) {
+      writeError = error;
+      rethrow;
     } finally {
-      if (_renderHoldPhase == .releaseAfterWrite) _releaseRenderHold();
+      _writeDepth--;
+      if (_writeDepth == 0) {
+        try {
+          if (_renderHoldPhase == .releaseAfterWrite) {
+            _releaseRenderHold();
+          } else if (!_disposed && _renderHoldPhase == .captured) {
+            _renderSurfaceCallbacks?.onWriteComplete();
+          }
+        } on Object {
+          try {
+            if (_renderHoldPhase != .released) _releaseRenderHold();
+          } on Object {
+            // Preserve the parser or materialization failure.
+          }
+          if (writeError == null) rethrow;
+        }
+      }
     }
     if (_disposed) return;
     _scrollToBottomOnOutput();
@@ -698,16 +721,20 @@ final class TerminalSession extends TerminalController with ChangeNotifier {
     }
 
     if (_renderHoldPhase != .released) return;
+    final epoch = ++_renderHoldEpoch;
     _renderHoldPhase = .releaseAfterWrite;
     _renderHoldTimeout = Timer(const Duration(seconds: 1), _releaseRenderHold);
     try {
       final captured =
           _renderSurfaceCallbacks?.onRenderHold(held: true) ?? false;
-      if (_renderHoldPhase == .releaseAfterWrite && !_disposed && captured) {
+      if (_renderHoldEpoch == epoch &&
+          _renderHoldPhase == .releaseAfterWrite &&
+          !_disposed &&
+          captured) {
         _renderHoldPhase = .captured;
       }
     } on Object {
-      if (_renderHoldPhase != .released) {
+      if (_renderHoldEpoch == epoch && _renderHoldPhase != .released) {
         _renderHoldPhase = .releaseAfterWrite;
       }
       rethrow;
@@ -726,6 +753,7 @@ final class TerminalSession extends TerminalController with ChangeNotifier {
     if (_renderHoldPhase == .released) return;
     _renderHoldTimeout?.cancel();
     _renderHoldTimeout = null;
+    _renderHoldEpoch++;
     _renderHoldPhase = .released;
     try {
       _renderSurfaceCallbacks?.onRenderHold(held: false);
