@@ -115,9 +115,10 @@ abstract class _RowSprites {
     _stride = stride;
     final totalSlots = rowCount * stride;
     final need = totalSlots * 4;
-    if (_rects.length < need || _rects.length > need * 4) {
-      _rects = Float32List(need);
-      _colors = Int32List(totalSlots);
+    if (_rects.isNotEmpty &&
+        (_rects.length < need || _rects.length > need * 4)) {
+      _rects = Float32List(0);
+      _colors = Int32List(0);
     }
     if (_rowCounts.length < rowCount || _rowCounts.length > rowCount * 4) {
       _rowCounts = Int32List(rowCount);
@@ -128,6 +129,13 @@ abstract class _RowSprites {
     _currentRow = -1;
     _writeOffset = 0;
     _firstDirtyRow = 0;
+  }
+
+  void _ensureStorage() {
+    if (_rects.isNotEmpty) return;
+    final slots = _rowCount * _stride;
+    _rects = Float32List(slots * 4);
+    _colors = Int32List(slots);
   }
 
   void dispose() {
@@ -168,6 +176,104 @@ abstract class _RowSprites {
 /// row onward are re-copied; rows before it keep their packed position
 /// because their counts are unchanged.
 class AtlasSprites extends _RowSprites {
+  List<List<_DirectRun>?> _direct = [];
+  var _directCount = 0;
+  late final _untintedPaint = Paint();
+
+  @override
+  void beginRow(int row) {
+    super.beginRow(row);
+    if (_direct.isEmpty) return;
+    final runs = _direct[row];
+    if (runs == null) return;
+    for (final run in runs) {
+      _directCount -= run.items.length;
+      for (final item in run.items) {
+        item.glyph.dispose();
+      }
+    }
+    _direct[row] = null;
+  }
+
+  void addDirect(
+    double x,
+    double y,
+    DirectGlyph glyph,
+    double inverseDpr, [
+    int argb = 0xFFFFFFFF,
+  ]) {
+    assert(_currentRow >= 0, 'addDirect() called outside beginRow/endRow');
+    glyph.configureTint(glyph.lane == .emoji ? null : argb);
+    if (_direct.isEmpty) _direct = List.filled(_rowCount, null);
+    final bounds = glyph.boundsAt(x, y, inverseDpr);
+    final runs = _direct[_currentRow] ??= <_DirectRun>[];
+    final previous = runs.isEmpty ? null : runs.last;
+    if (previous != null && previous.canAppend(glyph, _writeOffset, bounds)) {
+      previous.append(glyph, x, y, bounds);
+    } else {
+      runs.add(_DirectRun(glyph, x, y, _writeOffset, bounds));
+    }
+    _directCount++;
+  }
+
+  void paint(
+    Canvas canvas,
+    Image? image,
+    double inverseDpr,
+    Paint paint, {
+    bool tinted = true,
+  }) {
+    if (_directCount == 0) {
+      _paintPacked(canvas, image, paint, tinted, 0, count);
+      return;
+    }
+    var start = 0;
+    for (var row = 0; row < _direct.length; row++) {
+      final runs = _direct[row];
+      if (runs == null) continue;
+      for (final run in runs) {
+        final end = _packedStarts[row] + run.before;
+        _paintPacked(canvas, image, paint, tinted, start, end);
+        run.paint(canvas, inverseDpr, _untintedPaint);
+        start = end;
+      }
+    }
+    _paintPacked(canvas, image, paint, tinted, start, count);
+  }
+
+  void _paintPacked(
+    Canvas canvas,
+    Image? image,
+    Paint paint,
+    bool tinted,
+    int start,
+    int end,
+  ) {
+    if (image == null || start == end) return;
+    canvas.drawRawAtlas(
+      image,
+      Float32List.sublistView(_packedTransforms, start * 4, end * 4),
+      Float32List.sublistView(_packedRects, start * 4, end * 4),
+      tinted ? Int32List.sublistView(_packedColors, start, end) : null,
+      tinted ? BlendMode.modulate : BlendMode.src,
+      null,
+      paint,
+    );
+  }
+
+  void _disposeDirect() {
+    for (final row in _direct) {
+      if (row == null) continue;
+      for (final run in row) {
+        for (final item in run.items) {
+          item.glyph.dispose();
+        }
+      }
+    }
+    _direct = [];
+    _directCount = 0;
+  }
+
   var _transforms = Float32List(0);
   var _packedTransforms = Float32List(0);
   var _packedRects = Float32List(0);
@@ -196,6 +302,10 @@ class AtlasSprites extends _RowSprites {
   ]) {
     assert(_currentRow >= 0, 'add() called outside beginRow/endRow');
     assert(_writeOffset < _stride, 'row $_currentRow exceeded stride $_stride');
+    _ensureStorage();
+    if (_transforms.length != _rects.length) {
+      _transforms = Float32List(_rects.length);
+    }
     final slot = _currentRow * _stride + _writeOffset;
     final offset4 = slot * 4;
     _transforms[offset4] = inverseDpr;
@@ -219,9 +329,19 @@ class AtlasSprites extends _RowSprites {
   /// the excess.
   @override
   void configure(int rowCount, int stride) {
+    _disposeDirect();
     super.configure(rowCount, stride);
     if (_transforms.length != _rects.length) {
-      _transforms = Float32List(_rects.length);
+      _transforms = Float32List(0);
+    }
+    final maximum = rowCount * stride;
+    if (_packedColors.length > maximum * 4) {
+      _packedTransforms = Float32List(0);
+      _packedRects = Float32List(0);
+      _packedColors = Int32List(0);
+    }
+    if (_packedStarts.length > (rowCount + 1) * 4) {
+      _packedStarts = Int32List(0);
     }
   }
 
@@ -229,6 +349,7 @@ class AtlasSprites extends _RowSprites {
   /// must not be used again after this call.
   @override
   void dispose() {
+    _disposeDirect();
     super.dispose();
     _transforms = Float32List(0);
     _packedTransforms = Float32List(0);
@@ -290,6 +411,64 @@ class AtlasSprites extends _RowSprites {
   }
 }
 
+final class _DirectRun {
+  final int before;
+  final int argb;
+  final List<({DirectGlyph glyph, double x, double y})> items;
+  Paint? tint;
+  Rect bounds;
+
+  _DirectRun(DirectGlyph glyph, double x, double y, this.before, this.bounds)
+    : argb = glyph.tintArgb,
+      items = [(glyph: glyph, x: x, y: y)];
+
+  bool canAppend(DirectGlyph glyph, int nextBefore, Rect nextBounds) =>
+      before == nextBefore &&
+      (argb >>> 24) == 0xFF &&
+      items.first.glyph.lane != .emoji &&
+      glyph.lane != .emoji &&
+      glyph.tintArgb == argb &&
+      !bounds.overlaps(nextBounds);
+
+  void append(DirectGlyph glyph, double x, double y, Rect nextBounds) {
+    if (argb != 0xFFFFFFFF) {
+      tint ??= Paint()
+        ..colorFilter = ColorFilter.mode(Color(argb), BlendMode.modulate);
+    }
+    items.add((glyph: glyph, x: x, y: y));
+    bounds = bounds.expandToInclude(nextBounds);
+  }
+
+  void paint(Canvas canvas, double inverseDpr, Paint untintedPaint) {
+    if (items.length == 1) {
+      final item = items.single;
+      item.glyph.paint(canvas, item.x, item.y, inverseDpr);
+      return;
+    }
+
+    if (argb == 0xFFFFFFFF) {
+      for (final item in items) {
+        item.glyph.paint(
+          canvas,
+          item.x,
+          item.y,
+          inverseDpr,
+          tint: untintedPaint,
+        );
+      }
+      return;
+    }
+
+    final clip = bounds.intersect(canvas.getLocalClipBounds());
+    if (clip.isEmpty) return;
+    canvas.saveLayer(clip, tint!);
+    for (final item in items) {
+      item.glyph.paint(canvas, item.x, item.y, inverseDpr, tint: untintedPaint);
+    }
+    canvas.restore();
+  }
+}
+
 /// Rect and color data for [Canvas.drawVertices] calls, organized as
 /// fixed per-row slot ranges.
 ///
@@ -316,6 +495,7 @@ class RectSprites extends _RowSprites {
   void add(double left, double top, double right, double bottom, int argb) {
     assert(_currentRow >= 0, 'add() called outside beginRow/endRow');
     assert(_writeOffset < _stride, 'row $_currentRow exceeded stride $_stride');
+    _ensureStorage();
     final slot = _currentRow * _stride + _writeOffset;
     final offset4 = slot * 4;
     _rects[offset4] = left;
@@ -416,6 +596,14 @@ class RectSprites extends _RowSprites {
   @override
   void configure(int rowCount, int stride) {
     super.configure(rowCount, stride);
+    final maximum = rowCount * stride;
+    if (_positions.length > maximum * 8 * 4) {
+      _positions = Float32List(0);
+      _vertexColors = Int32List(0);
+    }
+    if (_vertexStarts.length > (rowCount + 1) * 4) {
+      _vertexStarts = Int32List(0);
+    }
     _disposeCachedVertices();
   }
 
@@ -528,6 +716,13 @@ class SpriteBuffer {
     underline.configure(rows, atlasStride);
     decoration.configure(rows, 2 * cols + 1);
     shaped.configure(rows);
+    final maxRects = rows * (2 * cols + 1);
+    final maxBatch = maxRects > RectSprites._maxRectsPerBatch
+        ? RectSprites._maxRectsPerBatch
+        : maxRects;
+    if (_indices.length > maxBatch * 6 * 4) {
+      _indices = Uint16List(0);
+    }
   }
 
   /// Releases buffers, sized arrays and cached [Vertices] for all

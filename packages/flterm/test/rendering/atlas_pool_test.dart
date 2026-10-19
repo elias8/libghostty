@@ -37,6 +37,9 @@ void main() {
       final first = pool.acquireAtlas(key());
       final second = pool.acquireAtlas(key());
       final atlas = first.atlas;
+      atlas.addCodepoint(0x41, bold: false, italic: false);
+      atlas.ensureImage();
+      expect(atlas.textImage, isNotNull);
 
       first.release();
       expect(atlas.textImage, isNotNull);

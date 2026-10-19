@@ -19,16 +19,10 @@ class UnderlinePainter {
   UnderlinePainter(this._atlas, this._sprites) : _paint = Paint();
 
   void paint(Canvas canvas) {
-    final image = _atlas.decorationImage;
-    final underline = _sprites.underline;
-    if (image == null || !underline.hasSprites) return;
-    canvas.drawRawAtlas(
-      image,
-      underline.sealedTransforms,
-      underline.sealedRects,
-      underline.sealedColors,
-      BlendMode.modulate,
-      null,
+    _sprites.underline.paint(
+      canvas,
+      _atlas.decorationImage,
+      1 / _atlas.devicePixelRatio,
       _paint,
     );
   }

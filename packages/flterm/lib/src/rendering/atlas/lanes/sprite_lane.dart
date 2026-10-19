@@ -4,6 +4,7 @@ import '../../sprite/sprite_face.dart';
 import '../atlas_config.dart';
 import '../atlas_entry.dart';
 import 'atlas_lane.dart';
+import 'glyph_raster.dart';
 
 /// Rasterizes built-in geometry glyphs into the sprite atlas.
 class SpriteLane extends AtlasLane {
@@ -12,21 +13,11 @@ class SpriteLane extends AtlasLane {
   // geometry while keeping cell coordinates stable.
   static const _sourceGutter = 1.0;
 
-  final List<({SpriteGlyph glyph, Rect cell, Rect source})> _pending = [];
-  final _spriteContext = SpriteContext();
-
   var _pxCellWidth = 0.0;
   var _pxCellHeight = 0.0;
 
-  SpriteLane({super.initialSize, super.maxSize}) : super(entryLane: .sprite);
-
-  @override
-  bool get hasPending => _pending.isNotEmpty;
-
-  @override
-  void clearPending() {
-    _pending.clear();
-  }
+  SpriteLane({super.initialSize, super.maxSize, super.budget})
+    : super(entryLane: .sprite);
 
   @override
   void configure(AtlasConfig config) {
@@ -34,54 +25,45 @@ class SpriteLane extends AtlasLane {
     _pxCellHeight = config.metrics.cellHeight * config.devicePixelRatio;
   }
 
-  @override
-  void paintPending(Canvas canvas) {
-    for (final (:glyph, :cell, :source) in _pending) {
-      final paintRect = source.inflate(_sourceGutter);
-      canvas.save();
-      canvas.clipRect(paintRect, doAntiAlias: false);
-      _paintGlyph(canvas, glyph, cell);
-      _paintSourceGutter(canvas, glyph, cell, source);
-      canvas.restore();
-    }
-    _pending.clear();
+  Glyph rasterizeSprite(SpriteGlyph glyph, {int span = 1, bool admit = true}) {
+    final width = (_pxCellWidth * span).ceilToDouble();
+    final height = _pxCellHeight.ceilToDouble();
+    final cell = Rect.fromLTWH(0, 0, width, height);
+    final padding = (SpriteContext().thickness(cell) * 1.5).ceilToDouble();
+    return addRaster(
+      _SpriteRaster(glyph, Size(width, height), padding),
+      admit: admit,
+    );
   }
+}
 
-  /// Reserves an atlas slot for [glyph] and returns its [AtlasEntry].
-  ///
-  /// The sprite is painted by its own geometry (no font rasterization) into
-  /// the reserved rect on the next [ensureImage]. [span] controls how many
-  /// cell widths the glyph occupies.
-  AtlasEntry rasterizeSprite(SpriteGlyph glyph, {int span = 1}) {
-    const g = _sourceGutter;
-    final pxWidth = (_pxCellWidth * span).ceil().toDouble();
-    final pxHeight = _pxCellHeight.ceil().toDouble();
-    final sourcePadding = _sourcePadding(pxWidth, pxHeight);
-    final slot = allocate(
-      width: pxWidth + (sourcePadding + g) * 2,
-      height: pxHeight + (sourcePadding + g) * 2,
-      bearingX: -sourcePadding,
-      bearingY: -sourcePadding,
-    );
-    final source = Rect.fromLTRB(
-      slot.srcLeft + g,
-      slot.srcTop + g,
-      slot.srcRight - g,
-      slot.srcBottom - g,
-    );
-    final cell = source.deflate(sourcePadding);
-    final entry = AtlasEntry(
-      srcLeft: source.left,
-      srcTop: source.top,
-      srcRight: source.right,
-      srcBottom: source.bottom,
-      bearingY: slot.bearingY,
-      bearingX: slot.bearingX,
-      lane: slot.lane,
-    );
+final class _SpriteRaster extends GlyphRaster {
+  final SpriteGlyph glyph;
+  final Rect cell;
+  final _spriteContext = SpriteContext();
+  static const _sourceGutter = SpriteLane._sourceGutter;
 
-    _pending.add((glyph: glyph, cell: cell, source: source));
-    return entry;
+  _SpriteRaster(this.glyph, Size cellExtent, double padding)
+    : cell = Rect.fromLTWH(
+        padding,
+        padding,
+        cellExtent.width,
+        cellExtent.height,
+      ),
+      super(
+        Size(cellExtent.width + padding * 2, cellExtent.height + padding * 2),
+        bearing: Offset(-padding, -padding),
+        gutter: _sourceGutter,
+      );
+
+  @override
+  void paintSource(Canvas canvas) {
+    final source = Offset.zero & extent;
+    canvas.save();
+    canvas.clipRect(source.inflate(gutter), doAntiAlias: false);
+    _paintGlyph(canvas, glyph, cell);
+    _paintSourceGutter(canvas, glyph, cell, source);
+    canvas.restore();
   }
 
   void _copyGutter(
@@ -128,12 +110,5 @@ class SpriteLane extends AtlasLane {
     _copyGutter(canvas, glyph, cell, .fromLTWH(r, t - g, g, g), g, -g);
     _copyGutter(canvas, glyph, cell, .fromLTWH(l - g, b, g, g), -g, g);
     _copyGutter(canvas, glyph, cell, .fromLTWH(r, b, g, g), g, g);
-  }
-
-  double _sourcePadding(double pxWidth, double pxHeight) {
-    final cell = Rect.fromLTWH(0, 0, pxWidth, pxHeight);
-    // Bounds a stroked segment that extends one thickness past the cell edge
-    // plus half its thickness perpendicular to the stroke.
-    return (_spriteContext.thickness(cell) * 1.5).ceilToDouble();
   }
 }

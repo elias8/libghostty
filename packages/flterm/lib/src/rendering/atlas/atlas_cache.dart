@@ -1,6 +1,7 @@
 import 'package:libghostty/libghostty.dart' show UnderlineStyle;
 
 import '../sprite/sprite_face.dart';
+import 'atlas_budget.dart';
 import 'atlas_entry.dart';
 import 'lanes/decoration_lane.dart';
 import 'lanes/emoji_lane.dart';
@@ -38,6 +39,7 @@ class AtlasCache {
   static const _builtinSpriteStart = 0x2500;
   static const _singleCellTextSourcePadding = 2.0;
 
+  final AtlasBudget _budget;
   final SpriteFace _spriteFace;
   final TextLane _textLane;
   final EmojiLane _emojiLane;
@@ -56,6 +58,7 @@ class AtlasCache {
   );
 
   AtlasCache({
+    required this._budget,
     required this._textLane,
     required this._emojiLane,
     required this._spriteLane,
@@ -68,7 +71,7 @@ class AtlasCache {
   }
 
   /// Returns or creates a text or emoji glyph for [key].
-  AtlasEntry add(TextAtlasKey key, {int span = 1, bool emoji = false}) {
+  Glyph add(TextAtlasKey key, {int span = 1, bool emoji = false}) {
     return emoji ? _addEmoji(key, span: span) : _addText(key, span: span);
   }
 
@@ -77,7 +80,7 @@ class AtlasCache {
   /// Built-in sprite codepoints bypass font rasterization entirely and
   /// render from geometry. Non-sprite codepoints route through the text
   /// lane so single-codepoint and text-keyed callers share entries.
-  AtlasEntry addCodepoint(
+  Glyph addCodepoint(
     int codepoint, {
     required bool bold,
     required bool italic,
@@ -90,11 +93,18 @@ class AtlasCache {
         codepoint >= _printableAsciiStart &&
         codepoint <= _printableAsciiEnd) {
       final index = codepoint - _printableAsciiStart;
-      return _regularAscii[index] ??= _addText((
+      final existing = _regularAscii[index];
+      if (existing != null) return existing;
+      final glyph = _addText((
         text: String.fromCharCode(codepoint),
         bold: false,
         italic: false,
       ));
+      if (glyph is AtlasEntry && _budget.canIndex(1, 0)) {
+        _regularAscii[index] = glyph;
+        _budget.addIndex(1, 0);
+      }
+      return glyph;
     }
 
     if (codepoint >= _builtinSpriteStart) {
@@ -117,13 +127,26 @@ class AtlasCache {
       span: span,
       centerInFirstCell: centerInFirstCell,
     );
-    _codepoints[key] = entry;
+    if (entry is AtlasEntry && _budget.canIndex(1, 0)) {
+      _codepoints[key] = entry;
+      _budget.addIndex(1, 0);
+    }
     return entry;
   }
 
   /// Returns or creates a decoration sprite for the given underline [style].
-  AtlasEntry addDecoration(UnderlineStyle style) {
-    return _decorations[style] ??= _decorationLane.rasterizeDecoration(style);
+  Glyph addDecoration(UnderlineStyle style) {
+    final existing = _decorations[style];
+    if (existing != null) return existing;
+    final glyph = _decorationLane.rasterizeDecoration(
+      style,
+      admit: _budget.canIndex(1, 0),
+    );
+    if (glyph is AtlasEntry) {
+      _decorations[style] = glyph;
+      _budget.addIndex(1, 0);
+    }
+    return glyph;
   }
 
   void clear() {
@@ -133,47 +156,55 @@ class AtlasCache {
     _sprites.clear();
     _decorations.clear();
     _regularAscii.fillRange(0, _regularAscii.length);
+    _budget.clearIndexes();
   }
 
   bool hasSprite(int codepoint) => _spriteFace.hasCodepoint(codepoint);
 
-  /// Pre-seeds glyphs that are expected to appear in nearly every terminal.
-  ///
-  /// Normal printable ASCII is seeded because it appears in nearly every frame.
-  /// Bold and italic variants stay lazy so every atlas does not pay the memory
-  /// cost for style combinations that may never render. Built-in sprites stay
-  /// lazy so they do not consume memory until a terminal actually renders them.
-  /// Decorations are seeded because they are few and avoid mid-frame atlas
-  /// composites.
-  void preseedCommonEntries() {
-    _preseedAscii();
-    _preseedDecorations();
-  }
-
-  AtlasEntry _addEmoji(TextAtlasKey key, {int span = 1}) {
+  Glyph _addEmoji(TextAtlasKey key, {int span = 1}) {
     final cacheKey = (
       text: key.text,
       bold: key.bold,
       italic: key.italic,
       span: span,
     );
-    return _emoji[cacheKey] ??= _emojiLane.rasterizeEmoji(
+    final existing = _emoji[cacheKey];
+    if (existing != null) return existing;
+    final bytes = key.text.length * 2;
+    final glyph = _emojiLane.rasterizeEmoji(
       key.text,
       bold: key.bold,
       italic: key.italic,
       span: span,
+      admit: _budget.canIndex(1, bytes),
     );
+    if (glyph is AtlasEntry) {
+      _emoji[cacheKey] = glyph;
+      _budget.addIndex(1, bytes);
+    }
+    return glyph;
   }
 
-  AtlasEntry? _addSpriteCodepoint(int codepoint, {int span = 1}) {
+  Glyph? _addSpriteCodepoint(int codepoint, {int span = 1}) {
     final glyph = _spriteFace.glyphFor(codepoint);
     if (glyph == null) return null;
 
     final key = (codepoint: codepoint, span: span);
-    return _sprites[key] ??= _spriteLane.rasterizeSprite(glyph, span: span);
+    final existing = _sprites[key];
+    if (existing != null) return existing;
+    final result = _spriteLane.rasterizeSprite(
+      glyph,
+      span: span,
+      admit: _budget.canIndex(1, 0),
+    );
+    if (result is AtlasEntry) {
+      _sprites[key] = result;
+      _budget.addIndex(1, 0);
+    }
+    return result;
   }
 
-  AtlasEntry _addText(
+  Glyph _addText(
     TextAtlasKey key, {
     int span = 1,
     bool centerInFirstCell = false,
@@ -185,14 +216,23 @@ class AtlasCache {
       span: span,
       centerInFirstCell: centerInFirstCell,
     );
-    return _text[cacheKey] ??= _textLane.rasterizeText(
+    final existing = _text[cacheKey];
+    if (existing != null) return existing;
+    final bytes = key.text.length * 2;
+    final glyph = _textLane.rasterizeText(
       key.text,
       bold: key.bold,
       italic: key.italic,
       span: span,
       centerInFirstCell: centerInFirstCell,
       sourcePadding: _textSourcePadding(key.text, span: span),
+      admit: _budget.canIndex(1, bytes),
     );
+    if (glyph is AtlasEntry) {
+      _text[cacheKey] = glyph;
+      _budget.addIndex(1, bytes);
+    }
+    return glyph;
   }
 
   double _textSourcePadding(String text, {required int span}) {
@@ -204,21 +244,5 @@ class AtlasCache {
     if (runes.moveNext()) return 0.0;
 
     return codepoint >= 0x80 ? _singleCellTextSourcePadding : 0.0;
-  }
-
-  void _preseedAscii() {
-    for (
-      var codepoint = _printableAsciiStart;
-      codepoint <= _printableAsciiEnd;
-      codepoint++
-    ) {
-      addCodepoint(codepoint, bold: false, italic: false);
-    }
-  }
-
-  void _preseedDecorations() {
-    for (final style in UnderlineStyle.values) {
-      if (style != .none) addDecoration(style);
-    }
   }
 }

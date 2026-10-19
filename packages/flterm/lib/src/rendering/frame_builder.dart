@@ -66,6 +66,7 @@ class FrameBuilder {
 
   /// Releases the owned libghostty iterators.
   void dispose() {
+    _cursorBuilder.dispose();
     _decodedRows.clear();
     _slotIds = [];
     _terminal = null;
@@ -148,9 +149,12 @@ class FrameBuilder {
     if (preeditRows.current case final row?) _dirtyRows.markRow(row);
     _state.preeditActive = preeditRows.active;
 
-    if (dirty == .clean && !_dirtyRows.anyDirty) return;
-    _build(dirty == .clean ? .partial : dirty, linkSnapshot);
-    if (terminalDirty || terminalChanged) _renderState.clean();
+    if (dirty != .clean || _dirtyRows.anyDirty) {
+      _build(dirty == .clean ? .partial : dirty, linkSnapshot);
+      if (terminalDirty || terminalChanged) _renderState.clean();
+    }
+    // Cursor-only focus/blink changes can admit ink while every row is clean.
+    _atlas.ensureImage();
   }
 
   void _build(DirtyState dirty, LinkSnapshot links) {
@@ -184,7 +188,6 @@ class FrameBuilder {
     _decodedRows.removeWhere((id, _) => !visibleIds.contains(id));
 
     _dirtyRows._clear();
-    _atlas.ensureImage();
     _sprites.seal();
   }
 

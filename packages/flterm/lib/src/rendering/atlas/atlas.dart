@@ -2,6 +2,7 @@ import 'dart:ui' show Image;
 
 import 'package:libghostty/libghostty.dart';
 
+import 'atlas_budget.dart';
 import 'atlas_cache.dart';
 import 'atlas_config.dart';
 import 'atlas_entry.dart';
@@ -13,25 +14,20 @@ import 'lanes/text_lane.dart';
 export 'atlas_cache.dart' show TextAtlasKey;
 export 'atlas_config.dart';
 export 'atlas_entry.dart';
-export 'atlas_texture.dart' show AtlasFullException;
 
-/// Cache backed by lane-specific atlas textures.
+/// Returns borrowed atlas entries or caller-owned [DirectGlyph] ink.
 ///
-/// Caches rasterized text, emoji, sprite, and decoration glyphs. On first use
-/// with new cell dimensions, pre-seeds the common normal-style text glyphs so
-/// steady-state rendering avoids the most common cache misses without eagerly
-/// rasterizing rarely used style variants.
-///
-/// Lifecycle: construct with an [AtlasConfig],
-/// [add]/[addCodepoint] per frame, [ensureImage] to composite pending glyphs,
-/// [dispose] when detached.
+/// Call [ensureImage] before painting admitted entries and [dispose] when the
+/// atlas owner releases its resources.
 class Atlas {
   final AtlasConfig _config;
-  final _textLane = TextLane();
-  final _emojiLane = EmojiLane();
-  final _spriteLane = SpriteLane();
-  final _decorationLane = DecorationLane();
+  final _budget = AtlasBudget();
+  late final _textLane = TextLane(budget: _budget);
+  late final _emojiLane = EmojiLane(budget: _budget);
+  late final _spriteLane = SpriteLane(budget: _budget);
+  late final _decorationLane = DecorationLane(budget: _budget);
   late final _cache = AtlasCache(
+    budget: _budget,
     textLane: _textLane,
     emojiLane: _emojiLane,
     spriteLane: _spriteLane,
@@ -40,9 +36,6 @@ class Atlas {
 
   Atlas(this._config) {
     _configureLanes();
-    if (_config.metrics.cellWidth > 0 && _config.metrics.cellHeight > 0) {
-      _preseed();
-    }
   }
 
   int get cacheSize => _cache.size;
@@ -68,7 +61,7 @@ class Atlas {
   ///
   /// Convenience for call sites that classify text vs. emoji at runtime
   /// (e.g. wide-cell dispatch) and want to defer the branch to the atlas.
-  AtlasEntry add(TextAtlasKey key, {int span = 1, bool emoji = false}) =>
+  Glyph add(TextAtlasKey key, {int span = 1, bool emoji = false}) =>
       _cache.add(key, span: span, emoji: emoji);
 
   /// Returns or creates a glyph for a single [codepoint].
@@ -76,7 +69,7 @@ class Atlas {
   /// Built-in sprite codepoints bypass font rasterization entirely and
   /// render from geometry. Non-sprite codepoints route through the text
   /// lane so single-codepoint and text-keyed callers share entries.
-  AtlasEntry addCodepoint(
+  Glyph addCodepoint(
     int codepoint, {
     required bool bold,
     required bool italic,
@@ -91,7 +84,7 @@ class Atlas {
   );
 
   /// Returns or creates a decoration sprite for the given underline [style].
-  AtlasEntry addDecoration(UnderlineStyle style) => _cache.addDecoration(style);
+  Glyph addDecoration(UnderlineStyle style) => _cache.addDecoration(style);
 
   void dispose() {
     _cache.clear();
@@ -116,19 +109,6 @@ class Atlas {
   /// [addCodepoint] to retrieve the entry; this predicate lets callers
   /// pick the right output channel before calling.
   bool hasSprite(int codepoint) => _cache.hasSprite(codepoint);
-
-  /// Pre-seeds the atlas with glyphs that will almost certainly be needed.
-  ///
-  /// Rasterizing normal printable ASCII up front avoids per-frame cache misses
-  /// for the most common characters while keeping bold/italic variants lazy.
-  /// Built-in sprite glyphs are rasterized lazily into their own atlas
-  /// texture, so first use no longer shifts text/emoji atlas positions.
-  /// All underline styles are pre-seeded so decoration rendering never
-  /// triggers a mid-frame atlas composite.
-  void _preseed() {
-    _cache.preseedCommonEntries();
-    ensureImage();
-  }
 
   void _configureLanes() {
     _textLane.configure(_config);

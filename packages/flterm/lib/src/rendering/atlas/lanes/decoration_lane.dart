@@ -6,11 +6,10 @@ import 'package:libghostty/libghostty.dart' show UnderlineStyle;
 import '../atlas_config.dart';
 import '../atlas_entry.dart';
 import 'atlas_lane.dart';
+import 'glyph_raster.dart';
 
 /// Rasterizes underline decoration geometry into the decoration atlas.
 class DecorationLane extends AtlasLane {
-  final List<(UnderlineStyle, AtlasEntry)> _pending = [];
-
   var _pxCellWidth = 0.0;
   var _pxCellHeight = 0.0;
   var _pxUnderlinePosition = 0.0;
@@ -20,14 +19,8 @@ class DecorationLane extends AtlasLane {
   // curly and double underlines to extend below the cell boundary.
   var _pxDecorationPadding = 0.0;
 
-  DecorationLane({super.initialSize, super.maxSize})
+  DecorationLane({super.initialSize, super.maxSize, super.budget})
     : super(entryLane: .decoration);
-
-  @override
-  bool get hasPending => _pending.isNotEmpty;
-
-  @override
-  void clearPending() => _pending.clear();
 
   @override
   void configure(AtlasConfig config) {
@@ -43,52 +36,45 @@ class DecorationLane extends AtlasLane {
     _pxDecorationPadding = (_pxCellHeight / 4).ceilToDouble();
   }
 
-  @override
-  void paintPending(Canvas canvas) {
-    for (final (style, entry) in _pending) {
-      canvas.save();
-      canvas.clipRect(
-        Rect.fromLTRB(
-          entry.srcLeft,
-          entry.srcTop,
-          entry.srcRight,
-          entry.srcBottom,
+  Glyph rasterizeDecoration(UnderlineStyle style, {bool admit = true}) {
+    return addRaster(
+      _DecorationRaster(
+        style,
+        Size(
+          _pxCellWidth.ceilToDouble(),
+          (_pxCellHeight + _pxDecorationPadding).ceilToDouble(),
         ),
-      );
-      _paintDecoration(canvas, style, entry);
-      canvas.restore();
-    }
-    _pending.clear();
+        _pxCellHeight,
+        _pxUnderlinePosition,
+        _pxUnderlineThickness,
+        _pxDecorationPadding,
+      ),
+      admit: admit,
+    );
   }
+}
 
-  /// Rasterizes an underline decoration sprite for the given [style].
-  ///
-  /// Draws the underline pattern into the atlas in white; per-sprite color
-  /// tinting is applied at draw time via [BlendMode.modulate].
-  AtlasEntry rasterizeDecoration(UnderlineStyle style) {
-    final pxWidth = _pxCellWidth.ceil().toDouble();
-    // Sprite is taller than cell to accommodate decorations extending below.
-    final pxHeight = (_pxCellHeight + _pxDecorationPadding).ceil().toDouble();
-    final entry = allocate(width: pxWidth, height: pxHeight, bearingY: 0);
+final class _DecorationRaster extends GlyphRaster {
+  final UnderlineStyle style;
+  final double cellHeight;
+  final double underlinePosition;
+  final double thickness;
+  final double padding;
 
-    _pending.add((style, entry));
-    return entry;
-  }
+  _DecorationRaster(
+    this.style,
+    super.extent,
+    this.cellHeight,
+    this.underlinePosition,
+    this.thickness,
+    this.padding,
+  );
 
-  /// Draws an underline decoration pattern into the atlas.
-  ///
-  /// Each style draws at the font's underline position, clamped so it
-  /// stays within the sprite bounds (cell height + padding). The padding
-  /// allows curly and double underlines to extend below the cell boundary
-  /// without being clipped.
-  void _paintDecoration(Canvas canvas, UnderlineStyle style, AtlasEntry entry) {
-    final width = entry.srcRight - entry.srcLeft;
-    final ox = entry.srcLeft;
-    final oy = entry.srcTop;
-    final thickness = _pxUnderlineThickness;
-    final cellHeight = _pxCellHeight;
-    final padding = _pxDecorationPadding;
-
+  @override
+  void paintSource(Canvas canvas) {
+    final width = extent.width;
+    const ox = 0.0;
+    const oy = 0.0;
     switch (style) {
       case UnderlineStyle.none:
         break;
@@ -96,7 +82,7 @@ class DecorationLane extends AtlasLane {
       case UnderlineStyle.single:
         // Clamp underline to stay within the sprite (cell + padding).
         final underlineY = min(
-          _pxUnderlinePosition,
+          underlinePosition,
           cellHeight + padding - thickness,
         );
         canvas.drawRect(
@@ -108,7 +94,7 @@ class DecorationLane extends AtlasLane {
         // Place both lines symmetrically around the underline position,
         // clamped so the lower line stays within the padded sprite.
         final underlineY = min(
-          _pxUnderlinePosition,
+          underlinePosition,
           cellHeight + padding - 2 * thickness,
         );
         final upperLineY = max(0.0, underlineY - thickness);
@@ -130,7 +116,7 @@ class DecorationLane extends AtlasLane {
         // 1-radius gaps between dots so they don't merge.
         final radius = sqrt1_2 * thickness;
         final centerY = min(
-          _pxUnderlinePosition + 0.5 * thickness,
+          underlinePosition + 0.5 * thickness,
           cellHeight + padding - radius.ceilToDouble(),
         );
         final dotCount = max(
@@ -155,7 +141,7 @@ class DecorationLane extends AtlasLane {
 
       case UnderlineStyle.dashed:
         final underlineY = min(
-          _pxUnderlinePosition,
+          underlinePosition,
           cellHeight + padding - thickness,
         );
         final intWidth = width.toInt();
@@ -181,7 +167,7 @@ class DecorationLane extends AtlasLane {
         // adjacent cells (butt stroke caps prevent overlap at seams).
         final amplitude = width / pi;
         final top = min(
-          _pxUnderlinePosition,
+          underlinePosition,
           cellHeight + padding - amplitude - thickness,
         );
         final bottom = top + amplitude;

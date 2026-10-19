@@ -221,13 +221,26 @@ final class _RowBuilder {
     if (style.underline != UnderlineStyle.none) {
       final entry = _atlas.addDecoration(style.underline);
       for (var i = 0; i < span; i++) {
-        _sprites.underline.add(
-          x + _metrics.cellWidth * i,
-          _y,
-          entry,
-          _inverseDpr,
-          color,
-        );
+        final glyph = i == 0 || entry is AtlasEntry
+            ? entry
+            : _atlas.addDecoration(style.underline);
+        if (glyph is DirectGlyph) {
+          _sprites.underline.addDirect(
+            x + _metrics.cellWidth * i,
+            _y,
+            glyph,
+            _inverseDpr,
+            color,
+          );
+        } else {
+          _sprites.underline.add(
+            x + _metrics.cellWidth * i,
+            _y,
+            glyph as AtlasEntry,
+            _inverseDpr,
+            color,
+          );
+        }
       }
     }
 
@@ -255,12 +268,25 @@ final class _RowBuilder {
   }
 
   void _emitEntry(
-    AtlasEntry entry, {
+    Glyph glyph, {
     required double x,
     required bool wideText,
     int? foreground,
   }) {
     final color = foreground ?? _foregroundArgb;
+    if (glyph is DirectGlyph) {
+      final channel = switch (glyph.lane) {
+        .emoji => _sprites.emoji,
+        .sprite => _sprites.sprite,
+        .text => wideText ? _sprites.wide : _sprites.regular,
+        .decoration => throw StateError(
+          'Decoration glyph cannot paint cell content.',
+        ),
+      };
+      channel.addDirect(x, _y, glyph, _inverseDpr, color);
+      return;
+    }
+    final entry = glyph as AtlasEntry;
     switch (entry.lane) {
       case .emoji:
         _sprites.emoji.add(x, _y, entry, _inverseDpr);

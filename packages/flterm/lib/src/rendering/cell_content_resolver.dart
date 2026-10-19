@@ -3,11 +3,12 @@ import 'package:libghostty/libghostty.dart';
 import 'atlas/atlas.dart';
 import 'codepoint_classification.dart';
 
-/// Resolves terminal cell content to the atlas entry that should paint it.
+/// Resolves terminal cell content to stable atlas pixels or owned direct ink.
 ///
 /// This owns the text/emoji/built-in-sprite routing rules shared by normal
 /// row rendering and block cursor glyph rendering. It does not decide where
-/// or how the entry is painted; row and cursor builders own the output lane.
+/// or how the glyph is painted. Row and cursor builders own returned direct
+/// glyphs; only admitted atlas entries are retained by this resolver.
 final class CellContentResolver {
   final Atlas _atlas;
   var _lastCodepoint = -1;
@@ -19,7 +20,7 @@ final class CellContentResolver {
 
   CellContentResolver(this._atlas);
 
-  AtlasEntry? resolveCell({
+  Glyph? resolveCell({
     required String? content,
     required int codepoint,
     required int graphemeLength,
@@ -60,14 +61,14 @@ final class CellContentResolver {
     );
   }
 
-  AtlasEntry? resolve({
+  Glyph? resolve({
     required String content,
     required int codepoint,
     required int graphemeLength,
     required Style style,
     required int span,
   }) {
-    if (content.isEmpty) return null;
+    if (content.isEmpty || content == ' ') return null;
 
     if (_usesCodepointEntry(
       codepoint: codepoint,
@@ -84,7 +85,7 @@ final class CellContentResolver {
     );
   }
 
-  AtlasEntry resolveCodepoint(
+  Glyph resolveCodepoint(
     int codepoint, {
     required Style style,
     int span = 1,
@@ -105,12 +106,14 @@ final class CellContentResolver {
       span: span,
       centerInFirstCell: centerInFirstCell,
     );
-    _lastCodepoint = codepoint;
-    _lastSpan = span;
-    _lastCenterInFirstCell = centerInFirstCell;
-    _lastBold = style.bold;
-    _lastItalic = style.italic;
-    _lastEntry = entry;
+    if (entry is AtlasEntry) {
+      _lastCodepoint = codepoint;
+      _lastSpan = span;
+      _lastCenterInFirstCell = centerInFirstCell;
+      _lastBold = style.bold;
+      _lastItalic = style.italic;
+      _lastEntry = entry;
+    }
     return entry;
   }
 

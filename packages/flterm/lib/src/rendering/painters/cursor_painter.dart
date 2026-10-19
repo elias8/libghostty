@@ -80,8 +80,19 @@ class CursorPainter {
         );
       case .block:
         canvas.drawRect(rect, _paint);
-        final entry = _state.cursorAtlasEntry;
-        if (entry == null) return;
+        final glyph = _state.cursorGlyph;
+        if (glyph == null) return;
+        if (glyph is DirectGlyph) {
+          glyph.paint(
+            canvas,
+            cursor.viewportX * metrics.cellWidth,
+            cursor.viewportY * metrics.cellHeight,
+            1 / _atlas.devicePixelRatio,
+            tint: _state.cursorGlyphPaint,
+          );
+          return;
+        }
+        final entry = glyph as AtlasEntry;
         final atlasImage = _atlas.imageFor(entry);
         if (atlasImage == null) return;
 

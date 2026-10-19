@@ -18,17 +18,12 @@ class EmojiPainter {
   EmojiPainter(this._atlas, this._sprites) : _paint = Paint();
 
   void paint(Canvas canvas) {
-    final emoji = _sprites.emoji;
-    final image = _atlas.emojiImage;
-    if (image == null || !emoji.hasSprites) return;
-    canvas.drawRawAtlas(
-      image,
-      emoji.sealedTransforms,
-      emoji.sealedRects,
-      null,
-      BlendMode.src,
-      null,
+    _sprites.emoji.paint(
+      canvas,
+      _atlas.emojiImage,
+      1 / _atlas.devicePixelRatio,
       _paint,
+      tinted: false,
     );
   }
 }

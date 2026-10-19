@@ -3,7 +3,6 @@ import 'dart:ui';
 import 'package:flterm/src/foundation/cell_metrics.dart';
 import 'package:flterm/src/rendering/atlas/atlas_config.dart';
 import 'package:flterm/src/rendering/atlas/atlas_entry.dart';
-import 'package:flterm/src/rendering/atlas/atlas_texture.dart';
 import 'package:flterm/src/rendering/atlas/lanes/text_lane.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -74,7 +73,8 @@ void main() {
     }
 
     test('rasterizeText allocates a pending text entry', () {
-      final entry = lane.rasterizeText('A', bold: false, italic: false);
+      final entry =
+          lane.rasterizeText('A', bold: false, italic: false) as AtlasEntry;
 
       expect(entry.lane, AtlasEntryLane.text);
       expect(entry.srcRight, greaterThan(entry.srcLeft));
@@ -103,8 +103,11 @@ void main() {
           ),
         );
       addTearDown(lane.dispose);
-      final single = lane.rasterizeText('A', bold: false, italic: false);
-      final wide = lane.rasterizeText('A', bold: false, italic: false, span: 2);
+      final single =
+          lane.rasterizeText('A', bold: false, italic: false) as AtlasEntry;
+      final wide =
+          lane.rasterizeText('A', bold: false, italic: false, span: 2)
+              as AtlasEntry;
 
       lane.ensureImage();
       final image = lane.image!;
@@ -126,12 +129,9 @@ void main() {
           ),
         );
       addTearDown(lane.dispose);
-      final entry = lane.rasterizeText(
-        'A',
-        bold: false,
-        italic: false,
-        span: 2,
-      );
+      final entry =
+          lane.rasterizeText('A', bold: false, italic: false, span: 2)
+              as AtlasEntry;
 
       lane.ensureImage();
       final image = lane.image!;
@@ -155,19 +155,18 @@ void main() {
           ),
         );
       addTearDown(lane.dispose);
-      final centered = lane.rasterizeText(
-        'A',
-        bold: false,
-        italic: false,
-        span: 2,
-      );
-      final centerInFirstCell = lane.rasterizeText(
-        'A',
-        bold: false,
-        italic: false,
-        span: 2,
-        centerInFirstCell: true,
-      );
+      final centered =
+          lane.rasterizeText('A', bold: false, italic: false, span: 2)
+              as AtlasEntry;
+      final centerInFirstCell =
+          lane.rasterizeText(
+                'A',
+                bold: false,
+                italic: false,
+                span: 2,
+                centerInFirstCell: true,
+              )
+              as AtlasEntry;
 
       lane.ensureImage();
       final image = lane.image!;
@@ -204,16 +203,12 @@ void main() {
         );
       addTearDown(regularLane.dispose);
       addTearDown(constrainedLane.dispose);
-      final regular = regularLane.rasterizeText(
-        '■',
-        bold: false,
-        italic: false,
-      );
-      final constrained = constrainedLane.rasterizeText(
-        '■',
-        bold: false,
-        italic: false,
-      );
+      final regular =
+          regularLane.rasterizeText('■', bold: false, italic: false)
+              as AtlasEntry;
+      final constrained =
+          constrainedLane.rasterizeText('■', bold: false, italic: false)
+              as AtlasEntry;
       regularLane.ensureImage();
       constrainedLane.ensureImage();
 
@@ -250,18 +245,18 @@ void main() {
         );
       addTearDown(regularLane.dispose);
       addTearDown(constrainedLane.dispose);
-      final regular = regularLane.rasterizeText(
-        '■',
-        bold: false,
-        italic: false,
-      );
-      final constrained = constrainedLane.rasterizeText(
-        '■',
-        bold: false,
-        italic: false,
-        span: 2,
-        centerInFirstCell: true,
-      );
+      final regular =
+          regularLane.rasterizeText('■', bold: false, italic: false)
+              as AtlasEntry;
+      final constrained =
+          constrainedLane.rasterizeText(
+                '■',
+                bold: false,
+                italic: false,
+                span: 2,
+                centerInFirstCell: true,
+              )
+              as AtlasEntry;
       regularLane.ensureImage();
       constrainedLane.ensureImage();
 
@@ -307,22 +302,21 @@ void main() {
         capacityLane.dispose();
       });
 
-      ({List<AtlasEntry> entries, AtlasFullException? error}) fillUntilFull() {
+      ({List<AtlasEntry> entries, DirectGlyph? overflow}) fillUntilFull() {
         final entries = <AtlasEntry>[];
         for (var index = 0; index < 64; index++) {
-          try {
-            entries.add(
-              capacityLane.rasterizeText(
-                String.fromCharCode(0x41 + index),
-                bold: false,
-                italic: false,
-              ),
-            );
-          } on AtlasFullException catch (error) {
-            return (entries: entries, error: error);
+          final glyph = capacityLane.rasterizeText(
+            String.fromCharCode(0x41 + index),
+            bold: false,
+            italic: false,
+          );
+          if (glyph is DirectGlyph) {
+            addTearDown(glyph.dispose);
+            return (entries: entries, overflow: glyph);
           }
+          entries.add(glyph as AtlasEntry);
         }
-        return (entries: entries, error: null);
+        return (entries: entries, overflow: null);
       }
 
       test('keeps allocated entries within the maximum atlas bounds', () {
@@ -339,13 +333,13 @@ void main() {
         );
       });
 
-      test('throws when the next entry exceeds the maximum atlas size', () {
+      test('returns owned direct ink when the next entry exceeds capacity', () {
         final result = fillUntilFull();
 
-        expect(result.error, isA<AtlasFullException>());
+        expect(result.overflow, isA<DirectGlyph>());
       });
 
-      test('throws when a single entry exceeds the maximum atlas size', () {
+      test('returns owned direct ink when a single entry is oversized', () {
         capacityLane.configure(
           config(
             metrics: const CellMetrics(
@@ -356,10 +350,13 @@ void main() {
           ),
         );
 
-        expect(
-          () => capacityLane.rasterizeText('A', bold: false, italic: false),
-          throwsA(isA<AtlasFullException>()),
+        final glyph = capacityLane.rasterizeText(
+          'A',
+          bold: false,
+          italic: false,
         );
+        expect(glyph, isA<DirectGlyph>());
+        (glyph as DirectGlyph).dispose();
       });
     });
   });

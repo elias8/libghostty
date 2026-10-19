@@ -5,9 +5,12 @@ library;
 
 import 'dart:convert';
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:flterm/src/foundation.dart';
 import 'package:flterm/src/rendering.dart';
+import 'package:flterm/src/rendering/atlas/atlas.dart';
+import 'package:flterm/src/rendering/atlas/lanes/emoji_lane.dart';
 import 'package:flterm/src/rendering/atlas_pool.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
@@ -430,10 +433,122 @@ void main() {
         writeCodepoint(terminal, 0x2705);
 
         await pumpRenderer(tester, terminal, metrics, rows: rows);
-        await expectLater(
+        final renderer = tester.renderObject<RenderBox>(
           find.byType(TerminalRenderer),
-          matchesGoldenFile('goldens/emoji_misc.png'),
         );
+        final image = await tester.runAsync(() async {
+          final styled = await (renderer.debugLayer! as OffsetLayer).toImage(
+            Offset.zero & renderer.size,
+          );
+          addTearDown(styled.dispose);
+          final recorder = ui.PictureRecorder();
+          const width = 704;
+          final tableTop = styled.height + 96.0;
+          final height = tableTop.toInt() + 272;
+          final canvas = Canvas(recorder)
+            ..drawRect(
+              Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
+              Paint()..color = const Color(0xFF101214),
+            );
+          void label(String text, double x, double y) {
+            final builder = ui.ParagraphBuilder(ui.ParagraphStyle())
+              ..pushStyle(
+                ui.TextStyle(
+                  fontFamily: 'JetBrains Mono',
+                  fontSize: 12,
+                  color: const Color(0xFFE6E6E6),
+                ),
+              )
+              ..addText(text);
+            final paragraph = builder.build()
+              ..layout(const ui.ParagraphConstraints(width: 672));
+            canvas.drawParagraph(paragraph, Offset(x, y));
+            paragraph.dispose();
+          }
+
+          label('STYLES AND EDGE CASES', 16, 16);
+          canvas.drawRect(
+            Rect.fromLTWH(16, 48, 672, styled.height.toDouble()),
+            Paint()..color = const Color(0xFF1D1F21),
+          );
+          canvas.drawImage(styled, const Offset(16, 48), Paint());
+          label('ATLAS OVERFLOW', 16, tableTop);
+          label('Opaque', 16, tableTop + 96);
+          label('Transparent', 16, tableTop + 208);
+          // Each column shows packed (left) and overflow (right) ink, on
+          // opaque and transparent backgrounds, at one device pixel ratio.
+          var column = 0;
+          for (final dpr in [1.0, 1.25, 2.0]) {
+            final lane = EmojiLane()
+              ..configure(
+                AtlasConfig(
+                  fontSize: 24,
+                  fontFamily: 'JetBrains Mono',
+                  fontFamilyFallback: bundledFontFamilyFallback,
+                  fontWeight: FontWeight.normal,
+                  metrics: measureCellMetrics(
+                    fontSize: 24,
+                    fontFamily: 'JetBrains Mono',
+                    fontFamilyFallback: bundledFontFamilyFallback,
+                    fontData: jetBrainsMonoBytes,
+                    devicePixelRatio: dpr,
+                  ),
+                  devicePixelRatio: dpr,
+                ),
+              );
+            addTearDown(lane.dispose);
+            Glyph resolve({required bool admit}) => lane.rasterizeEmoji(
+              '\u{1F469}\u200d\u{1F4BB}',
+              bold: false,
+              italic: false,
+              span: 2,
+              admit: admit,
+            );
+            final packed = resolve(admit: true) as AtlasEntry;
+            final direct = resolve(admit: false) as DirectGlyph;
+            addTearDown(direct.dispose);
+            lane.ensureImage();
+            final x = 112 + column++ * 192.0;
+            final top = tableTop + 64;
+            label('DPR $dpr', x + 16, tableTop + 24);
+            label('Atlas', x + 16, tableTop + 44);
+            label('Overflow', x + 100, tableTop + 44);
+            canvas.drawRect(
+              Rect.fromLTWH(x, top, 184, 80),
+              Paint()..color = const Color(0xFF1D1F21),
+            );
+            canvas.drawRect(
+              Rect.fromLTWH(x, top + 112, 184, 80),
+              Paint()..blendMode = BlendMode.clear,
+            );
+            final source = Rect.fromLTRB(
+              packed.srcLeft,
+              packed.srcTop,
+              packed.srcRight,
+              packed.srcBottom,
+            );
+            for (final y in [top + 16, top + 112]) {
+              canvas.drawImageRect(
+                lane.image!,
+                source,
+                Rect.fromLTWH(
+                  x + 16 + packed.bearingX,
+                  y + packed.bearingY,
+                  source.width,
+                  source.height,
+                ),
+                Paint(),
+              );
+              direct.paint(canvas, x + 104, y, 1);
+            }
+          }
+          final picture = recorder.endRecording();
+          addTearDown(picture.dispose);
+          final result = await picture.toImage(width, height);
+          return result;
+        });
+        if (image != null) addTearDown(image.dispose);
+        await expectLater(image, matchesGoldenFile('goldens/emoji_misc.png'));
       });
     });
 

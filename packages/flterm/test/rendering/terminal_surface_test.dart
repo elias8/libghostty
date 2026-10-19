@@ -273,6 +273,14 @@ void main() {
     });
 
     group('atlas lease', () {
+      setUp(() {
+        final lease = pool.acquireAtlas(config());
+        lease.atlas.addCodepoint(0x41, bold: false, italic: false);
+        lease.atlas.ensureImage();
+        expect(lease.atlas.textImage, isNotNull);
+        lease.release();
+      });
+
       test('keeps a shared atlas alive', () {
         final sharedLease = pool.acquireAtlas(config());
         final sharedAtlas = sharedLease.atlas;
