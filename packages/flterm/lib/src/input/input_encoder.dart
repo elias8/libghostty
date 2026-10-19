@@ -8,25 +8,37 @@ import 'input_message.dart';
 ///
 /// It translates renderer-neutral key and pointer values into terminal bytes
 /// without owning Flutter focus, gesture, or text-input lifecycle. Reusing the
-/// native events and encoders avoids allocations on input hot paths.
+/// native events and encoders avoids allocations on input hot paths. Each input
+/// kind acquires its resources on first use.
 final class InputEncoder {
   final Terminal _terminal;
-  final _keyEvent = KeyEvent();
-  final _mouseEvent = MouseEvent();
-  final _keyEncoder = KeyEncoder();
-  final _mouseEncoder = MouseEncoder();
+  KeyEvent? _keyEvent;
+  MouseEvent? _mouseEvent;
+  KeyEncoder? _keyEncoder;
+  MouseEncoder? _mouseEncoder;
+  SurfaceGeometry? _geometry;
+  var _disposed = false;
 
   InputEncoder(this._terminal);
 
   void dispose() {
-    _keyEvent.dispose();
-    _mouseEvent.dispose();
-    _keyEncoder.dispose();
-    _mouseEncoder.dispose();
+    if (_disposed) return;
+    _disposed = true;
+    _keyEvent?.dispose();
+    _mouseEvent?.dispose();
+    _keyEncoder?.dispose();
+    _mouseEncoder?.dispose();
+    _keyEvent = null;
+    _mouseEvent = null;
+    _keyEncoder = null;
+    _mouseEncoder = null;
+    _geometry = null;
   }
 
   String encodeKey(KeyInput input) {
-    _keyEvent
+    _checkNotDisposed();
+    final event = _keyEvent ??= KeyEvent();
+    event
       ..key = input.key
       ..mods = input.mods
       ..action = input.action
@@ -34,12 +46,14 @@ final class InputEncoder {
       ..composing = input.composing
       ..consumedMods = input.consumedMods
       ..unshiftedCodepoint = input.unshiftedCodepoint;
-    return _encodeKeyEvent();
+    return _encodeKeyEvent(event);
   }
 
   String encodeKeyPress(Key key, {required Mods mods}) {
+    _checkNotDisposed();
     final codepoint = unshiftedCodepointForKey(key);
-    _keyEvent
+    final event = _keyEvent ??= KeyEvent();
+    event
       ..key = key
       ..mods = mods
       ..action = .press
@@ -47,22 +61,25 @@ final class InputEncoder {
       ..unshiftedCodepoint = codepoint
       ..utf8 = codepoint > 0 ? String.fromCharCode(codepoint) : null
       ..composing = false;
-    return _encodeKeyEvent();
+    return _encodeKeyEvent(event);
   }
 
   String encodeMouse(MouseInput input, {required SurfaceGeometry? geometry}) {
-    _mouseEvent
+    _checkNotDisposed();
+    final event = _mouseEvent ??= MouseEvent();
+    event
       ..action = input.action
       ..mods = input.mods;
-    _setMousePosition(input.pixelX, input.pixelY, geometry);
+    _setMousePosition(event, input.pixelX, input.pixelY, geometry);
     if (input.button case final button?) {
-      _mouseEvent.button = button;
+      event.button = button;
     } else {
-      _mouseEvent.clearButton();
+      event.clearButton();
     }
-    _mouseEncoder.sync(_terminal);
-    _mouseEncoder.setAnyButtonPressed(pressed: input.anyButtonPressed);
-    return _mouseEncoder.encode(_mouseEvent);
+    final encoder = _ensureMouseEncoder();
+    encoder.sync(_terminal);
+    encoder.setAnyButtonPressed(pressed: input.anyButtonPressed);
+    return encoder.encode(event);
   }
 
   String encodeScrollButton(
@@ -70,6 +87,7 @@ final class InputEncoder {
     required MouseButton button,
     required SurfaceGeometry? geometry,
   }) {
+    _checkNotDisposed();
     var x = input.pixelX;
     var y = input.pixelY;
     if (geometry != null) {
@@ -79,18 +97,26 @@ final class InputEncoder {
       x = x.clamp(0.0, width > edge ? width - edge : 0.0);
       y = y.clamp(0.0, height > edge ? height - edge : 0.0);
     }
-    _mouseEvent
+    final event = _mouseEvent ??= MouseEvent();
+    event
       ..action = .press
       ..button = button
       ..mods = input.mods;
-    _setMousePosition(x, y, geometry);
-    _mouseEncoder.sync(_terminal);
-    _mouseEncoder.setAnyButtonPressed(pressed: false);
-    return _mouseEncoder.encode(_mouseEvent);
+    _setMousePosition(event, x, y, geometry);
+    final encoder = _ensureMouseEncoder();
+    encoder.sync(_terminal);
+    encoder.setAnyButtonPressed(pressed: false);
+    return encoder.encode(event);
   }
 
   void updateGeometry(SurfaceGeometry geometry) {
-    _mouseEncoder.setSize(
+    _checkNotDisposed();
+    _geometry = geometry;
+    if (_mouseEncoder case final encoder?) _setMouseSize(encoder, geometry);
+  }
+
+  static void _setMouseSize(MouseEncoder encoder, SurfaceGeometry geometry) {
+    encoder.setSize(
       MouseEncoderSize(
         screenWidth: geometry.screenWidth,
         screenHeight: geometry.screenHeight,
@@ -104,19 +130,42 @@ final class InputEncoder {
     );
   }
 
-  String _encodeKeyEvent() {
-    _keyEncoder.sync(_terminal);
-    return _keyEncoder.encode(_keyEvent);
+  String _encodeKeyEvent(KeyEvent event) {
+    final encoder = _keyEncoder ??= KeyEncoder();
+    encoder.sync(_terminal);
+    return encoder.encode(event);
   }
 
-  void _setMousePosition(double x, double y, SurfaceGeometry? geometry) {
+  MouseEncoder _ensureMouseEncoder() {
+    if (_mouseEncoder case final encoder?) return encoder;
+    final encoder = MouseEncoder();
+    try {
+      if (_geometry case final geometry?) _setMouseSize(encoder, geometry);
+    } catch (_) {
+      encoder.dispose();
+      rethrow;
+    }
+    _mouseEncoder = encoder;
+    return encoder;
+  }
+
+  static void _setMousePosition(
+    MouseEvent event,
+    double x,
+    double y,
+    SurfaceGeometry? geometry,
+  ) {
     if (geometry == null) {
-      _mouseEvent.setPosition(x: x, y: y);
+      event.setPosition(x: x, y: y);
       return;
     }
-    _mouseEvent.setPosition(
+    event.setPosition(
       x: x * geometry.devicePixelRatio + geometry.paddingLeftPx,
       y: y * geometry.devicePixelRatio + geometry.paddingTopPx,
     );
+  }
+
+  void _checkNotDisposed() {
+    if (_disposed) throw StateError('InputEncoder has been disposed');
   }
 }
