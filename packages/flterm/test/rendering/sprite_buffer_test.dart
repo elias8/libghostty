@@ -2,6 +2,7 @@ import 'dart:typed_data';
 import 'dart:ui';
 
 import 'package:flterm/src/rendering/atlas/atlas.dart';
+import 'package:flterm/src/rendering/atlas/shaped_paragraph_cache.dart';
 import 'package:flterm/src/rendering/atlas/sprite_buffer.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -32,6 +33,143 @@ void main() {
       clip: Rect.largest,
     );
   }
+
+  group('ShapedParagraphCache', () {
+    Paragraph build(String text, int foreground, {bool italic = false}) =>
+        (ParagraphBuilder(ParagraphStyle(textDirection: TextDirection.ltr))
+              ..pushStyle(
+                TextStyle(
+                  color: Color(foreground),
+                  fontSize: 18,
+                  fontStyle: italic ? FontStyle.italic : FontStyle.normal,
+                  fontFeatures: const [FontFeature.enable('liga')],
+                ),
+              )
+              ..addText(text)
+              ..pop())
+            .build()
+          ..layout(const ParagraphConstraints(width: double.infinity));
+
+    Future<Uint8List> pixels(Paragraph paragraph, double dpr) async {
+      final recorder = PictureRecorder();
+      final canvas = Canvas(recorder)..scale(dpr);
+      canvas.clipRect(const Rect.fromLTWH(0, 0, 160, 28));
+      canvas.drawParagraph(paragraph, const Offset(0, 2));
+      final picture = recorder.endRecording();
+      final image = await picture.toImage(
+        (160 * dpr).ceil(),
+        (32 * dpr).ceil(),
+      );
+      final data = await image.toByteData();
+      final result = Uint8List.fromList(data!.buffer.asUint8List());
+      image.dispose();
+      picture.dispose();
+      return result;
+    }
+
+    test('idle entry churn evicts old paragraphs', () {
+      final cache = ShapedParagraphCache();
+      addTearDown(cache.dispose);
+      ShapedParagraphLease acquire(String text) => cache.acquire(
+        text,
+        foreground: 0xFFFFFFFF,
+        bold: false,
+        italic: false,
+        create: () => build(text, 0xFFFFFFFF),
+      );
+      final first = acquire('first');
+      final paragraph = first.paragraph;
+      first.release();
+      for (var index = 0; index < 140; index++) {
+        acquire('entry $index').release();
+      }
+      final replacement = acquire('first');
+      expect(replacement.paragraph, isNot(same(paragraph)));
+      replacement.release();
+    });
+
+    test('long idle text is bounded independently of entry count', () {
+      final cache = ShapedParagraphCache();
+      addTearDown(cache.dispose);
+      ShapedParagraphLease acquire(String text) => cache.acquire(
+        text,
+        foreground: 0xFFFFFFFF,
+        bold: false,
+        italic: false,
+        create: () => build(text, 0xFFFFFFFF),
+      );
+      final text = List.filled(18000, '=').join();
+      final first = acquire(text);
+      final paragraph = first.paragraph;
+      first.release();
+      acquire('$text>').release();
+      final replacement = acquire(text);
+      expect(replacement.paragraph, isNot(same(paragraph)));
+      replacement.release();
+    });
+
+    for (final dpr in [1.0, 1.25, 2.0]) {
+      test(
+        'leased paragraphs preserve pixels through churn at DPR $dpr',
+        () async {
+          var cache = ShapedParagraphCache();
+          addTearDown(() => cache.dispose());
+          for (final text in [
+            '=> === != !== <= >= -> <->',
+            r'$$$@@@%%%',
+            '${List.filled(260, '=').join()}>',
+          ]) {
+            for (final foreground in [0xFFFFFFFF, 0x887733EE]) {
+              final baseline = build(text, foreground, italic: true);
+              addTearDown(baseline.dispose);
+              ShapedParagraphLease acquire() => cache.acquire(
+                text,
+                foreground: foreground,
+                bold: false,
+                italic: true,
+                create: () => build(text, foreground, italic: true),
+              );
+              final first = acquire();
+              final second = acquire();
+              expect(second.paragraph, same(first.paragraph));
+              final expected = await pixels(baseline, dpr);
+              first.release();
+              for (var index = 0; index < 140; index++) {
+                final otherText = '=>$index';
+                cache
+                    .acquire(
+                      otherText,
+                      foreground: foreground,
+                      bold: false,
+                      italic: false,
+                      create: () => build(otherText, foreground),
+                    )
+                    .release();
+              }
+              expect(
+                await pixels(second.paragraph, dpr),
+                orderedEquals(expected),
+              );
+              cache.dispose();
+              cache = ShapedParagraphCache();
+              final replacement = acquire();
+              expect(replacement.paragraph, isNot(same(second.paragraph)));
+              expect(
+                await pixels(second.paragraph, dpr),
+                orderedEquals(expected),
+              );
+              expect(
+                await pixels(replacement.paragraph, dpr),
+                orderedEquals(expected),
+              );
+              second.release();
+              replacement.release();
+            }
+          }
+        },
+      );
+    }
+  });
 
   group('AtlasSprites', () {
     test('count and hasSprites are zero before any emit', () {

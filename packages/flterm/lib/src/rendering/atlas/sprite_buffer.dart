@@ -2,6 +2,7 @@ import 'dart:typed_data';
 import 'dart:ui';
 
 import 'atlas_entry.dart';
+import 'shaped_paragraph_cache.dart';
 
 /// A shaped text run that must be painted through Flutter's paragraph shaper.
 ///
@@ -12,14 +13,29 @@ final class ShapedRun {
   final Paragraph paragraph;
   final Offset offset;
   final Rect clip;
+  final ShapedParagraphLease? _lease;
 
   const ShapedRun({
     required this.paragraph,
     required this.offset,
     required this.clip,
-  });
+  }) : _lease = null;
 
-  void dispose() => paragraph.dispose();
+  ShapedRun.leased({
+    required ShapedParagraphLease lease,
+    required this.offset,
+    required this.clip,
+  }) : paragraph = lease.paragraph,
+       _lease = lease;
+
+  void dispose() {
+    final lease = _lease;
+    if (lease == null) {
+      paragraph.dispose();
+    } else {
+      lease.release();
+    }
+  }
 }
 
 /// Row-retained shaped text runs.

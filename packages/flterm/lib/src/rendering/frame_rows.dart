@@ -405,16 +405,23 @@ final class _RowBuilder {
             (theme.fontSize * _italicOverhangFontSizeFactor).ceilToDouble(),
           )
         : 0.0;
-    final paragraph =
-        (ParagraphBuilder(_paragraphStyle)
-              ..pushStyle(_textStyle())
-              ..addText(text)
-              ..pop())
-            .build()
-          ..layout(const ParagraphConstraints(width: .infinity));
+    final lease = _atlas.paragraphs.acquire(
+      text,
+      foreground: _foregroundArgb,
+      bold: _style.bold,
+      italic: _style.italic,
+      create: () =>
+          (ParagraphBuilder(_paragraphStyle)
+                ..pushStyle(_textStyle())
+                ..addText(text)
+                ..pop())
+              .build()
+            ..layout(const ParagraphConstraints(width: .infinity)),
+    );
+    final paragraph = lease.paragraph;
     _sprites.shaped.add(
-      ShapedRun(
-        paragraph: paragraph,
+      ShapedRun.leased(
+        lease: lease,
         offset: Offset(
           textX,
           _y + _metrics.baseline - paragraph.alphabeticBaseline,

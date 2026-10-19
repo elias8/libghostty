@@ -18,6 +18,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:libghostty/libghostty.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   group('TerminalSurface', () {
     const metrics = CellMetrics(cellWidth: 8, cellHeight: 16, baseline: 12);
     late AtlasPool pool;
@@ -298,6 +299,34 @@ void main() {
         pipeline.dispose();
 
         expect(sharedAtlas.textImage, isNull);
+      });
+
+      test('rebuilds unchanged content after fonts become available', () async {
+        writeUtf8('ABC');
+        paint(pipeline, terminal);
+        final oldLease = pool.acquireAtlas(config());
+        final oldAtlas = oldLease.atlas;
+        expect(oldAtlas.cacheSize, greaterThan(0));
+
+        await PaintingBinding.instance.handleSystemMessage({
+          'type': 'fontsChange',
+        });
+        pipeline.layout(
+          terminal: terminal,
+          constraints: const BoxConstraints(maxWidth: 64, maxHeight: 32),
+          surfacePadding: EdgeInsets.zero,
+          onGeometryChanged: SurfaceGeometry.tryFrom,
+        );
+        final nextLease = pool.acquireAtlas(config());
+        addTearDown(nextLease.release);
+        expect(nextLease.atlas, isNot(same(oldAtlas)));
+        expect(nextLease.atlas.cacheSize, 0);
+
+        paint(pipeline, terminal);
+        expect(nextLease.atlas.cacheSize, greaterThan(0));
+        oldLease.release();
+        expect(oldAtlas.textImage, isNull);
+        expect(nextLease.atlas.textImage, isNotNull);
       });
 
       test('rebinds after atlas configuration changes', () {

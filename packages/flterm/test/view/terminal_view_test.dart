@@ -360,7 +360,7 @@ void main() {
       expect(find.byType(TerminalView), findsOneWidget);
     });
 
-    testWidgets('creates an isolated atlas pool without explicit scope', (
+    testWidgets('uses the shared fallback without explicit scope', (
       tester,
     ) async {
       final controller2 = TerminalController();
@@ -372,7 +372,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(TerminalRenderer), findsNWidgets(2));
-      expect(find.byType(TerminalScope), findsNWidgets(2));
+      expect(find.byType(TerminalScope), findsNothing);
     });
 
     testWidgets('uses explicit TerminalScope for descendant terminals', (
@@ -481,6 +481,52 @@ void main() {
 
       expect(renderer(tester).devicePixelRatio, tester.view.devicePixelRatio);
     });
+
+    for (final devicePixelRatio in [1.0, 2.0]) {
+      testWidgets('first mount at DPR $devicePixelRatio sizes and hits links', (
+        tester,
+      ) async {
+        tester.view
+          ..devicePixelRatio = devicePixelRatio
+          ..physicalSize = const Size(800, 480) * devicePixelRatio;
+        addTearDown(tester.view.resetDevicePixelRatio);
+        addTearDown(tester.view.resetPhysicalSize);
+        final links = <ActivatedLink>[];
+        writeUtf8(
+          controller,
+          '          \x1b]8;;https://initial.example\x07LINK\x1b]8;;\x07',
+        );
+
+        await tester.pumpWidget(
+          wrapInApp(
+            controller: controller,
+            linkSettings: LinkSettings(
+              modifier: .none,
+              types: const {LinkType.osc8},
+              onActivate: links.add,
+            ),
+          ),
+        );
+
+        final renderBox = renderer(tester);
+        final metrics = renderBox.metrics;
+        expect(renderBox.devicePixelRatio, devicePixelRatio);
+        expect(
+          tester
+              .renderObject<TerminalRenderBox>(find.byType(TerminalRenderer))
+              .debugGridSize,
+          (
+            cols: (800 / metrics.cellWidth).floor(),
+            rows: (480 / metrics.cellHeight).floor(),
+          ),
+        );
+        await tester.tapAt(
+          tester.getTopLeft(find.byType(TerminalView)) +
+              Offset(metrics.cellWidth * 10.5, metrics.cellHeight / 2),
+        );
+        expect(links.single.uri, Uri.parse('https://initial.example'));
+      });
+    }
 
     testWidgets('DPR changes recommit physical geometry', (tester) async {
       final output = <Uint8List>[];

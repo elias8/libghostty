@@ -10,6 +10,7 @@ import 'lanes/decoration_lane.dart';
 import 'lanes/emoji_lane.dart';
 import 'lanes/sprite_lane.dart';
 import 'lanes/text_lane.dart';
+import 'shaped_paragraph_cache.dart';
 
 export 'atlas_cache.dart' show TextAtlasKey;
 export 'atlas_config.dart';
@@ -21,6 +22,7 @@ export 'atlas_entry.dart';
 /// atlas owner releases its resources.
 class Atlas {
   final AtlasConfig _config;
+  final paragraphs = ShapedParagraphCache();
   final _budget = AtlasBudget();
   late final _textLane = TextLane(budget: _budget);
   late final _emojiLane = EmojiLane(budget: _budget);
@@ -87,6 +89,7 @@ class Atlas {
   Glyph addDecoration(UnderlineStyle style) => _cache.addDecoration(style);
 
   void dispose() {
+    paragraphs.dispose();
     _cache.clear();
     _textLane.dispose();
     _emojiLane.dispose();

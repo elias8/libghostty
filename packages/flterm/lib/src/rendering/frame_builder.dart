@@ -76,7 +76,9 @@ class FrameBuilder {
   }
 
   /// Rebuilds every visible row on the next sync.
-  void markAllRowsDirty() => _dirtyRows.markAll();
+  void markAllRowsDirty() {
+    _dirtyRows.markAll();
+  }
 
   /// Rebuilds only rows containing SGR 5 blinking cells on the next sync.
   void markBlinkRowsDirty() {

@@ -416,7 +416,7 @@ final class TerminalSurface {
   /// Returns whether the atlas changed.
   bool _ensureAtlas() {
     final config = _atlasConfig;
-    if (config == _atlasLease.config) return false;
+    if (config == _atlasLease.config && _atlasLease.isCurrent) return false;
     _rebindAtlas(_atlasPool.acquireAtlas(config));
     return true;
   }

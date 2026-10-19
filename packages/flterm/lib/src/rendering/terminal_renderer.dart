@@ -243,6 +243,7 @@ final class TerminalRenderer extends LeafRenderObjectWidget {
 /// Created and managed by [TerminalRenderer]. Not intended for direct use.
 @internal
 final class TerminalRenderBox extends RenderBox
+    with RelayoutWhenSystemFontsChangeMixin
     implements MouseTrackerAnnotation {
   late final TerminalSurface _surface;
 

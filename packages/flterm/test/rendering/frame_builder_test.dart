@@ -362,6 +362,42 @@ void main() {
       expect(atlas.cacheSize, initialCacheSize);
     });
 
+    test('shared operator paragraphs survive replacing one visible row', () {
+      writeUtf8(terminal, '\x1b[?25l=>\r\n=>');
+      builder.sync(terminal, terminalDirty: true);
+      final untouched = sprites.shaped.rows[1].single;
+      expect(
+        sprites.shaped.rows[0].single.paragraph,
+        same(untouched.paragraph),
+      );
+      builder.markRowsDirty(0, 1);
+      builder.sync(terminal, terminalDirty: false);
+      expect(sprites.shaped.rows[1].single, same(untouched));
+      writeUtf8(terminal, '\x1b[1;1H!=');
+      builder.sync(terminal, terminalDirty: true);
+      final recorder = PictureRecorder();
+      final canvas = Canvas(recorder);
+      canvas.drawParagraph(untouched.paragraph, untouched.offset);
+      final picture = recorder.endRecording();
+      picture.dispose();
+      expect(
+        sprites.shaped.rows[1].single.paragraph,
+        same(untouched.paragraph),
+      );
+      expect(untouched.clip, const Rect.fromLTWH(0, 16, 16, 16));
+      expect(
+        sprites.shaped.rows[0].single.clip,
+        const Rect.fromLTWH(0, 0, 16, 16),
+      );
+      builder.markRowsDirty(0, 1);
+      writeUtf8(terminal, '\x1b[1;1H=>');
+      builder.sync(terminal, terminalDirty: true);
+      expect(
+        sprites.shaped.rows[0].single.paragraph,
+        same(untouched.paragraph),
+      );
+    });
+
     test('sync separates operator runs at a foreground color boundary', () {
       writeUtf8(terminal, '=>\x1b[31m!=');
 
