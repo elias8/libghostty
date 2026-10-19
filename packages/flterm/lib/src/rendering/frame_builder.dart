@@ -203,27 +203,8 @@ class FrameBuilder {
     if (!rows.dirty && cached != null) return cached;
 
     _cells.reset(rows);
-    final cells = List<_DecodedCell>.generate(
-      _state.cols,
-      (_) => const _DecodedCell.empty(),
-      growable: false,
-    );
-    while (_cells.next() && _cells.col < _state.cols) {
-      final col = _cells.col;
-      final graphemeLength = _cells.graphemeLength;
-      cells[col] = _DecodedCell(
-        codepoint: _cells.codepoint,
-        graphemeLength: graphemeLength,
-        content: graphemeLength > 1 ? _cells.content : null,
-        wide: _cells.wide,
-        styleId: _cells.styleId,
-        style: _cells.style,
-        backgroundArgb: _cells.hasText ? null : _cells.backgroundArgb,
-        hasText: _cells.hasText,
-        hasStyling: _cells.hasStyling,
-      );
-    }
-    final decoded = _DecodedRow(cells);
+    final decoded = cached ?? _DecodedRow(_state.cols);
+    decoded.refresh(_cells);
     _decodedRows[id] = decoded;
     return decoded;
   }

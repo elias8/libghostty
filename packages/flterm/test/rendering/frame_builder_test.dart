@@ -144,6 +144,116 @@ void main() {
       terminal.dispose();
     });
 
+    test('sync preserves rows when viewport identities move and return', () {
+      writeUtf8(
+        terminal,
+        '\x1b[38;2;1;2;3mA\r\n\x1b[38;2;4;5;6mB\r\n\x1b[38;2;7;8;9mC',
+      );
+      builder.sync(terminal, terminalDirty: true);
+      expect(sprites.regular.sealedColors, [
+        0xFF040506.toSigned(32),
+        0xFF070809.toSigned(32),
+      ]);
+      terminal.scrollViewport(-1);
+      builder.sync(terminal, terminalDirty: true);
+      expect(sprites.regular.sealedColors, [
+        0xFF010203.toSigned(32),
+        0xFF040506.toSigned(32),
+      ]);
+      terminal.scrollToBottom();
+      builder.sync(terminal, terminalDirty: true);
+      expect(sprites.regular.sealedColors, [
+        0xFF040506.toSigned(32),
+        0xFF070809.toSigned(32),
+      ]);
+    });
+
+    test('sync preserves RGB and palette erase backgrounds', () async {
+      terminal.palette = [
+        for (var i = 0; i < 256; i++)
+          if (i == 1) const RgbColor(4, 5, 6) else const RgbColor(0, 0, 0),
+      ];
+      writeUtf8(
+        terminal,
+        '\x1b[48;2;1;2;3m\x1b[2K\x1b[2;1H\x1b[41m\x1b[2K\x1b[0m',
+      );
+      builder.sync(terminal, terminalDirty: true);
+      final recorder = PictureRecorder();
+      final canvas = Canvas(recorder);
+      for (final vertices in sprites.background.buildVertices(
+        Uint16List.fromList([0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7]),
+      )) {
+        canvas.drawVertices(vertices, BlendMode.src, Paint());
+      }
+      final picture = recorder.endRecording();
+      final image = picture.toImageSync(64, 32);
+      final pixels = (await image.toByteData())!;
+      expect(pixels.getUint32(0), 0x010203FF);
+      expect(pixels.getUint32(16 * 64 * 4), 0x040506FF);
+      image.dispose();
+      picture.dispose();
+    });
+
+    test('sync preserves page-local style colors across a tall viewport', () {
+      final frame = createFrame(cols: 300, rows: 400);
+      final input = StringBuffer();
+      for (var row = 0; row < 400; row++) {
+        input.write('\x1b[${row + 1};1H\x1b[38;2;${row % 256};2;3mA');
+      }
+      writeUtf8(frame.terminal, input.toString());
+      expect(frame.terminal.memoryUsage.primaryPages, greaterThan(1));
+      final snapshot = RenderState();
+      final rows = RowIterator();
+      final cells = CellIterator();
+      final colorsById = <int, int>{};
+      var hasPageLocalCollision = false;
+      try {
+        snapshot.update(frame.terminal);
+        rows.reset(snapshot);
+        while (rows.next()) {
+          cells.reset(rows);
+          expect(cells.next(), isTrue);
+          final id = cells.styleId;
+          final color = (cells.style.foreground as RgbColor).toArgb32;
+          final previous = colorsById[id];
+          if (id > 0 && id < 1024 && previous != null && previous != color) {
+            hasPageLocalCollision = true;
+          }
+          colorsById[id] = color;
+        }
+      } finally {
+        cells.dispose();
+        rows.dispose();
+        snapshot.dispose();
+      }
+      expect(hasPageLocalCollision, isTrue);
+      frame.builder.sync(frame.terminal, terminalDirty: true);
+      expect(frame.sprites.regular.sealedColors, [
+        for (var row = 0; row < 400; row++)
+          (0xFF000203 | ((row % 256) << 16)).toSigned(32),
+      ]);
+    });
+
+    test('sync replaces grapheme and wide content with plain text', () {
+      writeUtf8(terminal, 'e\u0301\u4e2d');
+      builder.sync(terminal, terminalDirty: true);
+      expect(sprites.regular.count, 1);
+      expect(
+        spriteRectKey(sprites.regular, 0),
+        entryRectKey(atlas.add((text: 'e\u0301', bold: false, italic: false))),
+      );
+      writeUtf8(terminal, '\r\x1b[2KAB');
+      builder.sync(terminal, terminalDirty: true);
+      expect(sprites.regular.count, 2);
+      expect(sprites.wide.count, 0);
+      expect(sprites.emoji.count, 0);
+      expect(xPositions(sprites.regular), [0, 8]);
+      builder.markRowsDirty(0, 1);
+      builder.sync(terminal, terminalDirty: false);
+      expect(sprites.regular.count, 2);
+      expect(xPositions(sprites.regular), [0, 8]);
+    });
+
     test('sync emits text, sprite, and emoji channels', () {
       writeUtf8(terminal, 'A\u2500\u{1F600}');
 

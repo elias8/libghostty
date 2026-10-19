@@ -115,7 +115,6 @@ final class _RowBuilder {
       );
       _paragraphStyleTheme = theme;
     }
-    _styles.beginFrame();
   }
 
   bool rebuildRow(
@@ -124,6 +123,7 @@ final class _RowBuilder {
     required RowSelectionRange? selection,
   }) {
     _sprites.beginRow(rowIndex);
+    _styles.beginRow();
     _row = row;
     _rowIndex = rowIndex;
     _y = rowIndex * _metrics.cellHeight;
@@ -137,7 +137,7 @@ final class _RowBuilder {
     _preeditEmitted = false;
     _previousSymbol = false;
     while (_column < _state.cols) {
-      _writeCell(_row.cells[_column], selection: selection);
+      _writeCell(selection: selection);
     }
 
     _flushForeground();
@@ -286,20 +286,20 @@ final class _RowBuilder {
     }
   }
 
-  void _emitForeground(
-    _DecodedCell cell, {
-    required int span,
-    required int glyphSpan,
-  }) {
-    if (!cell.hasText) {
+  void _emitForeground({required int span, required int glyphSpan}) {
+    if (!_row.hasText(_column)) {
       _flushForeground();
       return;
     }
 
-    final codepoint = cell.codepoint;
+    final codepoint = _row.codepoints[_column];
+    final graphemeLength = _row.graphemeLength(_column);
     final style = _style;
 
-    if (span == 1 && codepoint > 0x20 && codepoint < 0x7F) {
+    if (graphemeLength == 1 &&
+        span == 1 &&
+        codepoint > 0x20 &&
+        codepoint < 0x7F) {
       if (_isOperator(codepoint)) {
         if (_operatorCodepoints.isEmpty) _operatorX = _x;
         _operatorCodepoints.add(codepoint);
@@ -313,9 +313,9 @@ final class _RowBuilder {
 
     _flushForeground();
     final entry = _content.resolveCell(
-      content: cell.content,
-      codepoint: cell.codepoint,
-      graphemeLength: cell.graphemeLength,
+      content: _row.graphemes[_column]?.$2,
+      codepoint: _row.codepoints[_column],
+      graphemeLength: graphemeLength,
       style: style,
       span: glyphSpan,
       borrowedCell: glyphSpan != span,
@@ -434,13 +434,13 @@ final class _RowBuilder {
     _operatorCodepoints.clear();
   }
 
-  int _glyphSpan(_DecodedCell cell, int span) {
+  int _glyphSpan(int span) {
     if (span > 1) {
       _previousSymbol = false;
       return span;
     }
 
-    final codepoint = cell.codepoint;
+    final codepoint = _row.codepoints[_column];
     final symbol = _isSymbolCodepoint(codepoint);
     final graphicsElement = _isGraphicsElement(codepoint);
     final previousSymbol = _previousSymbol;
@@ -454,7 +454,7 @@ final class _RowBuilder {
 
     // Symbol glyphs may borrow a following blank cell without changing the
     // terminal's logical cursor or decoration span.
-    final nextCodepoint = _row.cells[_column + 1].codepoint;
+    final nextCodepoint = _row.codepoints[_column + 1];
     return nextCodepoint == 0 ||
             nextCodepoint == 0x20 ||
             nextCodepoint == 0x2002
@@ -471,14 +471,14 @@ final class _RowBuilder {
     return _links.contains(position) ? _state.theme.hyperlink.idle : null;
   }
 
-  void _resolveStyle(
-    _DecodedCell cell, {
+  void _resolveStyle({
     required int? backgroundArgb,
     required _CellHighlight highlight,
     required HyperlinkStyle? linkStyle,
   }) {
     var (fg, bg, style, explicitBg) = _styles.resolve(
-      cell,
+      _row,
+      _column,
       backgroundArgb: backgroundArgb,
     );
     final selection = switch (highlight) {
@@ -522,7 +522,7 @@ final class _RowBuilder {
       );
     }
 
-    _prevStyleId = cell.styleId;
+    _prevStyleId = _row.styleIds[_column];
     _prevBackgroundArgb = backgroundArgb;
     _style = style;
     _hidden = style.invisible || (!_state.blinkVisible && style.blink);
@@ -594,9 +594,9 @@ final class _RowBuilder {
     return _lastTextStyle = textStyle;
   }
 
-  void _writeCell(_DecodedCell cell, {required RowSelectionRange? selection}) {
-    final span = cell.wide == .wide ? 2 : 1;
-    final glyphSpan = _glyphSpan(cell, span);
+  void _writeCell({required RowSelectionRange? selection}) {
+    final span = _row.width(_column) == .wide ? 2 : 1;
+    final glyphSpan = _glyphSpan(span);
     final preedit = _preeditRange;
     if (preedit != null && preedit.overlaps(_rowIndex, _column, span)) {
       _previousSymbol = false;
@@ -613,14 +613,15 @@ final class _RowBuilder {
           _column <= selection.endCol,
     );
     final linkStyle = _linkStyle();
-    final backgroundArgb = cell.hasText ? null : cell.backgroundArgb;
-    if (cell.styleId != _prevStyleId ||
+    final backgroundArgb = _row.hasText(_column)
+        ? null
+        : _row.background(_column);
+    if (_row.styleIds[_column] != _prevStyleId ||
         backgroundArgb != _prevBackgroundArgb ||
         highlight != _prevHighlight ||
         linkStyle != _prevLinkStyle) {
       _flushForeground();
       _resolveStyle(
-        cell,
         backgroundArgb: backgroundArgb,
         highlight: highlight,
         linkStyle: linkStyle,
@@ -629,7 +630,7 @@ final class _RowBuilder {
     _syncBackgroundRun();
 
     if (!_hidden) {
-      _emitForeground(cell, span: span, glyphSpan: glyphSpan);
+      _emitForeground(span: span, glyphSpan: glyphSpan);
       if (_hasDecoration) {
         _emitDecorations(span);
       }
