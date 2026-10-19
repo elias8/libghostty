@@ -439,15 +439,18 @@ final class _InteractionRegionState extends State<InteractionRegion> {
       _cancelSelectionInteraction(widget.selection, clearSelection: true);
       return;
     }
+    // A tap that dismisses a selection is spent on that, not on a link.
+    final dismissesSelection = widget.selection.selection != null;
     _hideSelectionHandles();
     Focus.maybeOf(context)?.requestFocus();
     if (_terminalOwnsInteraction) return;
-    if (widget.links.handlePress(
-      localPosition: details.localPosition,
-      metrics: widget.metrics,
-      pointerKind: details.kind ?? .mouse,
-      virtualMods: widget.readVirtualMods(),
-    )) {
+    if (!dismissesSelection &&
+        widget.links.handlePress(
+          localPosition: details.localPosition,
+          metrics: widget.metrics,
+          pointerKind: details.kind ?? .mouse,
+          virtualMods: widget.readVirtualMods(),
+        )) {
       _linkPressActive = true;
       _cancelSelectionPress();
       return;
@@ -598,6 +601,28 @@ final class _InteractionRegionState extends State<InteractionRegion> {
     }
   }
 
+  /// A tracked touch tap on a link opens the link and is never reported to
+  /// the program as a click, the way a modifier click is on desktop: a phone
+  /// has no modifier to hold.
+  bool _activateTrackedLink(Offset position) {
+    if (widget.selection.selection != null) return false;
+    final links = widget.links;
+    final pressed = links.handlePress(
+      localPosition: position,
+      metrics: widget.metrics,
+      pointerKind: .touch,
+      virtualMods: widget.readVirtualMods(),
+    );
+    if (!pressed) return false;
+    final link = links.handleRelease(
+      localPosition: position,
+      metrics: widget.metrics,
+    );
+    if (link == null) return false;
+    widget.onLinkActivate?.call(link);
+    return true;
+  }
+
   void _hideSelectionHandles() {
     if (!_selectionHandlesVisible) return;
     _visibleHandleSelectionSnapshot = null;
@@ -639,7 +664,9 @@ final class _InteractionRegionState extends State<InteractionRegion> {
       _updateMouseButtons(pointer, 0, position);
     } else if (pointer.kind == .stylus || pointer.kind == .invertedStylus) {
       _updateStylusButton(pointer, 0, position);
-    } else if (pointer.kind == .touch && pointer.tapCandidate) {
+    } else if (pointer.kind == .touch &&
+        pointer.tapCandidate &&
+        !_activateTrackedLink(position)) {
       pointer.buttons = kPrimaryButton;
       _sendMouseEvent(
         .press,

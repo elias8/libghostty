@@ -1889,6 +1889,63 @@ void main() {
           ),
         ]);
       });
+
+      testWidgets('tracked touch tap activates link instead of a click', (
+        tester,
+      ) async {
+        final links = <ActivatedLink>[];
+        final output = <Uint8List>[];
+        writeUtf8(controller, 'https://example.test\x1b[?1000h\x1b[?1006h');
+        controller.onOutput = output.add;
+
+        await tester.pumpWidget(
+          wrapInApp(
+            controller: controller,
+            linkSettings: LinkSettings(
+              types: const {LinkType.text},
+              onActivate: links.add,
+            ),
+            width: 400,
+            height: 80,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final topLeft = tester.getTopLeft(find.byType(TerminalView));
+        await tester.tapAt(topLeft + const Offset(4, 8));
+        await tester.pump();
+
+        expect(links, hasLength(1));
+        expect(decodeOutput(output), isNot(contains('\x1b[<0;')));
+      });
+
+      testWidgets('touch tap dismissing a selection skips the link', (
+        tester,
+      ) async {
+        final links = <ActivatedLink>[];
+        writeUtf8(controller, 'https://example.test');
+
+        await tester.pumpWidget(
+          wrapInApp(
+            controller: controller,
+            linkSettings: LinkSettings(
+              types: const {LinkType.text},
+              onActivate: links.add,
+            ),
+            width: 400,
+            height: 80,
+          ),
+        );
+        await tester.pumpAndSettle();
+        controller.selectAll();
+        await tester.pump();
+
+        final topLeft = tester.getTopLeft(find.byType(TerminalView));
+        await tester.tapAt(topLeft + const Offset(4, 8));
+        await tester.pump();
+
+        expect(links, isEmpty);
+      });
     });
 
     testWidgets('long press starts normal selection by default', (
