@@ -4,12 +4,13 @@ library;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
-import 'package:flterm/src/foundation.dart' show CellMetrics, TerminalTheme;
+import 'package:flterm/src/foundation.dart'
+    show CellMetrics, FontAdjustments, TerminalTheme;
 import 'package:flterm/src/rendering/atlas/atlas.dart';
 import 'package:flterm/src/rendering/paint_state.dart';
 import 'package:flterm/src/rendering/painters/cursor_painter.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:libghostty/libghostty.dart' show RenderStateCursor;
+import 'package:libghostty/libghostty.dart' show CursorShape, RenderStateCursor;
 
 void main() {
   group('CursorPainter', () {
@@ -27,13 +28,23 @@ void main() {
       );
     }
 
-    Future<ByteData> render({bool preeditActive = false}) async {
+    Future<ByteData> render({
+      bool preeditActive = false,
+      CursorShape visualStyle = .block,
+      FontAdjustments fontAdjustments = const FontAdjustments(),
+    }) async {
       final atlas = Atlas(config());
       addTearDown(atlas.dispose);
-      final state = PaintState(TerminalTheme.dark(), metrics)
+      final theme = TerminalTheme.dark().copyWith(
+        fontAdjustments: fontAdjustments,
+      );
+      final state = PaintState(theme, metrics)
         ..cols = 2
         ..rows = 1
-        ..cursor = const RenderStateCursor(viewportHasValue: true)
+        ..cursor = RenderStateCursor(
+          viewportHasValue: true,
+          visualStyle: visualStyle,
+        )
         ..cursorColorArgb = 0xFF0000FF
         ..preeditActive = preeditActive;
 
@@ -76,6 +87,18 @@ void main() {
         final cursorPixel = pixel(bytes, x: 1, y: 1);
 
         expect(cursorPixel, 0xFFFF0000);
+      });
+
+      test('cursor thickness widens the bar', () async {
+        final plain = await render(visualStyle: .bar);
+        final thick = await render(
+          visualStyle: .bar,
+          fontAdjustments: const FontAdjustments(cursorThickness: 2),
+        );
+
+        // An 8 px cell draws a bar 8 / 6 px wide; two more reach pixel 2.
+        expect(pixel(plain, x: 2, y: 8), 0xFFFF0000);
+        expect(pixel(thick, x: 2, y: 8), 0xFF0000FF);
       });
     });
   });

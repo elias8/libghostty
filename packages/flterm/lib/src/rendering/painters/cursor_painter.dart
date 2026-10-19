@@ -116,7 +116,10 @@ class CursorPainter {
         canvas.drawRect(rect, _paint);
 
       case .underline:
-        final thickness = metrics.underlineThickness;
+        final thickness =
+            (metrics.underlineThickness +
+                    _state.theme.fontAdjustments.cursorThickness)
+                .clamp(1.0, metrics.cellHeight);
         final underlineY = rect.top + metrics.underlinePosition;
         canvas.drawRect(
           .fromLTWH(rect.left, underlineY, rect.width, thickness),
@@ -124,7 +127,10 @@ class CursorPainter {
         );
 
       case .bar:
-        final barWidth = (metrics.cellWidth / 6).clamp(1.0, 3.0);
+        final barWidth =
+            ((metrics.cellWidth / 6).clamp(1.0, 3.0) +
+                    _state.theme.fontAdjustments.cursorThickness)
+                .clamp(1.0, metrics.cellWidth);
         canvas.drawRect(
           .fromLTWH(rect.left, rect.top, barWidth, rect.height),
           _paint,

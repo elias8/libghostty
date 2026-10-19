@@ -1423,6 +1423,26 @@ void main() {
       expect(renderer(tester).metrics, isNot(initialMetrics));
     });
 
+    testWidgets('changing font adjustments updates metrics', (tester) async {
+      final theme = TerminalTheme.dark();
+      await tester.pumpWidget(wrapInApp(controller: controller, theme: theme));
+      final initialMetrics = renderer(tester).metrics;
+
+      await tester.pumpWidget(
+        wrapInApp(
+          controller: controller,
+          theme: theme.copyWith(
+            fontAdjustments: const FontAdjustments(cellHeight: 0.5),
+          ),
+        ),
+      );
+
+      expect(
+        renderer(tester).metrics.cellHeight,
+        greaterThan(initialMetrics.cellHeight),
+      );
+    });
+
     testWidgets('reports light color scheme for perceived-light backgrounds', (
       tester,
     ) async {
