@@ -42,6 +42,7 @@ final class CellIterator {
   var _prevStyleId = -1;
   var _cachedStyle = const Style();
   var _col = -1;
+  var _nativeCol = -1;
   var _isSelected = false;
   var _metadataValid = false;
   var _selectedValid = false;
@@ -70,6 +71,7 @@ final class CellIterator {
         );
       }
     }
+    _ensureNativePosition();
     return bindings.render.rowCellsGetBgColor(_handle);
   }
 
@@ -85,6 +87,7 @@ final class CellIterator {
             _rawCellData.backgroundB;
       }
     }
+    _ensureNativePosition();
     return bindings.render.rowCellsGetBgColorArgb(_handle);
   }
 
@@ -108,6 +111,7 @@ final class CellIterator {
     _ensureMetadata();
     if (_graphemeLen == 0) return '';
     if (_graphemeLen == 1) return String.fromCharCode(_rawCellData.codepoint);
+    _ensureNativePosition();
     return String.fromCharCodes(
       bindings.render.rowCellsGetGraphemes(_handle, _graphemeLen),
     );
@@ -120,12 +124,14 @@ final class CellIterator {
   /// default foreground.
   RgbColor? get foreground {
     _ensureCurrent();
+    _ensureNativePosition();
     return bindings.render.rowCellsGetFgColor(_handle);
   }
 
   /// Resolved foreground as packed ARGB int, or null if unset.
   int? get foregroundArgb {
     _ensureCurrent();
+    _ensureNativePosition();
     return bindings.render.rowCellsGetFgColorArgb(_handle);
   }
 
@@ -190,9 +196,11 @@ final class CellIterator {
 
   /// Style of the current cell. Cached per style id to avoid redundant
   /// lookups across cells sharing the same style.
+  @pragma('vm:prefer-inline')
   Style get style {
     _ensureMetadata();
     if (_rawCellData.styleId != _prevStyleId) {
+      if (_rawCellData.styleId != 0) _ensureNativePosition();
       _cachedStyle = _rawCellData.styleId == 0
           ? const Style()
           : bindings.render.rowCellsGetStyle(_handle);
@@ -201,8 +209,9 @@ final class CellIterator {
     return _cachedStyle;
   }
 
-  /// Internal style identifier for the current cell. Cells with the same
-  /// style id share identical styling attributes.
+  /// Internal style identifier scoped to the current row.
+  ///
+  /// Equal identifiers in other rows may refer to different styles.
   int get styleId {
     _ensureMetadata();
     return _rawCellData.styleId;
@@ -220,6 +229,7 @@ final class CellIterator {
     if (_disposed) return;
     _disposed = true;
     _rowIterator = null;
+    _nativeCol = -1;
     _rawCells = null;
     _rawCellsAvailable = false;
     _invalidate();
@@ -230,9 +240,15 @@ final class CellIterator {
   /// Advances to the next cell. Returns true when a cell is available and
   /// the getter properties reflect it; returns false when the row is
   /// exhausted.
+  @pragma('vm:prefer-inline')
   bool next() {
     _ensureCurrent();
-    if (!bindings.render.rowCellsNext(_handle)) return false;
+    if (!_rawCellsAvailable || _col + 1 >= _rawCells!.length) {
+      _ensureNativePosition();
+      if (!bindings.render.rowCellsNext(_handle)) return false;
+      _nativeCol++;
+      _rawCellsAvailable = false;
+    }
     _col++;
     _invalidate();
     return true;
@@ -260,6 +276,7 @@ final class CellIterator {
     _rowIterator = rowIterator;
     _rowPositionGeneration = rowIterator._positionGeneration;
     _col = -1;
+    _nativeCol = -1;
   }
 
   /// Positions the iterator at column [col] within the current row so
@@ -273,6 +290,7 @@ final class CellIterator {
     _ensureCurrent();
     bindings.render.rowCellsSelect(_handle, col);
     _col = col;
+    _nativeCol = col;
     _invalidate();
   }
 
@@ -321,10 +339,20 @@ final class CellIterator {
     _selectedValid = false;
   }
 
+  @pragma('vm:prefer-inline')
+  void _ensureNativePosition() {
+    if (_nativeCol == _col) return;
+    if (_nativeCol + 1 != _col || !bindings.render.rowCellsNext(_handle)) {
+      bindings.render.rowCellsSelect(_handle, _col);
+    }
+    _nativeCol = _col;
+  }
+
   void _refreshMetadata() {
     _fallbackCell = null;
     if (_rawCellsAvailable) {
       if (bindings.render.decodeRawCell(_rawCells!, _col, _rawCellData)) {
+        if (_rawCellData.hasGrapheme) _ensureNativePosition();
         _graphemeLen = _rawCellData.hasGrapheme
             ? bindings.render.rowCellsGetGraphemeLen(_handle)
             : _rawCellData.codepoint == 0
@@ -338,6 +366,7 @@ final class CellIterator {
     }
 
     _rawCellData.hasBackgroundRgb = false;
+    _ensureNativePosition();
     final rowCell = bindings.render.rowCellsGetSummary(_handle);
     final rawCell = rowCell.rawCell;
     _graphemeLen = rowCell.graphemeLen;
