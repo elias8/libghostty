@@ -196,6 +196,7 @@ final class CellIterator {
 
   /// Style of the current cell. Cached per style id to avoid redundant
   /// lookups across cells sharing the same style.
+  @pragma('vm:prefer-inline')
   Style get style {
     _ensureMetadata();
     if (_rawCellData.styleId != _prevStyleId) {
@@ -239,6 +240,7 @@ final class CellIterator {
   /// Advances to the next cell. Returns true when a cell is available and
   /// the getter properties reflect it; returns false when the row is
   /// exhausted.
+  @pragma('vm:prefer-inline')
   bool next() {
     _ensureCurrent();
     if (!_rawCellsAvailable || _col + 1 >= _rawCells!.length) {
@@ -337,9 +339,12 @@ final class CellIterator {
     _selectedValid = false;
   }
 
+  @pragma('vm:prefer-inline')
   void _ensureNativePosition() {
     if (_nativeCol == _col) return;
-    bindings.render.rowCellsSelect(_handle, _col);
+    if (_nativeCol + 1 != _col || !bindings.render.rowCellsNext(_handle)) {
+      bindings.render.rowCellsSelect(_handle, _col);
+    }
     _nativeCol = _col;
   }
 
