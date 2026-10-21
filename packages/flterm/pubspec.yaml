@@ -1,6 +1,6 @@
 name: flterm
 description: Flutter terminal widget on top of Ghostty's libghostty-vt engine.
-version: 0.0.5
+version: 0.0.6
 homepage: https://github.com/elias8/libghostty
 repository: https://github.com/elias8/libghostty/tree/main/packages/flterm
 issue_tracker: https://github.com/elias8/libghostty/issues
