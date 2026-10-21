@@ -352,6 +352,120 @@ void main() {
       expect(atlasPool.acquiredKeys, hasLength(acquisitionsBefore));
     });
 
+    testWidgets('font availability repaints unchanged terminal content', (
+      tester,
+    ) async {
+      terminal.write(Uint8List.fromList(utf8.encode('ABC')));
+      final pool = _TrackingAtlasPool();
+      addTearDown(pool.dispose);
+      await tester.pumpWidget(wrap(terminal, atlasPool: pool));
+      final config = pool.acquiredKeys.last;
+      final oldLease = pool.acquireAtlas(config);
+      addTearDown(oldLease.release);
+      expect(oldLease.atlas.cacheSize, greaterThan(0));
+      final acquisitionsBefore = pool.acquiredKeys.length;
+
+      await PaintingBinding.instance.handleSystemMessage({
+        'type': 'fontsChange',
+      });
+      await tester.pump();
+
+      expect(pool.acquiredKeys.length, greaterThan(acquisitionsBefore));
+      final current = pool.acquireAtlas(config);
+      addTearDown(current.release);
+      expect(current.atlas, isNot(same(oldLease.atlas)));
+      expect(current.atlas.cacheSize, greaterThan(0));
+      expect(current.atlas.textImage, isNotNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await PaintingBinding.instance.handleSystemMessage({
+        'type': 'fontsChange',
+      });
+      await tester.pump();
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('font availability refreshes both views sharing an atlas', (
+      tester,
+    ) async {
+      final other = Terminal(cols: defaultCols, rows: defaultRows);
+      addTearDown(other.dispose);
+      terminal.write(Uint8List.fromList(utf8.encode('ABC')));
+      other.write(Uint8List.fromList(utf8.encode('XYZ')));
+      final pool = _TrackingAtlasPool();
+      addTearDown(pool.dispose);
+      final theme = TerminalTheme.dark();
+      await tester.pumpWidget(
+        Directionality(
+          textDirection: TextDirection.ltr,
+          child: Row(
+            children: [
+              Expanded(
+                child: wrap(terminal, atlasPool: pool, theme: theme),
+              ),
+              Expanded(
+                child: wrap(other, atlasPool: pool, theme: theme),
+              ),
+            ],
+          ),
+        ),
+      );
+      final config = pool.acquiredKeys.last;
+      final previous = pool.acquireAtlas(config);
+      addTearDown(previous.release);
+      final acquisitionsBefore = pool.acquiredKeys.length;
+
+      await PaintingBinding.instance.handleSystemMessage({
+        'type': 'fontsChange',
+      });
+      await tester.pump();
+
+      expect(pool.acquiredKeys.length, acquisitionsBefore + 2);
+      final current = pool.acquireAtlas(config);
+      addTearDown(current.release);
+      expect(current.atlas, isNot(same(previous.atlas)));
+      expect(current.atlas.cacheSize, greaterThan(0));
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+
+    testWidgets('reattached surface adopts fonts loaded while detached', (
+      tester,
+    ) async {
+      terminal.write(Uint8List.fromList(utf8.encode('ABC')));
+      final pool = _TrackingAtlasPool();
+      addTearDown(pool.dispose);
+      await tester.pumpWidget(wrap(terminal, atlasPool: pool));
+      final box = tester.renderObject<TerminalRenderBox>(
+        find.byType(TerminalRenderer),
+      );
+      final renderView = tester.binding.renderViews.single;
+      final owner = renderView.owner!;
+      final config = pool.acquiredKeys.last;
+      final previous = pool.acquireAtlas(config);
+      addTearDown(previous.release);
+      final acquisitionsBefore = pool.acquiredKeys.length;
+      renderView.detach();
+      try {
+        expect(box.attached, isFalse);
+        await PaintingBinding.instance.handleSystemMessage({
+          'type': 'fontsChange',
+        });
+        expect(pool.acquiredKeys, hasLength(acquisitionsBefore));
+      } finally {
+        renderView.attach(owner);
+      }
+      await tester.pump();
+
+      expect(box.attached, isTrue);
+      expect(pool.acquiredKeys, hasLength(acquisitionsBefore + 1));
+
+      final current = pool.acquireAtlas(config);
+      addTearDown(current.release);
+      expect(current.atlas, isNot(same(previous.atlas)));
+      expect(current.atlas.cacheSize, greaterThan(0));
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+
     testWidgets('font theme change reacquires atlas', (tester) async {
       final atlasPool = _TrackingAtlasPool();
       addTearDown(atlasPool.dispose);
@@ -466,6 +580,128 @@ void main() {
       await tester.pump();
       expect(await _surfacePixels(tester), isNot(orderedEquals(heldFrame)));
     });
+
+    testWidgets('keeps callback pixels through a synchronous font change', (
+      tester,
+    ) async {
+      const initial = 'READY';
+      const before = '\x1b[2;1H\x1b[31;44mBEFORE\x1b[0m';
+      const after = '\x1b[3;1HAFTER';
+      final oracle = Terminal(cols: defaultCols, rows: defaultRows);
+      addTearDown(oracle.dispose);
+      await tester.pumpWidget(wrap(oracle, blinkVisible: false));
+      oracle.write(Uint8List.fromList(utf8.encode('$initial$before')));
+      await tester.pump();
+      final callbackFrame = await _surfacePixels(tester);
+
+      final terminal = Terminal(cols: defaultCols, rows: defaultRows);
+      addTearDown(terminal.dispose);
+      RenderHoldCallback? onRenderHold;
+      await tester.pumpWidget(
+        wrap(
+          terminal,
+          blinkVisible: false,
+          onRenderSurfaceCallbacksChanged: (callbacks) =>
+              onRenderHold = callbacks?.onRenderHold,
+        ),
+      );
+      final box = tester.renderObject<TerminalRenderBox>(
+        find.byType(TerminalRenderer),
+      );
+      final changedTheme = TerminalTheme.dark().copyWith(fontSize: 15);
+      var captured = false;
+      terminal.onRenderHold = (held) {
+        final accepted = onRenderHold?.call(held: held) ?? false;
+        if (held) {
+          captured = accepted;
+          box.theme = changedTheme;
+        }
+      };
+      terminal.write(Uint8List.fromList(utf8.encode(initial)));
+      await tester.pump();
+      expect(await _surfacePixels(tester), isNot(orderedEquals(callbackFrame)));
+
+      terminal.write(
+        Uint8List.fromList(utf8.encode('$before\x1b[?2026h$after')),
+      );
+      expect(captured, isTrue);
+      await tester.pump();
+      expect(await _surfacePixels(tester), orderedEquals(callbackFrame));
+
+      terminal.write(Uint8List.fromList(utf8.encode('\x1b[?2026l')));
+      await tester.pump();
+      final releasedFrame = await _surfacePixels(tester);
+      expect(releasedFrame, isNot(orderedEquals(callbackFrame)));
+
+      await tester.pumpWidget(
+        wrap(oracle, blinkVisible: false, theme: changedTheme),
+      );
+      oracle.write(Uint8List.fromList(utf8.encode(after)));
+      await tester.pump();
+      expect(releasedFrame, orderedEquals(await _surfacePixels(tester)));
+    });
+
+    testWidgets(
+      'keeps callback pixels through a synchronous atlas replacement',
+      (tester) async {
+        const initial = 'READY';
+        const before = '\x1b[2;1H\x1b[31;44mBEFORE\x1b[0m';
+        const after = '\x1b[3;1HAFTER';
+        final oracle = Terminal(cols: defaultCols, rows: defaultRows);
+        addTearDown(oracle.dispose);
+        await tester.pumpWidget(wrap(oracle, blinkVisible: false));
+        oracle.write(Uint8List.fromList(utf8.encode('$initial$before')));
+        await tester.pump();
+        final callbackFrame = await _surfacePixels(tester);
+
+        final terminal = Terminal(cols: defaultCols, rows: defaultRows);
+        addTearDown(terminal.dispose);
+        final replacementPool = createAtlasPool();
+        RenderHoldCallback? onRenderHold;
+        await tester.pumpWidget(
+          wrap(
+            terminal,
+            blinkVisible: false,
+            onRenderSurfaceCallbacksChanged: (callbacks) =>
+                onRenderHold = callbacks?.onRenderHold,
+          ),
+        );
+        final box = tester.renderObject<TerminalRenderBox>(
+          find.byType(TerminalRenderer),
+        );
+        var captured = false;
+        terminal.onRenderHold = (held) {
+          final accepted = onRenderHold?.call(held: held) ?? false;
+          if (held) {
+            captured = accepted;
+            box.atlasPool = replacementPool;
+          }
+        };
+        terminal.write(Uint8List.fromList(utf8.encode(initial)));
+        await tester.pump();
+        expect(
+          await _surfacePixels(tester),
+          isNot(orderedEquals(callbackFrame)),
+        );
+
+        terminal.write(
+          Uint8List.fromList(utf8.encode('$before\x1b[?2026h$after')),
+        );
+        expect(captured, isTrue);
+        await tester.pump();
+        expect(await _surfacePixels(tester), orderedEquals(callbackFrame));
+
+        terminal.write(Uint8List.fromList(utf8.encode('\x1b[?2026l')));
+        await tester.pump();
+        final releasedFrame = await _surfacePixels(tester);
+        expect(releasedFrame, isNot(orderedEquals(callbackFrame)));
+
+        await tester.pumpWidget(wrap(oracle, blinkVisible: false));
+        oracle.write(Uint8List.fromList(utf8.encode(after)));
+        await tester.pump();
+        expect(releasedFrame, orderedEquals(await _surfacePixels(tester)));
+      },
+    );
 
     testWidgets('keeps Kitty pixels after the live image is deleted', (
       tester,

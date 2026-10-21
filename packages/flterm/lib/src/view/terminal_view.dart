@@ -8,6 +8,7 @@ import '../controller/terminal_controller.dart';
 import '../foundation.dart';
 import '../foundation/viewport_selection.dart';
 import '../input/interaction_region.dart';
+import '../links/link_interaction.dart';
 import '../links/link_settings.dart';
 import '../rendering.dart';
 import 'shortcut_scope.dart';
@@ -174,7 +175,7 @@ final class _TerminalViewState extends State<TerminalView>
     with WidgetsBindingObserver {
   late ViewAttachment _attachment;
   late Listenable _overlayChanges;
-  var _devicePixelRatio = 1.0;
+  double? _devicePixelRatio;
   late FocusNode _focusNode;
   late ScrollPhysics _gestureScrollPhysics;
   late CellMetrics _metrics;
@@ -184,6 +185,7 @@ final class _TerminalViewState extends State<TerminalView>
   late TerminalTheme _theme;
   var _active = true;
   int? _viewId;
+  final _links = LinkInteraction();
 
   TerminalController get _controller => widget.controller;
 
@@ -192,6 +194,8 @@ final class _TerminalViewState extends State<TerminalView>
     super.activate();
     _active = true;
     WidgetsBinding.instance.addObserver(this);
+    PaintingBinding.instance.systemFonts.addListener(_onSystemFontsChanged);
+    _metrics = _measureMetrics();
     _initializeAttachment(initial: false);
     _attachment.attach(_focusNode, _scrollController, viewId: _viewId!);
   }
@@ -251,7 +255,7 @@ final class _TerminalViewState extends State<TerminalView>
                           selectedSearchMatch: selected,
                           atlasPool: atlasPool,
                           surfacePadding: widget.padding,
-                          devicePixelRatio: _devicePixelRatio,
+                          devicePixelRatio: _devicePixelRatio!,
                           preeditText: _attachment.preeditText,
                           blinkVisible: _attachment.blinkVisible,
                           resizeDeferred: _resizeDeferred,
@@ -331,7 +335,7 @@ final class _TerminalViewState extends State<TerminalView>
       },
     );
     return terminalScopeAtlasPoolOf(context) == null
-        ? TerminalScope(child: surface)
+        ? terminalFallbackScope(surface)
         : surface;
   }
 
@@ -339,6 +343,7 @@ final class _TerminalViewState extends State<TerminalView>
   void deactivate() {
     _active = false;
     WidgetsBinding.instance.removeObserver(this);
+    PaintingBinding.instance.systemFonts.removeListener(_onSystemFontsChanged);
     _disposeAttachment();
     super.deactivate();
   }
@@ -346,6 +351,7 @@ final class _TerminalViewState extends State<TerminalView>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    _attachment.tickerEnabled = TickerMode.valuesOf(context).enabled;
     _updateGestureScrollPhysics();
 
     final viewId = View.of(context).viewId;
@@ -384,7 +390,9 @@ final class _TerminalViewState extends State<TerminalView>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    PaintingBinding.instance.systemFonts.removeListener(_onSystemFontsChanged);
     if (_active) _disposeAttachment();
+    _links.dispose();
     if (widget.focusNode == null) _focusNode.dispose();
     if (widget.scrollController == null) _scrollController.dispose();
     super.dispose();
@@ -397,8 +405,6 @@ final class _TerminalViewState extends State<TerminalView>
 
     _focusNode = widget.focusNode ?? FocusNode();
     _theme = widget.theme ?? TerminalTheme.dark();
-    _metrics = _measureMetrics();
-
     if (widget.fontData == null) unawaited(_resolveFontData(_theme.fontFamily));
 
     _scrollController = widget.scrollController ?? TerminalScrollController();
@@ -407,6 +413,7 @@ final class _TerminalViewState extends State<TerminalView>
       _controller.activeScreen,
     );
     _initializeAttachment(initial: true);
+    PaintingBinding.instance.systemFonts.addListener(_onSystemFontsChanged);
   }
 
   void _bindViewListenables() {
@@ -445,13 +452,13 @@ final class _TerminalViewState extends State<TerminalView>
   }
 
   void _initializeAttachment({required bool initial}) {
-    _attachment = ViewAttachment(_controller);
+    _attachment = ViewAttachment(_controller, links: _links);
     _attachment.applyTheme(_theme, initial: initial);
     _attachment.mouseAutoHide = widget.mouseAutoHide;
     _resizeDeferred = _attachment.resizeDeferred;
     _attachment.addListener(_onControllerChanged);
     _bindViewListenables();
-    _syncLinkInteraction();
+    if (_devicePixelRatio != null) _syncLinkInteraction();
   }
 
   CellMetrics _measureMetrics({Uint8List? fontData}) {
@@ -461,8 +468,15 @@ final class _TerminalViewState extends State<TerminalView>
       fontFamily: _theme.fontFamily,
       fontFamilyFallback: _theme.fontFamilyFallback,
       fontData: fontData ?? widget.fontData ?? _resolvedFontData,
-      devicePixelRatio: _devicePixelRatio,
+      devicePixelRatio: _devicePixelRatio!,
     );
+  }
+
+  void _onSystemFontsChanged() {
+    final metrics = _measureMetrics();
+    if (metrics == _metrics) return;
+    setState(() => _metrics = metrics);
+    _syncLinkInteraction();
   }
 
   void _onControllerChanged() {
@@ -571,7 +585,8 @@ final class _TerminalViewState extends State<TerminalView>
     }
 
     if (controllerChanged) {
-      _attachment = ViewAttachment(_controller);
+      _attachment = ViewAttachment(_controller, links: _links);
+      _attachment.tickerEnabled = TickerMode.valuesOf(context).enabled;
       _attachment.addListener(_onControllerChanged);
       _resizeDeferred = _attachment.resizeDeferred;
     }

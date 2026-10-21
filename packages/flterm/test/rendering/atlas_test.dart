@@ -40,22 +40,23 @@ void main() {
     tearDown(() => atlas.dispose());
 
     group('construction', () {
-      test('applies config, pre-seeds glyphs, and creates atlas image', () {
+      test('applies config without allocating unused glyphs', () {
         atlas.dispose();
         atlas = Atlas(config(dpr: 2.0));
 
         expect(atlas.devicePixelRatio, 2.0);
-        expect(atlas.cacheSize, greaterThan(0));
-        expect(atlas.textImage, isNotNull);
+        expect(atlas.cacheSize, 0);
+        expect(atlas.textImage, isNull);
         expect(atlas.spriteImage, isNull);
       });
 
       test('lane image accessors expose separate atlas textures', () {
-        expect(atlas.textImage, isNotNull);
+        expect(atlas.textImage, isNull);
         expect(atlas.spriteImage, isNull);
-        expect(atlas.decorationImage, isNotNull);
-        expect(atlas.decorationImage, isNot(same(atlas.textImage)));
+        expect(atlas.decorationImage, isNull);
 
+        atlas.add((text: 'A', bold: false, italic: false));
+        atlas.addDecoration(UnderlineStyle.single);
         atlas.add((text: '\u{1F600}', bold: false, italic: false), emoji: true);
         atlas.addCodepoint(0x2500, bold: false, italic: false);
         atlas.ensureImage();
@@ -67,7 +68,7 @@ void main() {
         expect(atlas.decorationImage, isNot(same(atlas.spriteImage)));
       });
 
-      test('defers preseed when cell dimensions are not available', () {
+      test('does not allocate when cell dimensions are unavailable', () {
         atlas.dispose();
         atlas = Atlas(
           config(
@@ -86,44 +87,43 @@ void main() {
 
     group('addCodepoint', () {
       test('creates entry and returns cached on second call', () {
-        final entry1 = atlas.addCodepoint(0x100, bold: false, italic: false);
-        final entry2 = atlas.addCodepoint(0x100, bold: false, italic: false);
+        final entry1 =
+            atlas.addCodepoint(0x100, bold: false, italic: false) as AtlasEntry;
+        final entry2 =
+            atlas.addCodepoint(0x100, bold: false, italic: false) as AtlasEntry;
 
         expect(entry1.srcRight, greaterThan(entry1.srcLeft));
         expect(identical(entry1, entry2), isTrue);
       });
 
       test('different styles produce different entries', () {
-        final plain = atlas.addCodepoint(0x41, bold: false, italic: false);
-        final bold = atlas.addCodepoint(0x41, bold: true, italic: false);
+        final plain =
+            atlas.addCodepoint(0x41, bold: false, italic: false) as AtlasEntry;
+        final bold =
+            atlas.addCodepoint(0x41, bold: true, italic: false) as AtlasEntry;
         expect(identical(plain, bold), isFalse);
       });
 
       test('sprite codepoints reuse geometry across styles', () {
         for (final codepoint in spriteSamples) {
-          final plain = atlas.addCodepoint(
-            codepoint,
-            bold: false,
-            italic: false,
-          );
-          final boldItalic = atlas.addCodepoint(
-            codepoint,
-            bold: true,
-            italic: true,
-          );
+          final plain =
+              atlas.addCodepoint(codepoint, bold: false, italic: false)
+                  as AtlasEntry;
+          final boldItalic =
+              atlas.addCodepoint(codepoint, bold: true, italic: true)
+                  as AtlasEntry;
 
           expect(identical(plain, boldItalic), isTrue, reason: '$codepoint');
         }
       });
 
       test('span participates in sprite cache key', () {
-        final single = atlas.addCodepoint(0xE0B0, bold: false, italic: false);
-        final doubleWidth = atlas.addCodepoint(
-          0xE0B0,
-          bold: false,
-          italic: false,
-          span: 2,
-        );
+        final single =
+            atlas.addCodepoint(0xE0B0, bold: false, italic: false)
+                as AtlasEntry;
+        final doubleWidth =
+            atlas.addCodepoint(0xE0B0, bold: false, italic: false, span: 2)
+                as AtlasEntry;
 
         expect(identical(single, doubleWidth), isFalse);
         expect(
@@ -136,7 +136,9 @@ void main() {
         final sizeBefore = atlas.cacheSize;
         expect(atlas.spriteImage, isNull);
 
-        final entry = atlas.addCodepoint(0x2500, bold: false, italic: false);
+        final entry =
+            atlas.addCodepoint(0x2500, bold: false, italic: false)
+                as AtlasEntry;
         expect(entry.srcRight, greaterThan(entry.srcLeft));
         expect(atlas.cacheSize, sizeBefore + 1);
         expect(atlas.spriteImage, isNull);
@@ -151,8 +153,8 @@ void main() {
         final sizeBefore = atlas.cacheSize;
 
         const key = (text: '\u{1234}', bold: false, italic: false);
-        final entry1 = atlas.add(key);
-        final entry2 = atlas.add(key);
+        final entry1 = atlas.add(key) as AtlasEntry;
+        final entry2 = atlas.add(key) as AtlasEntry;
 
         expect(atlas.cacheSize, sizeBefore + 1);
         expect(identical(entry1, entry2), isTrue);
@@ -160,7 +162,7 @@ void main() {
 
       test('wide text entry spans 2 cells', () {
         const key = (text: '\u{4e00}', bold: false, italic: false);
-        final entry = atlas.add(key, span: 2);
+        final entry = atlas.add(key, span: 2) as AtlasEntry;
 
         final expectedWidth = (8.0 * 2 * 1.0).ceil().toDouble();
         expect(entry.srcRight - entry.srcLeft, expectedWidth);
@@ -169,13 +171,16 @@ void main() {
 
       test('emoji entry exposes the emoji lane', () {
         const key = (text: '\u{1F600}', bold: false, italic: false);
-        final entry = atlas.add(key, emoji: true);
+        final entry = atlas.add(key, emoji: true) as AtlasEntry;
         expect(entry.lane, AtlasEntryLane.emoji);
       });
 
       test('sprite and decoration entries expose their owning lane', () {
-        final sprite = atlas.addCodepoint(0x2500, bold: false, italic: false);
-        final decoration = atlas.addDecoration(UnderlineStyle.single);
+        final sprite =
+            atlas.addCodepoint(0x2500, bold: false, italic: false)
+                as AtlasEntry;
+        final decoration =
+            atlas.addDecoration(UnderlineStyle.single) as AtlasEntry;
 
         expect(sprite.lane, AtlasEntryLane.sprite);
         expect(decoration.lane, AtlasEntryLane.decoration);
@@ -186,10 +191,11 @@ void main() {
         for (var code = 0x300; code < 0x310; code++) {
           entries.add(
             atlas.add((
-              text: String.fromCharCode(code),
-              bold: false,
-              italic: false,
-            )),
+                  text: String.fromCharCode(code),
+                  bold: false,
+                  italic: false,
+                ))
+                as AtlasEntry,
           );
         }
 
@@ -212,10 +218,11 @@ void main() {
         for (var code = 0x400; code < 0x410; code++) {
           earlyEntries.add(
             atlas.add((
-              text: String.fromCharCode(code),
-              bold: false,
-              italic: false,
-            )),
+                  text: String.fromCharCode(code),
+                  bold: false,
+                  italic: false,
+                ))
+                as AtlasEntry,
           );
         }
 
@@ -267,6 +274,8 @@ void main() {
 
     group('dispose', () {
       test('releases image', () {
+        atlas.addCodepoint(0x41, bold: false, italic: false);
+        atlas.ensureImage();
         expect(atlas.textImage, isNotNull);
 
         atlas.dispose();

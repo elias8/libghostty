@@ -22,30 +22,8 @@ class TerminalTextPainter {
     : _paint = Paint();
 
   void paint(Canvas canvas) {
-    final image = _atlas.textImage;
-    if (image == null) return;
-
-    if (_regular.hasSprites) {
-      canvas.drawRawAtlas(
-        image,
-        _regular.sealedTransforms,
-        _regular.sealedRects,
-        _regular.sealedColors,
-        BlendMode.modulate,
-        null,
-        _paint,
-      );
-    }
-    if (_wide.hasSprites) {
-      canvas.drawRawAtlas(
-        image,
-        _wide.sealedTransforms,
-        _wide.sealedRects,
-        _wide.sealedColors,
-        BlendMode.modulate,
-        null,
-        _paint,
-      );
-    }
+    final inverseDpr = 1 / _atlas.devicePixelRatio;
+    _regular.paint(canvas, _atlas.textImage, inverseDpr, _paint);
+    _wide.paint(canvas, _atlas.textImage, inverseDpr, _paint);
   }
 }

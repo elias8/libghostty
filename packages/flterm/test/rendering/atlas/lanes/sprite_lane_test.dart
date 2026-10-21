@@ -53,7 +53,7 @@ void main() {
 
     Future<(AtlasEntry, Uint8List, int)> rasterizeGlyph(int codepoint) async {
       final glyph = SpriteFace().glyphFor(codepoint)!;
-      final entry = lane.rasterizeSprite(glyph);
+      final entry = lane.rasterizeSprite(glyph) as AtlasEntry;
 
       lane.ensureImage();
       final bytes = await lane.image!.toByteData();
@@ -79,7 +79,7 @@ void main() {
         config(metrics: metrics, devicePixelRatio: devicePixelRatio),
       );
       final glyph = SpriteFace().glyphFor(codepoint)!;
-      final entry = lane.rasterizeSprite(glyph);
+      final entry = lane.rasterizeSprite(glyph) as AtlasEntry;
       lane.ensureImage();
 
       final recorder = PictureRecorder();
@@ -141,7 +141,7 @@ void main() {
     test('rasterizeSprite includes sprite overflow padding', () {
       final glyph = SpriteFace().glyphFor(0x2500)!;
 
-      final entry = lane.rasterizeSprite(glyph);
+      final entry = lane.rasterizeSprite(glyph) as AtlasEntry;
 
       expect(entry.srcRight, greaterThan(entry.srcLeft));
       expect(entry.srcLeft, 1);

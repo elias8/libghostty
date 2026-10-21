@@ -7,13 +7,22 @@ final class _CursorFrameBuilder {
   final PaintState _state;
   final CellContentResolver _content;
   _CursorCell? _lastCell;
+  DirectGlyph? _direct;
 
   _CursorFrameBuilder(this._state, this._content);
 
+  void dispose() {
+    _state.cursorGlyph = null;
+    _direct?.dispose();
+    _direct = null;
+  }
+
   void refreshGlyph() {
+    dispose();
     final cell = _lastCell;
     final entry = _resolveGlyph();
-    _state.cursorAtlasEntry = entry;
+    _state.cursorGlyph = entry;
+    if (entry is DirectGlyph) _direct = entry;
     if (entry == null || cell == null) return;
 
     // The character under a block cursor paints in CursorTheme.text (or the
@@ -40,7 +49,7 @@ final class _CursorFrameBuilder {
     _state.cursor = cell == null ? cursor.copyWith(visible: false) : cursor;
     _state.cursorWide = cell?.wide ?? false;
     if (cell == null) {
-      _state.cursorAtlasEntry = null;
+      dispose();
       return;
     }
     _resolveFillColor(color, cell);
@@ -69,7 +78,7 @@ final class _CursorFrameBuilder {
         .toARGB32();
   }
 
-  AtlasEntry? _resolveGlyph() {
+  Glyph? _resolveGlyph() {
     final cell = _lastCell;
     if (cell == null ||
         !_state.cursorFocused ||

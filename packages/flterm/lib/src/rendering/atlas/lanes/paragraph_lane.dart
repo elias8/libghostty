@@ -2,21 +2,10 @@ import 'dart:math';
 import 'dart:ui';
 
 import '../atlas_config.dart';
-import '../atlas_entry.dart';
 import 'atlas_lane.dart';
-
-typedef _PendingParagraph = ({
-  Paragraph paragraph,
-  AtlasEntry entry,
-  double widthScale,
-  double heightScale,
-  Offset paintOffset,
-});
 
 /// Shared paragraph setup for font-backed atlas lanes.
 abstract class ParagraphLane extends AtlasLane {
-  final List<_PendingParagraph> _pending = [];
-
   var _fontFamily = '';
   var _fontWeight = FontWeight.normal;
   var _fontFamilyFallback = const <String>[];
@@ -26,10 +15,12 @@ abstract class ParagraphLane extends AtlasLane {
   var _pxBaseline = 0.0;
   var _pxItalicOverhang = 0.0;
 
-  ParagraphLane({required super.entryLane, super.initialSize, super.maxSize});
-
-  @override
-  bool get hasPending => _pending.isNotEmpty;
+  ParagraphLane({
+    required super.entryLane,
+    super.initialSize,
+    super.maxSize,
+    super.budget,
+  });
 
   double get pxBaseline => _pxBaseline;
 
@@ -40,22 +31,6 @@ abstract class ParagraphLane extends AtlasLane {
   double get pxFontSize => _pxFontSize;
 
   double get pxItalicOverhang => _pxItalicOverhang;
-
-  void addPendingParagraph(
-    Paragraph paragraph,
-    AtlasEntry entry, {
-    double widthScale = 1.0,
-    double heightScale = 1.0,
-    Offset paintOffset = Offset.zero,
-  }) {
-    _pending.add((
-      paragraph: paragraph,
-      entry: entry,
-      widthScale: widthScale,
-      heightScale: heightScale,
-      paintOffset: paintOffset,
-    ));
-  }
 
   Paragraph buildParagraph(
     String text, {
@@ -100,14 +75,6 @@ abstract class ParagraphLane extends AtlasLane {
   }
 
   @override
-  void clearPending() {
-    for (final pending in _pending) {
-      pending.paragraph.dispose();
-    }
-    _pending.clear();
-  }
-
-  @override
   void configure(AtlasConfig config) {
     _fontFamily = config.fontFamily;
     _fontWeight = config.fontWeight;
@@ -117,35 +84,5 @@ abstract class ParagraphLane extends AtlasLane {
     _pxBaseline = config.metrics.baseline * config.devicePixelRatio;
     _pxFontSize = config.fontSize * config.devicePixelRatio;
     _pxItalicOverhang = max(1.0, (_pxFontSize * 0.15).ceilToDouble());
-  }
-
-  @override
-  void paintPending(Canvas canvas) {
-    for (final pending in _pending) {
-      final entry = pending.entry;
-      canvas.save();
-      canvas.clipRect(
-        Rect.fromLTRB(
-          entry.srcLeft,
-          entry.srcTop,
-          entry.srcRight,
-          entry.srcBottom,
-        ),
-      );
-      final offset = Offset(
-        entry.srcLeft + pending.paintOffset.dx,
-        entry.srcTop + pending.paintOffset.dy,
-      );
-      if (pending.widthScale == 1.0 && pending.heightScale == 1.0) {
-        canvas.drawParagraph(pending.paragraph, offset);
-      } else {
-        canvas.translate(offset.dx, offset.dy);
-        canvas.scale(pending.widthScale, pending.heightScale);
-        canvas.drawParagraph(pending.paragraph, Offset.zero);
-      }
-      canvas.restore();
-      pending.paragraph.dispose();
-    }
-    _pending.clear();
   }
 }

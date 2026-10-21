@@ -1,5 +1,5 @@
-import 'package:flutter/foundation.dart' hide Key;
 import 'package:libghostty/libghostty.dart';
+import 'package:meta/meta.dart';
 
 /// Keyboard input normalized independently of Flutter key event types.
 final class KeyInput {

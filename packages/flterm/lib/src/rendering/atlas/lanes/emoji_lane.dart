@@ -3,6 +3,7 @@ import 'dart:ui';
 
 import '../atlas_config.dart';
 import '../atlas_entry.dart';
+import 'glyph_raster.dart';
 import 'paragraph_lane.dart';
 
 /// Rasterizes full-color emoji glyphs into the emoji atlas.
@@ -18,7 +19,8 @@ class EmojiLane extends ParagraphLane {
   String? _emojiFontFamily;
   List<String>? _emojiFontFamilyFallback;
 
-  EmojiLane({super.initialSize, super.maxSize}) : super(entryLane: .emoji);
+  EmojiLane({super.initialSize, super.maxSize, super.budget})
+    : super(entryLane: .emoji);
 
   @override
   void configure(AtlasConfig config) {
@@ -31,16 +33,16 @@ class EmojiLane extends ParagraphLane {
         : _emojiFallbackFor(config, emojiFontFamily);
   }
 
-  /// Builds a full-color emoji paragraph for [text], packs it into the
-  /// atlas, and returns an [AtlasEntry] with its source coordinates.
+  /// Returns borrowed atlas pixels or caller-owned [DirectGlyph] ink.
   ///
   /// Emoji are rasterized in color and composited with uniform scaling to fit
   /// within the cell span; tinting is not applied at draw time.
-  AtlasEntry rasterizeEmoji(
+  Glyph rasterizeEmoji(
     String text, {
     required bool bold,
     required bool italic,
     int span = 1,
+    bool admit = true,
   }) {
     final pxSpanWidth = (pxCellWidth * span).ceilToDouble();
     final pxSpanHeight = pxCellHeight.ceilToDouble();
@@ -61,37 +63,25 @@ class EmojiLane extends ParagraphLane {
       fontFamilyFallback: _emojiFontFamilyFallback,
     );
 
-    late final AtlasEntry entry;
-    try {
-      entry = allocate(
-        width: pxSpanWidth,
-        height: pxSpanHeight,
-        bearingY: max(0.0, (pxCellHeight - paragraph.height) / 2),
-      );
-    } catch (_) {
-      paragraph.dispose();
-      rethrow;
-    }
-
-    final cellWidth = entry.srcRight - entry.srcLeft;
-    final cellHeight = entry.srcBottom - entry.srcTop;
     final emojiWidth = max(paragraph.maxIntrinsicWidth, 1.0);
     final emojiHeight = max(paragraph.height, 1.0);
     final scale = min(
       1.0,
-      min(cellWidth / emojiWidth, cellHeight / emojiHeight),
+      min(pxSpanWidth / emojiWidth, pxSpanHeight / emojiHeight),
     );
-    addPendingParagraph(
-      paragraph,
-      entry,
-      widthScale: scale,
-      heightScale: scale,
-      paintOffset: Offset(
-        (cellWidth - emojiWidth * scale) / 2,
-        (cellHeight - emojiHeight * scale) / 2,
+    return addRaster(
+      ParagraphRaster(
+        paragraph,
+        Size(pxSpanWidth, pxSpanHeight),
+        paragraphOffset: Offset(
+          (pxSpanWidth - emojiWidth * scale) / 2,
+          (pxSpanHeight - emojiHeight * scale) / 2,
+        ),
+        scaleX: scale,
+        scaleY: scale,
       ),
+      admit: admit,
     );
-    return entry;
   }
 
   static List<String> _emojiFallbackFor(AtlasConfig config, String primary) {

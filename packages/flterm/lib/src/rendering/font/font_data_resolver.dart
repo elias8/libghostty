@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
@@ -15,7 +17,8 @@ import 'font_data_resolver_io.dart'
 /// 2. System font directories: scans platform-specific font folders
 ///    (macOS, Linux, Windows; skipped on mobile and web).
 ///
-/// Results are cached globally so repeated lookups are free.
+/// Concurrent lookups share one resolution. Completed results are cached
+/// globally.
 ///
 /// ```dart
 /// final bytes = await FontDataResolver.resolve('JetBrains Mono');
@@ -24,7 +27,7 @@ import 'font_data_resolver_io.dart'
 /// }
 /// ```
 class FontDataResolver {
-  static final _cache = <String, Uint8List?>{};
+  static final _cache = <String, Future<Uint8List?>>{};
 
   /// Weight-style suffixes excluded during filesystem font scanning.
   ///
@@ -50,24 +53,27 @@ class FontDataResolver {
 
   /// Resolves font file bytes for [fontFamily].
   ///
-  /// Returns cached results on subsequent calls. Returns `null` if the
-  /// font cannot be found in any source.
-  static Future<Uint8List?> resolve(String fontFamily) async {
-    if (_cache.containsKey(fontFamily)) return _cache[fontFamily];
+  /// Returns cached results on subsequent calls. Returns `null` if the font
+  /// cannot be found in any source.
+  static Future<Uint8List?> resolve(String fontFamily) {
+    return _cache.putIfAbsent(fontFamily, () {
+      late final Future<Uint8List?> resolution;
+      return resolution = _resolve(fontFamily).catchError((
+        Object error,
+        StackTrace stack,
+      ) {
+        if (identical(_cache[fontFamily], resolution)) {
+          unawaited(_cache.remove(fontFamily));
+        }
+        Error.throwWithStackTrace(error, stack);
+      });
+    });
+  }
 
+  static Future<Uint8List?> _resolve(String fontFamily) async {
     final assetBytes = await _tryAssetBundle(fontFamily);
-    if (assetBytes != null) {
-      _cache[fontFamily] = assetBytes;
-      return assetBytes;
-    }
-
-    final systemBytes = trySystemFonts(
-      fontFamily,
-      _candidates,
-      _excludedWeights,
-    );
-    _cache[fontFamily] = systemBytes;
-    return systemBytes;
+    if (assetBytes != null) return assetBytes;
+    return trySystemFonts(fontFamily, _candidates, _excludedWeights);
   }
 
   /// Candidate filenames for a font family (regular weight only).

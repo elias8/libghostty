@@ -9,6 +9,7 @@ import 'package:flterm/src/controller/terminal_controller.dart';
 import 'package:flterm/src/foundation.dart';
 import 'package:flterm/src/input/input_message.dart';
 import 'package:flterm/src/input/selection_session.dart';
+import 'package:flterm/src/links/link_interaction.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:libghostty/libghostty.dart' hide KeyEvent;
@@ -31,9 +32,11 @@ void main() {
 
     ViewAttachment inputFor(TerminalController target) =>
         inputs.putIfAbsent(target, () {
-          final attachment = ViewAttachment(target);
+          final links = LinkInteraction();
+          final attachment = ViewAttachment(target, links: links);
           addTearDown(() {
             attachment.dispose();
+            links.dispose();
             inputs.remove(target);
           });
           return attachment;
@@ -1023,10 +1026,7 @@ void main() {
 
       test('resize callback observes committed selection geometry', () {
         controller.write(Uint8List.fromList(utf8.encode('hello')));
-        final viewToken = binding.attachView();
-        addTearDown(() => binding.detachView(viewToken));
-        final selectionInput = binding.createSelectionInteraction();
-        addTearDown(selectionInput.dispose);
+        final selectionInput = inputFor(controller).selectionInput;
         var selected = false;
         controller.onResize = (_, _) {
           selectionInput.handlePress(
@@ -1696,10 +1696,7 @@ void main() {
       });
 
       test('selection interaction observes per-screen selection changes', () {
-        final viewToken = binding.attachView();
-        addTearDown(() => binding.detachView(viewToken));
-        final selectionInput = binding.createSelectionInteraction();
-        addTearDown(selectionInput.dispose);
+        final selectionInput = inputFor(controller).selectionInput;
         controller.selectRange(
           start: const Position(row: 0, col: 0),
           end: const Position(row: 0, col: 4),
@@ -1755,10 +1752,7 @@ void main() {
 
       test('clearSelection ends an active selection gesture', () {
         controller.write(Uint8List.fromList(utf8.encode('hello')));
-        final viewToken = binding.attachView();
-        addTearDown(() => binding.detachView(viewToken));
-        final selectionInput = binding.createSelectionInteraction();
-        addTearDown(selectionInput.dispose);
+        final selectionInput = inputFor(controller).selectionInput;
         binding.handleResize(
           const SurfaceMeasurement(
             cols: 80,

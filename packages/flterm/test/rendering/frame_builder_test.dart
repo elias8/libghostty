@@ -76,12 +76,14 @@ void main() {
     ) {
       final glyphByRect = <String, String>{};
       for (final glyph in glyphs) {
-        final entry = atlas.addCodepoint(
-          glyph.runes.single,
-          bold: false,
-          italic: false,
-          span: 2,
-        );
+        final entry =
+            atlas.addCodepoint(
+                  glyph.runes.single,
+                  bold: false,
+                  italic: false,
+                  span: 2,
+                )
+                as AtlasEntry;
         glyphByRect[entryRectKey(entry)] = glyph;
       }
       return [
@@ -142,6 +144,119 @@ void main() {
       sprites.dispose();
       atlas.dispose();
       terminal.dispose();
+    });
+
+    test('sync preserves rows when viewport identities move and return', () {
+      writeUtf8(
+        terminal,
+        '\x1b[38;2;1;2;3mA\r\n\x1b[38;2;4;5;6mB\r\n\x1b[38;2;7;8;9mC',
+      );
+      builder.sync(terminal, terminalDirty: true);
+      expect(sprites.regular.sealedColors, [
+        0xFF040506.toSigned(32),
+        0xFF070809.toSigned(32),
+      ]);
+      terminal.scrollViewport(-1);
+      builder.sync(terminal, terminalDirty: true);
+      expect(sprites.regular.sealedColors, [
+        0xFF010203.toSigned(32),
+        0xFF040506.toSigned(32),
+      ]);
+      terminal.scrollToBottom();
+      builder.sync(terminal, terminalDirty: true);
+      expect(sprites.regular.sealedColors, [
+        0xFF040506.toSigned(32),
+        0xFF070809.toSigned(32),
+      ]);
+    });
+
+    test('sync preserves RGB and palette erase backgrounds', () async {
+      terminal.palette = [
+        for (var i = 0; i < 256; i++)
+          if (i == 1) const RgbColor(4, 5, 6) else const RgbColor(0, 0, 0),
+      ];
+      writeUtf8(
+        terminal,
+        '\x1b[48;2;1;2;3m\x1b[2K\x1b[2;1H\x1b[41m\x1b[2K\x1b[0m',
+      );
+      builder.sync(terminal, terminalDirty: true);
+      final recorder = PictureRecorder();
+      final canvas = Canvas(recorder);
+      for (final vertices in sprites.background.buildVertices(
+        Uint16List.fromList([0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7]),
+      )) {
+        canvas.drawVertices(vertices, BlendMode.src, Paint());
+      }
+      final picture = recorder.endRecording();
+      final image = picture.toImageSync(64, 32);
+      final pixels = (await image.toByteData())!;
+      expect(pixels.getUint32(0), 0x010203FF);
+      expect(pixels.getUint32(16 * 64 * 4), 0x040506FF);
+      image.dispose();
+      picture.dispose();
+    });
+
+    test('sync preserves page-local style colors across a tall viewport', () {
+      final frame = createFrame(cols: 300, rows: 400);
+      final input = StringBuffer();
+      for (var row = 0; row < 400; row++) {
+        input.write('\x1b[${row + 1};1H\x1b[38;2;${row % 256};2;3mA');
+      }
+      writeUtf8(frame.terminal, input.toString());
+      expect(frame.terminal.memoryUsage.primaryPages, greaterThan(1));
+      final snapshot = RenderState();
+      final rows = RowIterator();
+      final cells = CellIterator();
+      final colorsById = <int, int>{};
+      var hasPageLocalCollision = false;
+      try {
+        snapshot.update(frame.terminal);
+        rows.reset(snapshot);
+        while (rows.next()) {
+          cells.reset(rows);
+          expect(cells.next(), isTrue);
+          final id = cells.styleId;
+          final color = (cells.style.foreground as RgbColor).toArgb32;
+          final previous = colorsById[id];
+          if (id > 0 && id < 1024 && previous != null && previous != color) {
+            hasPageLocalCollision = true;
+          }
+          colorsById[id] = color;
+        }
+      } finally {
+        cells.dispose();
+        rows.dispose();
+        snapshot.dispose();
+      }
+      expect(hasPageLocalCollision, isTrue);
+      frame.builder.sync(frame.terminal, terminalDirty: true);
+      expect(frame.sprites.regular.sealedColors, [
+        for (var row = 0; row < 400; row++)
+          (0xFF000203 | ((row % 256) << 16)).toSigned(32),
+      ]);
+    });
+
+    test('sync replaces grapheme and wide content with plain text', () {
+      writeUtf8(terminal, 'e\u0301\u4e2d');
+      builder.sync(terminal, terminalDirty: true);
+      expect(sprites.regular.count, 1);
+      expect(
+        spriteRectKey(sprites.regular, 0),
+        entryRectKey(
+          atlas.add((text: 'e\u0301', bold: false, italic: false))
+              as AtlasEntry,
+        ),
+      );
+      writeUtf8(terminal, '\r\x1b[2KAB');
+      builder.sync(terminal, terminalDirty: true);
+      expect(sprites.regular.count, 2);
+      expect(sprites.wide.count, 0);
+      expect(sprites.emoji.count, 0);
+      expect(xPositions(sprites.regular), [0, 8]);
+      builder.markRowsDirty(0, 1);
+      builder.sync(terminal, terminalDirty: false);
+      expect(sprites.regular.count, 2);
+      expect(xPositions(sprites.regular), [0, 8]);
     });
 
     test('sync emits text, sprite, and emoji channels', () {
@@ -235,7 +350,7 @@ void main() {
 
     test('sync emits operator ligatures without adding text atlas entries', () {
       final initialCacheSize = atlas.cacheSize;
-      writeUtf8(terminal, '=> != ===');
+      writeUtf8(terminal, '\x1b[?25l=> != ==');
 
       builder.sync(terminal, terminalDirty: true);
 
@@ -245,6 +360,42 @@ void main() {
         hasLength(3),
       );
       expect(atlas.cacheSize, initialCacheSize);
+    });
+
+    test('shared operator paragraphs survive replacing one visible row', () {
+      writeUtf8(terminal, '\x1b[?25l=>\r\n=>');
+      builder.sync(terminal, terminalDirty: true);
+      final untouched = sprites.shaped.rows[1].single;
+      expect(
+        sprites.shaped.rows[0].single.paragraph,
+        same(untouched.paragraph),
+      );
+      builder.markRowsDirty(0, 1);
+      builder.sync(terminal, terminalDirty: false);
+      expect(sprites.shaped.rows[1].single, same(untouched));
+      writeUtf8(terminal, '\x1b[1;1H!=');
+      builder.sync(terminal, terminalDirty: true);
+      final recorder = PictureRecorder();
+      final canvas = Canvas(recorder);
+      canvas.drawParagraph(untouched.paragraph, untouched.offset);
+      final picture = recorder.endRecording();
+      picture.dispose();
+      expect(
+        sprites.shaped.rows[1].single.paragraph,
+        same(untouched.paragraph),
+      );
+      expect(untouched.clip, const Rect.fromLTWH(0, 16, 16, 16));
+      expect(
+        sprites.shaped.rows[0].single.clip,
+        const Rect.fromLTWH(0, 0, 16, 16),
+      );
+      builder.markRowsDirty(0, 1);
+      writeUtf8(terminal, '\x1b[1;1H=>');
+      builder.sync(terminal, terminalDirty: true);
+      expect(
+        sprites.shaped.rows[0].single.paragraph,
+        same(untouched.paragraph),
+      );
     });
 
     test('sync separates operator runs at a foreground color boundary', () {
@@ -274,7 +425,7 @@ void main() {
         localTerminal.dispose();
       });
       final initialCacheSize = localAtlas.cacheSize;
-      writeUtf8(localTerminal, List.filled(260, r'$').join());
+      writeUtf8(localTerminal, '\x1b[?25l${List.filled(260, r'$').join()}');
 
       localBuilder.sync(localTerminal, terminalDirty: true);
 
@@ -367,7 +518,7 @@ void main() {
     });
 
     test('sync preserves link underline across a highlight boundary', () {
-      final singleUnderline = atlas.addDecoration(.single);
+      final singleUnderline = atlas.addDecoration(.single) as AtlasEntry;
       state.updateTheme(
         TerminalTheme.dark().copyWith(
           hyperlink: const HyperlinkTheme(
@@ -581,14 +732,75 @@ void main() {
 
       expect(state.cursor.visible, isTrue);
       expect(state.cursor.viewportX, 0);
-      expect(state.cursorAtlasEntry, isNotNull);
+      expect(state.cursorGlyph, isNotNull);
     });
+
+    test(
+      'direct cursor refresh replaces ink and disposal clears borrowed state',
+      () {
+        const largeMetrics = CellMetrics(
+          cellWidth: 1100,
+          cellHeight: 1100,
+          baseline: 850,
+        );
+        final largeAtlas = Atlas(
+          AtlasConfig(
+            fontSize: 800,
+            fontWeight: FontWeight.normal,
+            fontFamily: 'monospace',
+            fontFamilyFallback: const [],
+            metrics: largeMetrics,
+            devicePixelRatio: 1,
+          ),
+        );
+        final localTerminal = Terminal(cols: 2, rows: 1);
+        final localSprites = SpriteBuffer();
+        final localState = PaintState(TerminalTheme.dark(), largeMetrics)
+          ..rows = 1
+          ..cols = 2;
+        final localBuilder = FrameBuilder(largeAtlas, localSprites, localState)
+          ..configure(1, 2);
+        try {
+          writeUtf8(localTerminal, 'A\x1b[H');
+          localBuilder.sync(localTerminal, terminalDirty: true);
+          final first = localState.cursorGlyph;
+          expect(first, isA<DirectGlyph>());
+          expect(largeAtlas.cacheSize, 0);
+          localBuilder.refreshCursorGlyph();
+          expect(localState.cursorGlyph, isA<DirectGlyph>());
+          expect(localState.cursorGlyph, isNot(same(first)));
+          localState.cursorFocused = false;
+          localBuilder.refreshCursorGlyph();
+          expect(localState.cursorGlyph, isNull);
+          localState.cursorFocused = true;
+          localBuilder.refreshCursorGlyph();
+          expect(localState.cursorGlyph, isA<DirectGlyph>());
+          writeUtf8(localTerminal, '\r\x1b[5mA\x1b[H');
+          localBuilder.sync(localTerminal, terminalDirty: true);
+          localState.blinkVisible = false;
+          localBuilder.refreshCursorGlyph();
+          expect(localState.cursorGlyph, isNull);
+          localState.blinkVisible = true;
+          localBuilder.refreshCursorGlyph();
+          expect(localState.cursorGlyph, isA<DirectGlyph>());
+          writeUtf8(localTerminal, '\x1b[6 q');
+          localBuilder.sync(localTerminal, terminalDirty: true);
+          expect(localState.cursorGlyph, isNull);
+          localBuilder.dispose();
+          expect(localState.cursorGlyph, isNull);
+        } finally {
+          localSprites.dispose();
+          largeAtlas.dispose();
+          localTerminal.dispose();
+        }
+      },
+    );
 
     test('sync skips cursor glyph on empty cells', () {
       builder.sync(terminal, terminalDirty: true);
 
       expect(state.cursor.visible, isTrue);
-      expect(state.cursorAtlasEntry, isNull);
+      expect(state.cursorGlyph, isNull);
     });
 
     test('sync skips cursor glyph when the terminal is unfocused', () {
@@ -598,7 +810,7 @@ void main() {
       builder.sync(terminal, terminalDirty: true);
 
       expect(state.cursor.visible, isTrue);
-      expect(state.cursorAtlasEntry, isNull);
+      expect(state.cursorGlyph, isNull);
     });
 
     test('sync skips cursor glyph for non-block cursors', () {
@@ -613,7 +825,7 @@ void main() {
 
       expect(state.cursor.visible, isTrue);
       expect(state.cursor.visualStyle, CursorShape.underline);
-      expect(state.cursorAtlasEntry, isNull);
+      expect(state.cursorGlyph, isNull);
     });
 
     test('sync skips cursor glyph on invisible text', () {
@@ -622,7 +834,7 @@ void main() {
       builder.sync(terminal, terminalDirty: true);
 
       expect(state.cursor.visible, isTrue);
-      expect(state.cursorAtlasEntry, isNull);
+      expect(state.cursorGlyph, isNull);
     });
 
     test('sync skips cursor glyph on blink-hidden text', () {
@@ -632,7 +844,7 @@ void main() {
       builder.sync(terminal, terminalDirty: true);
 
       expect(state.cursor.visible, isTrue);
-      expect(state.cursorAtlasEntry, isNull);
+      expect(state.cursorGlyph, isNull);
     });
 
     test('sync replaces only the active preedit cell range', () {
