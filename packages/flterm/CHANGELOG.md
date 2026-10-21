@@ -1,17 +1,29 @@
 # Changelog
 
-## Unreleased
+## 0.0.6
 
 ### Breaking
 
-- **Renderer-neutral controller**: focus and soft-keyboard APIs move from
-  `TerminalController` to `TerminalView`. Pass a `FocusNode` for imperative
-  focus control and configure soft-keyboard access with `showKeyboard`.
+- **Scrollback limits**: replace `TerminalConfig.scrollbackLimit` with
+  `scrollbackMaxBytes` and optional `scrollbackMaxLines`. The default byte
+  limit changes from 10,000,000 to 10,000. Set
+  `scrollbackMaxBytes: 10_000_000` to preserve the previous budget, or use
+  null for no byte limit.
+- **Controller extensibility**: `TerminalController` is sealed. Create sessions
+  through its factories and use composition instead of custom subclasses or
+  implementations.
+- **Focus and keyboard control**: controller focus methods, keyboard methods,
+  and `keyboardState` are removed. Pass a `FocusNode` to `TerminalView` for
+  imperative focus control and configure soft-keyboard access with
+  `TerminalView.showKeyboard`.
 - **Controller contract**: `TerminalController` supports one attached
   `TerminalView`. A second concurrent attachment throws `StateError`.
 - **Callback configuration**: `onBell`, `onOutput`, `onPwdChanged`, `onResize`,
   and `onTitleChanged` are setter-only. Retain callback references if their
   identity is needed elsewhere.
+- **Clipboard payloads**: re-exported `ClipboardContent` and `ClipboardWrite`
+  are immutable classes. Replace record literals with their constructors and
+  use named fields.
 - **Removed public types**: `KeyboardState` and `TerminalScrollPosition` are no
   longer exported. Use `FocusNode`, `TerminalView.showKeyboard`, and the
   standard `ScrollPosition` interface.
@@ -22,8 +34,8 @@
   state, and `TerminalController.fromSnapshot()` restores it progressively or
   synchronously. `restoration` exposes lifecycle state, while the
   `restored` future reports completion and late errors. Continuation tracking
-  supports captures between VT or UTF-8 fragments; view integration preserves
-  snapshot colors and defers resizing while scrollback loads.
+  preserves incomplete VT and UTF-8 input. Restoration can compress history,
+  preserve snapshot colors, and defer resizing while scrollback loads.
 - **Terminal search**: `TerminalController.search` manages incremental searches,
   match navigation, scroll policy, and automatic viewport highlighting.
   `TerminalTheme.search` styles ordinary and selected matches, while
@@ -34,11 +46,27 @@
   autoscroll. Toggling the configured block-selection modifier while dragging
   switches between normal and rectangular selection. Configure or disable
   magnification through `TerminalGestureSettings`.
+- **Clipboard reads**: `TerminalController.onClipboardRead` forwards
+  MIME-aware terminal requests for application-controlled clipboard access.
+- **Session events**: callbacks expose desktop notifications, progress,
+  program status, semantic prompts, full resets, and unknown sequences.
+- **Terminal metadata**: controllers expose memory usage and requested mouse
+  shapes; views reflect terminal-requested pointer shapes.
+- **Prompt navigation**: `TerminalController.scrollToPrompt()` navigates
+  between shell integration prompts.
+- **Resource controls**: applications can limit retained snapshot continuation
+  bytes, captured unknown sequences, and clipboard-write payloads.
+- **Terminal compatibility**: disable restoring scrollback rows during resize
+  for backends that keep their own screen buffer, or opt into screen checksum
+  replies for terminal programs that need them.
 
 ### Changed
 
-- **Incremental rendering**: frame building uses libghostty's dirty-row
-  iteration and bulk cleanup to reduce row scans and binding calls.
+- **Synchronized output**: views hold complete frames during terminal-driven
+  synchronized updates, including cursor and image state. A timeout releases
+  abandoned holds, and user interactions release a hold when needed.
+- **Rendering memory**: font and glyph caches have bounded memory use across
+  terminal views.
 - **Resize lifecycle**: `onResize` reports only after `TerminalView` commits a
   measured grid; assigning it later immediately reports that grid.
   Cell-pixel-only changes skip the callback, and in-band output is emitted
@@ -46,29 +74,29 @@
 
 ### Fixed
 
-- **Ctrl+Space**: Space now reports its unshifted codepoint, so Ctrl+Space
-  encodes as NUL in legacy mode and as a Kitty CSI u chord instead of a
-  plain space. Neovim and other applications can receive the completion
-  mapping without changing unmodified Space or other Ctrl chords.
-- **Cursor viewport state**: cursor and IME preedit rendering honor whether
-  the cursor has a valid viewport position and use its reported visual style.
-- **Text input recovery**: terminal clients reconnect when another input client
-  takes the platform text input connection, including while composition is
-  active.
-- **Keyboard and IME input**: AltGr printable input no longer emits synthetic
-  Control or Alt bytes, Kitty keyboard reports include Caps Lock and Num Lock,
-  and newline/deletion deduplication no longer duplicates or suppresses input.
+- **Ctrl+Space**: the chord encodes as NUL in legacy mode and as a Kitty
+  CSI u chord, allowing applications such as Neovim to receive it.
+- **Cursor rendering**: the cursor and composing text no longer appear at an
+  invalid viewport position. The cursor follows the terminal's reported style.
+- **Text input recovery**: keyboard input resumes after another widget takes
+  the platform text input connection, including during IME composition.
+- **Keyboard and IME input**: AltGr text no longer sends unintended Control or
+  Alt input. Kitty keyboard reports include Caps Lock and Num Lock, and IME
+  newline and deletion events no longer duplicate or suppress input.
 - **Pointer input**: mouse and stylus button changes remain accurate during a
   gesture, stylus drags select text, and a gesture no longer switches between
   selection and terminal mouse reporting.
-- **View updates**: controller swaps transfer terminal focus correctly, and
-  changing `TerminalView.fontData` refreshes cell metrics.
+- **View updates**: replacing a controller preserves terminal focus, and
+  detached controllers can be attached again. Changing `TerminalView.fontData`
+  updates text sizing. Selection changes no longer cause notifications during
+  widget builds.
 - **Terminal glyph rendering**: Nerd Font symbols use common fallback families,
   fit their cell without distortion, and preserve adjacent spacing. Operator
-  ligatures remain stable across complete runs.
-- **Kitty graphics rendering**: unchanged and replacing images remain drawable,
-  decode pressure is bounded, replacement pixels and geometry publish
-  atomically, and placement geometry refreshes during layout and resizing.
+  ligatures remain stable across complete runs, and glyphs that extend beyond
+  their cells retain their visible overflow.
+- **Kitty graphics**: images no longer disappear or briefly show mismatched
+  pixels and dimensions during replacement. Image placements stay aligned
+  after layout changes and resizing.
 
 ## 0.0.5
 

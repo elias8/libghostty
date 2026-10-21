@@ -16,7 +16,7 @@ the terminal emulator library from [Ghostty](https://ghostty.org).
 ```yaml
 # pubspec.yaml
 dependencies:
-  libghostty: ^0.0.12
+  libghostty: ^0.0.13
 ```
 
 On web, initialize the Wasm module once before using any libghostty API:
