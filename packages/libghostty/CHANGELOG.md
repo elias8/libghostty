@@ -4,57 +4,87 @@
 
 ### Breaking
 
-- **Paste requests**: `Terminal.paste` now accepts `PasteRequest` and returns
-  whether output was written. Replace String arguments with `PasteRequest.text`.
-  Use `PasteRequest.mime` for clipboard source, location, MIME preferences, and
-  lazy readers. Set `allowUnsafe` on the request.
-- **Typed public values**: callback payloads, terminal geometry, decoded images,
-  and X11 colors use named, immutable classes. Replace record literals with the
-  corresponding class constructors.
-- **Kitty placement types**: `Placement` and `RenderInfo` are replaced by
-  `KittyPlacement` and `KittyPlacementRenderInfo`.
-- **Cursor types**: `Cursor` is renamed to `RenderStateCursor`. It replaces
-  `position` and `shape` with `viewportX`, `viewportY`, and `visualStyle`, and
-  adds `viewportHasValue`, `wideTail`, `blinking`, and `passwordInput`.
-  Terminal cursor configuration uses `TerminalCursorShape`.
-- **Selection gesture options**: `SelectionGestureEvent.clear()` is replaced
-  by nullable setters such as `setRef(null)` and
-  `setWordBoundaryCodepoints(null)`. Use `clearPosition()` to clear the pointer
-  position.
-- **Exception constructors**: messages and operation context use the named
-  `message` and `operation` arguments.
-- **Kitty pixel data**: `KittyImage.pixelData` is replaced by
-  `copyPixelDataInto()`, which copies into caller-owned storage and returns the
-  written byte count.
+- **Paste requests**: `Terminal.paste` accepts `PasteRequest` and returns
+  whether output was written. Replace string arguments with
+  `PasteRequest.text`, move `allowUnsafe` onto the request, and use
+  `PasteRequest.mime` for clipboard source, location, ordered MIME preferences,
+  and lazy readers.
+- **Typed public values**: clipboard payloads, terminal geometry, decoded
+  images, and X11 colors use immutable classes. Replace record literals with
+  the corresponding class constructors and use named fields.
+- **Cursor types**: `Cursor` becomes `RenderStateCursor`. Replace `position`
+  and `shape` with `viewportX`, `viewportY`, and `visualStyle`. Check
+  `viewportHasValue` before using viewport coordinates. Terminal cursor
+  configuration uses `TerminalCursorShape`.
+- **Kitty graphics types**: `Placement` and `RenderInfo` become
+  `KittyPlacement` and `KittyPlacementRenderInfo`. Replace `KittyImage.pixelData`
+  with `copyPixelDataInto()` to copy pixels into caller-owned storage.
+- **Selection gesture options**: `SelectionGestureEventOption` is no longer
+  exported. Replace `SelectionGestureEvent.clear(option)` with nullable setters
+  such as `setRef(null)` and `setWordBoundaryCodepoints(null)`. Use
+  `clearPosition()` for pointer position.
+- **Listenable**: the exported `Listenable` now comes from `package:listen`.
+  Implement its listener contract or use `ChangeNotifier` from that package
+  instead of mixing in the former libghostty `Listenable`.
+- **Exception constructors**: pass messages and operation context through the
+  named `message` and `operation` arguments.
 
 ### Added
 
 - **Terminal snapshots**: `Terminal.encodeSnapshot()` and `SnapshotDecoder`
-  support complete or incremental state restoration on native and Wasm targets.
-- **Terminal parsing controls**: `writeUntilGround()`, `isVtGround`,
-  `isCursorAtPrompt`, and `terminfoName` expose VT parsing, prompt state, and
-  terminal capability configuration.
+  capture and restore state synchronously or incrementally on native and WASM
+  targets. Continuation tracking preserves incomplete VT and UTF-8 input;
+  restoration can compress scrollback as it loads.
+- **Terminal search**: `Search` supports incremental matching, match navigation,
+  viewport results, and configurable scrolling to the selected match.
+- **Clipboard reads**: `Terminal.onClipboardRead` handles terminal clipboard
+  requests with MIME-aware replies. Clipboard reads remain opt-in.
+- **Session events**: callbacks report desktop notifications, progress, program
+  status, semantic prompts, full resets, and synchronized-output holds.
+- **Parsing controls**: `writeUntilGround()`, `isVtGround`, `isCursorAtPrompt`,
+  `continuation`, and `writeContinuation()` support parser-boundary handling
+  and continuation capture.
 - **Unknown sequences**: `unknownSequenceMaxBytes` and `onUnknownSequence`
-  expose unsupported binary-safe terminal sequences with truncation metadata.
+  expose bounded, binary-safe unsupported sequences. `OscParser` also exposes
+  captured unknown content, truncation, and terminator metadata.
+- **Resource limits**: applications can bound scrollback by bytes or rows and
+  limit clipboard-write payloads.
+- **Terminal compatibility**: configure cursor and terminal-mode defaults,
+  choose whether resizing restores scrollback rows, set the terminfo name,
+  and opt into screen checksum replies.
+- **Terminal metadata**: memory usage, pixel dimensions, mouse shape, cursor
+  visibility and pending wrap, and default colors are available to callers.
+  Title and working-directory values can also be set directly.
+- **Incremental rendering**: `RowIterator.nextDirty()` lets renderers visit
+  changed rows without scanning the entire viewport.
+- **Offscreen rendering**: renderers can request rows above and below the
+  viewport with `RenderState.overscanRequest`. Row identities and viewport
+  coordinates let renderers reuse cached rows across updates.
+- **Prompt navigation**: `Terminal.scrollToPrompt()` scrolls between shell
+  prompts reported through shell integration.
+- **System callbacks**: secure random sources are configurable through
+  `LibGhostty.setRandomSecure()` and `clearRandomSecure()`.
 
 ### Changed
 
-- **Kitty graphics geometry**: source rectangles are clipped to image bounds
-  before destination sizing.
-- **Render traversal**: Native cell decoding, bulk Wasm reads, and dirty-row
-  iteration reduce binding overhead.
-- **Error details**: libghostty exceptions include the result code and operation
-  context. Unknown result codes are preserved by `UnknownResultException`.
-- **Native and Wasm consistency**: both targets expose the same public behavior,
-  including error handling and resource lifetime semantics.
+- **Error details**: typed exceptions include result codes and operation
+  context. `UnknownResultException` preserves unrecognized result codes, and
+  callback failures retain their original errors and stack traces.
 
 ### Fixed
 
-- **Resource lifetime**: reject stale borrowed handles, release self-capturing
-  callbacks, and roll back failed Wasm construction.
-- **Key event text**: leave the event usable when UTF-8 allocation fails.
-- **Package analysis**: generated Wasm documentation no longer emits invalid
-  HTML lints.
+- **Kitty graphics**: cropped images render at the correct size when the
+  requested source rectangle extends beyond the image bounds.
+- **Resource lifetime**: accessing invalidated borrowed views throws
+  `StateError`. Callbacks no longer keep otherwise unreachable terminals alive,
+  and failed WASM resource creation no longer leaks memory.
+- **Key event text**: key events remain usable after setting their text fails
+  because of insufficient memory.
+- **Parser inputs**: invalid SGR parameters are rejected, and OSC parsing
+  preserves binary byte containers across native and WASM targets.
+- **Source builds**: rebuilt applications use the refreshed native library.
+  Compiled binaries no longer require the build machine's CPU instruction set,
+  and iOS builds respect the configured deployment target.
 
 ## 0.0.12
 
