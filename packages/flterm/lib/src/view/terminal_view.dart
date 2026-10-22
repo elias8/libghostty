@@ -287,7 +287,9 @@ final class _TerminalViewState extends State<TerminalView>
         );
         return GestureDetector(
           behavior: .translucent,
-          onTap: _attachment.requestFocus,
+          onTap: widget.gestureSettings.focusGesture == .none
+              ? null
+              : _attachment.requestFocus,
           child: ColoredBox(
             color: _theme.background.withValues(
               alpha: _theme.backgroundOpacity,
