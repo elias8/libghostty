@@ -21,6 +21,15 @@ void main() async {
   wasmTarget.parent.createSync(recursive: true);
   wasmSource.copySync(wasmTarget.path);
 
+  final exampleAssets = Directory(
+    '${packageRoot.parent.path}/flterm/example/assets',
+  );
+  if (exampleAssets.existsSync()) {
+    wasmSource.copySync(
+      '${exampleAssets.path}/libghostty-wasm32-freestanding.wasm',
+    );
+  }
+
   final size = wasmTarget.lengthSync();
   stdout.writeln(
     'Copied libghostty.wasm to lib/src/wasm/ '

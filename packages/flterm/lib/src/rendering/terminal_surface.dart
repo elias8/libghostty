@@ -27,6 +27,41 @@ import 'painters/underline_painter.dart';
 typedef SurfaceGeometryCallback =
     SurfaceGeometry? Function(SurfaceMeasurement measurement);
 
+sealed class _PresentationState {}
+
+enum _PresentationPhase implements _PresentationState {
+  ready,
+  awaitingFreshPaint,
+  disposed,
+}
+
+final class _PendingHold implements _PresentationState {
+  final CapturedFrame frame;
+  final List<Selection> searchMatches;
+  final Selection? selectedSearchMatch;
+  final String preeditText;
+  final LinkSnapshot links;
+
+  _PendingHold({
+    required this.frame,
+    required this.searchMatches,
+    required this.selectedSearchMatch,
+    required this.preeditText,
+    required this.links,
+  });
+}
+
+final class _MaterializingHold implements _PresentationState {
+  final _PendingHold pending;
+  _MaterializingHold(this.pending);
+}
+
+final class _HeldPicture implements _PresentationState {
+  final Picture picture;
+
+  _HeldPicture(this.picture);
+}
+
 /// Owns the mutable render state and resources for one terminal surface.
 ///
 /// The render box supplies Flutter lifecycle signals and terminal frame
@@ -68,9 +103,8 @@ final class TerminalSurface {
   var _submitGeometry = false;
   var _needsTerminalSync = true;
   var _searchDirty = true;
-  Picture? _renderHoldPicture;
-  var _isContentInteractionReady = true;
-  var _disposed = false;
+  var _graphicsParticipated = false;
+  _PresentationState _presentation = _PresentationPhase.ready;
 
   TerminalSurface({
     required AtlasPool atlasPool,
@@ -94,10 +128,13 @@ final class TerminalSurface {
       ..blinkVisible = blinkVisible;
     _resizeDeferred = resizeDeferred;
     _atlasPool = atlasPool;
-    _searchMatches = searchMatches;
+    _searchMatches = List.unmodifiable(searchMatches);
     _selectedSearchMatch = selectedSearchMatch;
     _preeditText = preeditText;
-    _linkSnapshot = linkSnapshot;
+    _linkSnapshot = LinkSnapshot(
+      List.unmodifiable(linkSnapshot.matches),
+      highlighted: linkSnapshot.highlighted,
+    );
     _atlasLease = _atlasPool.acquireAtlas(_atlasConfig);
     final atlas = _atlasLease.atlas;
     _frameBuilder = FrameBuilder(atlas, _sprites, _state);
@@ -138,7 +175,14 @@ final class TerminalSurface {
 
   int get rows => _state.rows;
 
-  bool get isContentInteractionReady => _isContentInteractionReady;
+  bool get isContentInteractionReady => switch (_presentation) {
+    _PresentationPhase.ready => true,
+    _PendingHold() ||
+    _MaterializingHold() ||
+    _HeldPicture() ||
+    _PresentationPhase.awaitingFreshPaint ||
+    _PresentationPhase.disposed => false,
+  };
 
   Rect get textInputCaretRect {
     final metrics = _state.metrics;
@@ -175,10 +219,10 @@ final class TerminalSurface {
   }
 
   void dispose() {
-    if (_disposed) return;
-    _disposed = true;
-    _renderHoldPicture?.dispose();
-    _renderHoldPicture = null;
+    final presentation = _presentation;
+    if (presentation == _PresentationPhase.disposed) return;
+    _presentation = _PresentationPhase.disposed;
+    if (presentation case _HeldPicture(:final picture)) picture.dispose();
     _kittyImageCache.dispose();
     _frameBuilder.dispose();
     _sprites.dispose();
@@ -190,28 +234,36 @@ final class TerminalSurface {
     Terminal terminal, {
     LinkSnapshot linkSnapshot = .empty,
   }) {
+    if (_presentation == _PresentationPhase.disposed) return;
+    completeRenderHold();
+    if (_presentation is _MaterializingHold) return;
     if (_lastMeasuredRows <= 0 ||
         _lastMeasuredCols <= 0 ||
         _state.rows <= 0 ||
         _state.cols <= 0) {
       return;
     }
-    final renderHoldPicture = _renderHoldPicture;
-    if (renderHoldPicture != null) {
-      canvas.drawPicture(renderHoldPicture);
+    if (_presentation case _HeldPicture(:final picture)) {
+      canvas.drawPicture(picture);
       return;
     }
     _prepare(terminal, linkSnapshot: linkSnapshot);
     _paint(canvas);
-    _isContentInteractionReady = true;
+    if (_presentation == _PresentationPhase.awaitingFreshPaint) {
+      _presentation = _PresentationPhase.ready;
+    }
   }
 
   bool captureRenderHold(
     Terminal terminal, {
     LinkSnapshot linkSnapshot = .empty,
   }) {
-    if (_disposed) return false;
-    if (_renderHoldPicture != null) return true;
+    if (_presentation == _PresentationPhase.disposed) return false;
+    if (_presentation is _HeldPicture ||
+        _presentation is _PendingHold ||
+        _presentation is _MaterializingHold) {
+      return true;
+    }
     if (_lastMeasuredRows <= 0 ||
         _lastMeasuredCols <= 0 ||
         _state.rows <= 0 ||
@@ -219,25 +271,94 @@ final class TerminalSurface {
       return false;
     }
 
+    final graphics = KittyGraphics.of(terminal);
+    _graphicsParticipated |= graphics != null && graphics.generation != 0;
+    if (!_graphicsParticipated) {
+      try {
+        final frame = _frameBuilder.capture(terminal);
+        _presentation = _PendingHold(
+          frame: frame,
+          searchMatches: _searchMatches,
+          selectedSearchMatch: _selectedSearchMatch,
+          preeditText: _preeditText,
+          links: LinkSnapshot(
+            List.unmodifiable(linkSnapshot.matches),
+            highlighted: linkSnapshot.highlighted,
+          ),
+        );
+        return true;
+      } on Object {
+        _cancelCapturedHold();
+        rethrow;
+      }
+    }
     _needsTerminalSync = true;
     _prepare(terminal, linkSnapshot: linkSnapshot);
     final recorder = PictureRecorder();
     try {
       _paint(Canvas(recorder));
-      _renderHoldPicture = recorder.endRecording();
-      _isContentInteractionReady = false;
+      _presentation = _HeldPicture(recorder.endRecording());
       return true;
     } finally {
       if (recorder.isRecording) recorder.endRecording().dispose();
     }
   }
 
-  void releaseRenderHold() {
-    final picture = _renderHoldPicture;
-    if (picture == null) return;
-    _renderHoldPicture = null;
-    picture.dispose();
+  void completeRenderHold() {
+    final pending = _presentation;
+    if (pending is! _PendingHold) return;
+    final materializing = _MaterializingHold(pending);
+    _presentation = materializing;
+    final recorder = PictureRecorder();
+    try {
+      _frameBuilder.buildCaptured(
+        pending.frame,
+        searchMatches: pending.searchMatches,
+        selectedSearchMatch: pending.selectedSearchMatch,
+        preeditText: pending.preeditText,
+        links: pending.links,
+      );
+      _paint(Canvas(recorder));
+      final picture = recorder.endRecording();
+      if (identical(_presentation, materializing)) {
+        _presentation = _HeldPicture(picture);
+      } else {
+        picture.dispose();
+      }
+    } on Object {
+      if (identical(_presentation, materializing)) _cancelCapturedHold();
+      rethrow;
+    } finally {
+      if (recorder.isRecording) recorder.endRecording().dispose();
+    }
+  }
+
+  void _cancelCapturedHold() {
+    final frame = switch (_presentation) {
+      _PendingHold(:final frame) => frame,
+      _ => null,
+    };
+    _presentation = _PresentationPhase.awaitingFreshPaint;
+    _frameBuilder.discardCaptured(frame);
     _needsTerminalSync = true;
+    if (frame == null) _searchDirty = true;
+  }
+
+  void _beforePresentationMutation() {
+    if (_presentation is _MaterializingHold) {
+      throw StateError('Terminal surface mutation during hold materialization');
+    }
+    completeRenderHold();
+  }
+
+  void releaseRenderHold() {
+    if (_presentation is _PendingHold || _presentation is _MaterializingHold) {
+      _cancelCapturedHold();
+    } else if (_presentation case _HeldPicture(:final picture)) {
+      _presentation = _PresentationPhase.awaitingFreshPaint;
+      picture.dispose();
+      _needsTerminalSync = true;
+    }
   }
 
   void invalidateGeometry() {
@@ -251,6 +372,8 @@ final class TerminalSurface {
     required EdgeInsets surfacePadding,
     required SurfaceGeometryCallback onGeometryChanged,
   }) {
+    if (_presentation == _PresentationPhase.disposed) return false;
+    _beforePresentationMutation();
     final metrics = _state.metrics;
     final maxW = constraints.hasBoundedWidth ? constraints.maxWidth : 0.0;
     final maxH = constraints.hasBoundedHeight ? constraints.maxHeight : 0.0;
@@ -285,6 +408,7 @@ final class TerminalSurface {
             ),
           )
         : null;
+    if (_presentation == _PresentationPhase.disposed) return false;
     _submitGeometry = false;
     final nativeGeometry = terminal.geometry;
     final renderCols = acceptedGeometry?.cols ?? nativeGeometry.cols;
@@ -306,7 +430,9 @@ final class TerminalSurface {
   void requestTerminalSync() => _needsTerminalSync = true;
 
   bool updateAtlasPool(AtlasPool value) {
+    if (_presentation == _PresentationPhase.disposed) return false;
     if (identical(value, _atlasPool)) return false;
+    _beforePresentationMutation();
     _atlasPool = value;
     _rebindAtlas(_atlasPool.acquireAtlas(_atlasConfig));
     return true;
@@ -314,6 +440,7 @@ final class TerminalSurface {
 
   bool updateBlinkVisible({required bool visible}) {
     if (_state.blinkVisible == visible) return false;
+    _beforePresentationMutation();
     _state.blinkVisible = visible;
     _frameBuilder
       ..markBlinkRowsDirty()
@@ -323,12 +450,14 @@ final class TerminalSurface {
 
   bool updateDevicePixelRatio(double value) {
     if (_state.devicePixelRatio == value) return false;
+    _beforePresentationMutation();
     _state.devicePixelRatio = value;
     return true;
   }
 
   bool updateFocused({required bool focused}) {
     if (_state.cursorFocused == focused) return false;
+    _beforePresentationMutation();
     _state.cursorFocused = focused;
     _frameBuilder.refreshCursorGlyph();
     return true;
@@ -336,32 +465,37 @@ final class TerminalSurface {
 
   bool updateMetrics(CellMetrics value) {
     if (_state.metrics == value) return false;
+    _beforePresentationMutation();
     _state.metrics = value;
     return true;
   }
 
   bool updatePreeditText(String value) {
     if (_preeditText == value) return false;
+    _beforePresentationMutation();
     _preeditText = value;
     return true;
   }
 
   bool updateResizeDeferred({required bool deferred}) {
     if (_resizeDeferred == deferred) return false;
+    _beforePresentationMutation();
     if (_resizeDeferred && !deferred) _submitGeometry = true;
     _resizeDeferred = deferred;
     return true;
   }
 
   bool updateSearchMatches(List<Selection> value) {
-    if (identical(_searchMatches, value)) return false;
-    _searchMatches = value;
+    if (listEquals(_searchMatches, value)) return false;
+    _beforePresentationMutation();
+    _searchMatches = List.unmodifiable(value);
     _searchDirty = true;
     return true;
   }
 
   bool updateSelectedSearchMatch(Selection? value) {
     if (_selectedSearchMatch == value) return false;
+    _beforePresentationMutation();
     _selectedSearchMatch = value;
     _searchDirty = true;
     return true;
@@ -370,6 +504,7 @@ final class TerminalSurface {
   /// Updates the theme and returns whether atlas-affecting font data changed.
   bool updateTheme(TerminalTheme value) {
     if (_state.theme == value) return false;
+    _beforePresentationMutation();
     final previous = _state.theme;
     final fontChanged =
         previous.fontSize != value.fontSize ||
@@ -395,7 +530,7 @@ final class TerminalSurface {
   /// Returns whether the atlas changed.
   bool _ensureAtlas() {
     final config = _atlasConfig;
-    if (config == _atlasLease.config) return false;
+    if (config == _atlasLease.config && _atlasLease.isCurrent) return false;
     _rebindAtlas(_atlasPool.acquireAtlas(config));
     return true;
   }
@@ -446,6 +581,7 @@ final class TerminalSurface {
       linkSnapshot: _linkSnapshot,
     );
     final graphics = KittyGraphics.of(terminal);
+    _graphicsParticipated |= graphics != null && graphics.generation != 0;
     if (!_kittyPlacementCache.sync(graphics, geometryDirty: terminalDirty)) {
       return;
     }
@@ -464,6 +600,12 @@ final class TerminalSurface {
   }
 
   void _rebindAtlas(AtlasLease nextLease) {
+    try {
+      _beforePresentationMutation();
+    } on Object {
+      nextLease.release();
+      rethrow;
+    }
     final previousLease = _atlasLease;
     final previousBuilder = _frameBuilder;
     _atlasLease = nextLease;
@@ -483,6 +625,7 @@ final class TerminalSurface {
 
   bool _updateGrid(int rows, int cols) {
     if (_state.rows == rows && _state.cols == cols) return false;
+    _beforePresentationMutation();
     _state
       ..rows = rows
       ..cols = cols;
@@ -497,8 +640,11 @@ final class TerminalSurface {
   void _updateLinkSnapshot(LinkSnapshot value) {
     if (_linkSnapshot == value) return;
     final previous = _linkSnapshot;
-    _linkSnapshot = value;
-    if (identical(previous.matches, value.matches)) {
+    _linkSnapshot = LinkSnapshot(
+      List.unmodifiable(value.matches),
+      highlighted: value.highlighted,
+    );
+    if (listEquals(previous.matches, value.matches)) {
       _markLinkRowsDirty(previous.highlighted);
       _markLinkRowsDirty(value.highlighted);
     } else {

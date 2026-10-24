@@ -1,31 +1,8 @@
 import 'dart:math';
 import 'dart:ui';
 
+import 'atlas_budget.dart';
 import 'atlas_entry.dart';
-
-/// Thrown when a glyph or sprite cannot fit inside the configured atlas limit.
-class AtlasFullException implements Exception {
-  final double requestedWidth;
-  final double requestedHeight;
-  final int atlasWidth;
-  final int atlasHeight;
-  final int maxSize;
-
-  const AtlasFullException({
-    required this.requestedWidth,
-    required this.requestedHeight,
-    required this.atlasWidth,
-    required this.atlasHeight,
-    required this.maxSize,
-  });
-
-  @override
-  String toString() =>
-      'AtlasFullException: requested '
-      '${requestedWidth.toStringAsFixed(1)}x'
-      '${requestedHeight.toStringAsFixed(1)} in ${atlasWidth}x$atlasHeight '
-      'atlas with max size $maxSize';
-}
 
 /// Owns atlas storage, slot allocation, and image replacement.
 class AtlasTexture {
@@ -35,20 +12,24 @@ class AtlasTexture {
   // Gap between atlas cells prevents sub-pixel bleed between sprites.
   static const padding = 1.0;
 
-  final _compositePaint = Paint();
   final int _initialSize;
   final int _maxSize;
+  final AtlasBudget? _budget;
+  var _chargedBytes = 0;
 
   late int _width;
   late int _height;
   var _packX = 0.0;
   var _packY = 0.0;
   var _rowHeight = 0.0;
+  var _slabLeft = 0.0;
   Image? _image;
+  final List<Picture> _sourceBatches = [];
 
   AtlasTexture({
     int initialSize = defaultInitialSize,
     int maxSize = defaultMaxSize,
+    this._budget,
   }) : assert(initialSize > 0, 'initialSize must be positive'),
        assert(maxSize >= initialSize, 'maxSize must be >= initialSize'),
        _initialSize = initialSize,
@@ -59,14 +40,27 @@ class AtlasTexture {
 
   Image? get image => _image;
 
-  AtlasEntry allocate({
+  AtlasEntry? allocate({
     required double width,
     required double height,
     required double bearingY,
     double bearingX = 0.0,
-    AtlasEntryLane lane = .text,
+    required AtlasEntryLane lane,
   }) {
-    _pack(width, height);
+    final plan = _plan(width, height);
+    if (plan == null) return null;
+    final bytes = plan.width * plan.height * 4;
+    final budget = _budget;
+    if (budget != null && !budget.resizeImage(_chargedBytes, bytes)) {
+      return null;
+    }
+    _chargedBytes = bytes;
+    _width = plan.width;
+    _height = plan.height;
+    _packX = plan.x;
+    _packY = plan.y;
+    _rowHeight = plan.rowHeight;
+    _slabLeft = plan.slabLeft;
 
     final entry = AtlasEntry(
       srcLeft: _packX,
@@ -84,80 +78,127 @@ class AtlasTexture {
   }
 
   void clear() {
+    _disposeSourceBatches();
     _image?.dispose();
     _image = null;
     _packX = 0;
     _packY = 0;
     _rowHeight = 0;
+    _slabLeft = 0;
     _width = _initialSize;
     _height = _initialSize;
+    _releaseBudget();
   }
 
   void dispose() {
+    _disposeSourceBatches();
     _image?.dispose();
     _image = null;
+    _releaseBudget();
+  }
+
+  void _releaseBudget() {
+    final budget = _budget;
+    if (budget != null) budget.releaseImage(_chargedBytes);
+    _chargedBytes = 0;
+  }
+
+  void _disposeSourceBatches() {
+    for (final batch in _sourceBatches) {
+      batch.dispose();
+    }
+    _sourceBatches.clear();
   }
 
   void replaceImage(void Function(Canvas canvas) paintPending) {
-    final recorder = PictureRecorder();
-    final canvas = Canvas(recorder);
-    final image = _image;
-    if (image != null) canvas.drawImage(image, Offset.zero, _compositePaint);
-
-    paintPending(canvas);
-
-    final picture = recorder.endRecording();
-    _image?.dispose();
-    _image = picture.toImageSync(_width, _height);
-    picture.dispose();
-  }
-
-  /// Doubles one atlas dimension so the texture stays roughly square as it
-  /// grows toward [_maxSize]. Returns false when both dimensions are maxed.
-  bool _grow() {
-    if (_width <= _height && _width < _maxSize) {
-      _width = min(_width * 2, _maxSize);
-      return true;
-    } else if (_height < _maxSize) {
-      _height = min(_height * 2, _maxSize);
-      return true;
-    }
-    return false;
-  }
-
-  /// Row-based bin packing: fills left-to-right within the current row,
-  /// wraps to the next row when the glyph won't fit, and grows the
-  /// atlas if vertical space is exhausted.
-  void _pack(double width, double height) {
-    if (width + padding > _maxSize || height + padding > _maxSize) {
-      throw _fullException(width, height);
+    final batchRecorder = PictureRecorder();
+    late final Picture batch;
+    try {
+      paintPending(Canvas(batchRecorder));
+      batch = batchRecorder.endRecording();
+    } finally {
+      if (batchRecorder.isRecording) batchRecorder.endRecording().dispose();
     }
 
-    while (width + padding > _width || height + padding > _height) {
-      if (!_grow()) {
-        throw _fullException(width, height);
+    final publicationRecorder = PictureRecorder();
+    Picture? publication;
+    var committed = false;
+    try {
+      final canvas = Canvas(publicationRecorder);
+      for (final source in _sourceBatches) {
+        canvas.drawPicture(source);
+      }
+      canvas.drawPicture(batch);
+      publication = publicationRecorder.endRecording();
+      final nextImage = publication.toImageSync(_width, _height);
+      final previousImage = _image;
+      _sourceBatches.add(batch);
+      _image = nextImage;
+      committed = true;
+      previousImage?.dispose();
+    } finally {
+      if (publicationRecorder.isRecording) {
+        publicationRecorder.endRecording().dispose();
+      }
+      publication?.dispose();
+      if (!committed) batch.dispose();
+    }
+  }
+
+  ({
+    int width,
+    int height,
+    double x,
+    double y,
+    double rowHeight,
+    double slabLeft,
+  })?
+  _plan(double glyphWidth, double glyphHeight) {
+    if (glyphWidth + padding > _maxSize || glyphHeight + padding > _maxSize) {
+      return null;
+    }
+    var width = _width;
+    var height = _height;
+    var x = _packX;
+    var y = _packY;
+    var rowHeight = _rowHeight;
+    var slabLeft = _slabLeft;
+    while (slabLeft + glyphWidth + padding > width) {
+      if (width == _maxSize) return null;
+      width = min(width * 2, _maxSize);
+    }
+    while (glyphHeight + padding > height) {
+      if (height == _maxSize) return null;
+      height = min(height * 2, _maxSize);
+    }
+    if (x + glyphWidth + padding > width) {
+      x = slabLeft;
+      y += rowHeight + padding;
+      rowHeight = 0;
+    }
+    while (y + glyphHeight + padding > height) {
+      if (height < _maxSize) {
+        height = min(height * 2, _maxSize);
+      } else {
+        if (width == _maxSize) return null;
+        slabLeft = width + padding;
+        width = min(width * 2, _maxSize);
+        while (slabLeft + glyphWidth + padding > width) {
+          if (width == _maxSize) return null;
+          width = min(width * 2, _maxSize);
+        }
+        x = slabLeft;
+        y = 0;
+        rowHeight = 0;
       }
     }
-
-    if (_packX + width + padding > _width) {
-      _packX = 0;
-      _packY += _rowHeight + padding;
-      _rowHeight = 0;
-    }
-
-    while (_packY + height + padding > _height) {
-      if (!_grow()) {
-        throw _fullException(width, height);
-      }
-    }
+    return (
+      width: width,
+      height: height,
+      x: x,
+      y: y,
+      rowHeight: rowHeight,
+      slabLeft: slabLeft,
+    );
   }
-
-  AtlasFullException _fullException(double width, double height) =>
-      AtlasFullException(
-        requestedWidth: width,
-        requestedHeight: height,
-        atlasWidth: _width,
-        atlasHeight: _height,
-        maxSize: _maxSize,
-      );
 }

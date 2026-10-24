@@ -4,5 +4,6 @@ typedef RenderHoldCallback = bool Function({required bool held});
 
 typedef RenderSurfaceCallbacks = ({
   RenderHoldCallback onRenderHold,
+  void Function() onWriteComplete,
   ValueGetter<bool> isContentInteractionReady,
 });

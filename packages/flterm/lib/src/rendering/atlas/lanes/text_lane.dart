@@ -2,25 +2,24 @@ import 'dart:math' show min;
 import 'dart:ui';
 
 import '../atlas_entry.dart';
+import 'glyph_raster.dart';
 import 'paragraph_lane.dart';
 
 /// Rasterizes font-backed text glyphs into the text atlas.
 class TextLane extends ParagraphLane {
-  TextLane({super.initialSize, super.maxSize}) : super(entryLane: .text);
+  TextLane({super.initialSize, super.maxSize, super.budget})
+    : super(entryLane: .text);
 
-  /// Builds a paragraph for [text], packs it into the atlas, and returns
-  /// an [AtlasEntry] with its source coordinates.
-  ///
-  /// The glyph is not composited into the atlas image until [ensureImage]
-  /// is called. [span] controls how many cell widths the glyph occupies
-  /// (2 for wide/CJK characters).
-  AtlasEntry rasterizeText(
+  /// Returns borrowed atlas pixels or caller-owned [DirectGlyph] ink.
+  /// [span] gives the glyph's cell width (2 for wide/CJK text).
+  Glyph rasterizeText(
     String text, {
     required bool bold,
     required bool italic,
     int span = 1,
     bool centerInFirstCell = false,
     double sourcePadding = 0.0,
+    bool admit = true,
   }) {
     final pxCellWidth = (this.pxCellWidth * span).ceil().toDouble();
     final pxHeight = pxCellHeight.ceil().toDouble();
@@ -70,26 +69,16 @@ class TextLane extends ParagraphLane {
       sourcePadding + bearingX,
       sourcePadding + bearingY,
     );
-    late final AtlasEntry entry;
-    try {
-      entry = allocate(
-        width: pxWidth + sourcePadding * 2,
-        height: pxHeight + sourcePadding * 2,
-        bearingX: -sourcePadding,
-        bearingY: -sourcePadding,
-      );
-    } catch (_) {
-      paragraph.dispose();
-      rethrow;
-    }
-
-    addPendingParagraph(
-      paragraph,
-      entry,
-      widthScale: widthScale,
-      heightScale: heightScale,
-      paintOffset: paintOffset,
+    return addRaster(
+      ParagraphRaster(
+        paragraph,
+        Size(pxWidth + sourcePadding * 2, pxHeight + sourcePadding * 2),
+        bearing: Offset(-sourcePadding, -sourcePadding),
+        paragraphOffset: paintOffset,
+        scaleX: widthScale,
+        scaleY: heightScale,
+      ),
+      admit: admit,
     );
-    return entry;
   }
 }

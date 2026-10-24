@@ -130,7 +130,7 @@ void main() {
                   nestedBytes.buffer.toJS.callMethod<JSArrayBuffer>(
                     'transfer'.toJS,
                   );
-                  expect(nestedBytes.length, 0);
+                  expect(nestedBytes.buffer.lengthInBytes, 0);
                 } else {
                   expect(
                     memory.readBytes(pointer.toDartInt, length.toDartInt),
@@ -138,7 +138,8 @@ void main() {
                   );
                   nested = true;
                   try {
-                    nestedBytes = Uint8List.fromList([4, 5]);
+                    nestedBytes = JSUint8Array.withLength(2).toDart
+                      ..setAll(0, [4, 5]);
                     expect(borrowed.write(nestedBytes), isTrue);
                   } finally {
                     nested = false;
@@ -404,32 +405,111 @@ void main() {
     });
 
     group('terminalVtWrite', () {
-      test('large terminal writes reuse storage and preserve bytes', () {
+      for (final length in [70 * 1024, 1024 * 1024, 16 * 1024 * 1024]) {
+        test('write storage retention at $length bytes', () {
+          final harness = FaultExports();
+          harness.object['memory'] = web.Memory(
+            web.MemoryDescriptor(initial: 1024, maximum: 1024),
+          );
+          harness.object['__indirect_function_table'] = web.Table(
+            web.TableDescriptor(element: 'anyfunc', initial: 0),
+          );
+          final memory = Memory(harness.exports);
+          final payload = Uint8List(length)..last = 0x5a;
+          var writes = 0;
+          harness.object['ghostty_terminal_vt_write'] =
+              (JSNumber _, JSNumber pointer, JSNumber size) {
+                final allocation = (pointer.toDartInt, size.toDartInt);
+                expect(harness.frees, isNot(contains(allocation)));
+                expect(memory.readBytes(allocation.$1, allocation.$2), payload);
+                writes++;
+              }.toJS;
+          final bindings = WasmTerminalBindings(harness.exports, layout);
+          bindings.terminalVtWrite(const .fromAddress(7), payload);
+          final first = harness.allocations.single;
+          bindings.terminalVtWrite(const .fromAddress(8), payload);
+          expect(writes, 2);
+          if (length <= 1024 * 1024) {
+            expect(harness.allocations, [first]);
+            expect(harness.frees, isEmpty);
+          } else {
+            expect(harness.allocations, hasLength(2));
+            expect(harness.frees, unorderedEquals(harness.allocations));
+          }
+        });
+      }
+
+      test('oversize write remains live across nested writes', () {
         final harness = FaultExports();
+        harness.object['memory'] = web.Memory(
+          web.MemoryDescriptor(initial: 1024, maximum: 1024),
+        );
         harness.object['__indirect_function_table'] = web.Table(
           web.TableDescriptor(element: 'anyfunc', initial: 0),
         );
         final memory = Memory(harness.exports);
-        final payload = Uint8List(128 * 1024)..last = 0x5a;
+        final outer = Uint8List(16 * 1024 * 1024)..last = 0x5a;
+        final inner = Uint8List(70 * 1024)..last = 0xa5;
+        late WasmTerminalBindings bindings;
+        var depth = 0;
+        harness.object['ghostty_terminal_vt_write'] =
+            (JSNumber _, JSNumber pointer, JSNumber size) {
+              final allocation = (pointer.toDartInt, size.toDartInt);
+              expect(harness.frees, isNot(contains(allocation)));
+              if (depth == 0) {
+                depth++;
+                bindings.terminalVtWrite(const .fromAddress(8), inner);
+                depth--;
+                expect(memory.readBytes(allocation.$1, allocation.$2), outer);
+                expect(harness.frees, isNot(contains(allocation)));
+              } else {
+                expect(memory.readBytes(allocation.$1, allocation.$2), inner);
+              }
+            }.toJS;
+        bindings = WasmTerminalBindings(harness.exports, layout);
+        bindings.terminalVtWrite(const .fromAddress(7), outer);
+        expect(harness.allocations, hasLength(2));
+        expect(harness.frees, [harness.allocations.first]);
+      });
+      test('failed burst preserves reusable storage and permits retry', () {
+        final harness = FaultExports();
+        harness.object['memory'] = web.Memory(
+          web.MemoryDescriptor(initial: 1024, maximum: 1024),
+        );
+        harness.object['__indirect_function_table'] = web.Table(
+          web.TableDescriptor(element: 'anyfunc', initial: 0),
+        );
+        final memory = Memory(harness.exports);
+        final small = Uint8List(70 * 1024)..last = 0x5a;
+        final burst = Uint8List(2 * 1024 * 1024)..last = 0xa5;
         var writes = 0;
         harness.object['ghostty_terminal_vt_write'] =
-            (JSNumber _, JSNumber pointer, JSNumber length) {
+            (JSNumber _, JSNumber pointer, JSNumber size) {
               expect(
-                memory.readBytes(pointer.toDartInt, length.toDartInt),
-                payload,
+                memory.readBytes(pointer.toDartInt, size.toDartInt),
+                size.toDartInt == small.length ? small : burst,
               );
               writes++;
             }.toJS;
         final bindings = WasmTerminalBindings(harness.exports, layout);
-
-        bindings.terminalVtWrite(const .fromAddress(7), payload);
-        final allocations = harness.allocations.length;
-
-        bindings.terminalVtWrite(const .fromAddress(7), payload);
-
-        expect(writes, 2);
-        expect(harness.allocations, hasLength(allocations));
+        bindings.terminalVtWrite(const .fromAddress(7), small);
+        final retained = harness.allocations.single;
+        harness.failAt = harness.attempts + 1;
+        expect(
+          () => bindings.terminalVtWrite(const .fromAddress(7), burst),
+          throwsA(isA<OutOfMemoryException>()),
+        );
         expect(harness.frees, isEmpty);
+        harness.failAt = null;
+        bindings.terminalVtWrite(const .fromAddress(7), small);
+        expect(harness.allocations, [retained]);
+        bindings.terminalVtWrite(const .fromAddress(7), burst);
+        expect(writes, 3);
+        expect(harness.frees, unorderedEquals(harness.allocations));
+        bindings.terminalVtWrite(const .fromAddress(7), small);
+        expect(writes, 4);
+        expect(harness.allocations, hasLength(3));
+        expect(harness.frees, isNot(contains(harness.allocations.last)));
       });
     });
 

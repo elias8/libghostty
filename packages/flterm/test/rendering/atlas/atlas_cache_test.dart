@@ -1,6 +1,7 @@
 import 'dart:ui';
 
 import 'package:flterm/src/foundation/cell_metrics.dart';
+import 'package:flterm/src/rendering/atlas/atlas_budget.dart';
 import 'package:flterm/src/rendering/atlas/atlas_cache.dart';
 import 'package:flterm/src/rendering/atlas/atlas_config.dart';
 import 'package:flterm/src/rendering/atlas/atlas_entry.dart';
@@ -29,14 +30,17 @@ void main() {
     late SpriteLane spriteLane;
     late DecorationLane decorationLane;
     late AtlasCache cache;
+    late AtlasBudget budget;
 
     setUp(() {
       final config = createConfig();
+      budget = AtlasBudget();
       textLane = TextLane()..configure(config);
       emojiLane = EmojiLane()..configure(config);
       spriteLane = SpriteLane()..configure(config);
       decorationLane = DecorationLane()..configure(config);
       cache = AtlasCache(
+        budget: budget,
         textLane: textLane,
         emojiLane: emojiLane,
         spriteLane: spriteLane,
@@ -51,11 +55,53 @@ void main() {
       decorationLane.dispose();
     });
 
+    test(
+      'bounds primary keys, aliases and UTF16 payload without rejected keys',
+      () {
+        final limited = AtlasBudget(maxIndexEntries: 3, maxKeyBytes: 4);
+        final bounded = AtlasCache(
+          budget: limited,
+          textLane: textLane,
+          emojiLane: emojiLane,
+          spriteLane: spriteLane,
+          decorationLane: decorationLane,
+        );
+        final first = bounded.addCodepoint(0x41, bold: false, italic: false);
+        expect(first, isA<AtlasEntry>());
+        expect(limited.indexEntries, 2); // primary plus ASCII alias
+        expect(limited.keyBytes, 2);
+        for (var index = 0; index < 4; index++) {
+          final rejected = bounded.add((
+            text: 'long$index',
+            bold: false,
+            italic: false,
+          ));
+          expect(rejected, isA<DirectGlyph>());
+          (rejected as DirectGlyph).dispose();
+        }
+        expect(limited.indexEntries, 2);
+        expect(limited.keyBytes, 2);
+        final smaller = bounded.addCodepoint(0x42, bold: false, italic: false);
+        expect(smaller, isA<AtlasEntry>());
+        expect(limited.indexEntries, 3);
+        expect(limited.keyBytes, 4);
+        expect(
+          bounded.addCodepoint(0x41, bold: false, italic: false),
+          same(first),
+        );
+        final rejected = bounded.addCodepoint(0x43, bold: false, italic: false);
+        expect(rejected, isA<DirectGlyph>());
+        (rejected as DirectGlyph).dispose();
+        expect(bounded.size, 2);
+        expect(limited.indexEntries, 3);
+      },
+    );
+
     test('shares text entries for matching keys', () {
       const key = (text: 'A', bold: false, italic: false);
 
-      final first = cache.add(key);
-      final second = cache.add(key);
+      final first = cache.add(key) as AtlasEntry;
+      final second = cache.add(key) as AtlasEntry;
 
       expect(second, same(first));
       expect(cache.size, 1);
@@ -64,8 +110,9 @@ void main() {
     test('shares codepoint entries with text entries', () {
       const key = (text: 'A', bold: false, italic: false);
 
-      final text = cache.add(key);
-      final codepoint = cache.addCodepoint(0x41, bold: false, italic: false);
+      final text = cache.add(key) as AtlasEntry;
+      final codepoint =
+          cache.addCodepoint(0x41, bold: false, italic: false) as AtlasEntry;
 
       expect(codepoint, same(text));
       expect(cache.size, 1);
@@ -74,22 +121,21 @@ void main() {
     test('keeps text and emoji entries separate for matching keys', () {
       const key = (text: '\u{1F600}', bold: false, italic: false);
 
-      final text = cache.add(key);
-      final emoji = cache.add(key, emoji: true);
+      final text = cache.add(key) as AtlasEntry;
+      final emoji = cache.add(key, emoji: true) as AtlasEntry;
 
       expect(emoji, isNot(same(text)));
       expect(cache.size, 2);
     });
 
     test('keeps style and span in text cache keys', () {
-      final plain = cache.addCodepoint(0x41, bold: false, italic: false);
-      final bold = cache.addCodepoint(0x41, bold: true, italic: false);
-      final wide = cache.addCodepoint(
-        0x41,
-        bold: false,
-        italic: false,
-        span: 2,
-      );
+      final plain =
+          cache.addCodepoint(0x41, bold: false, italic: false) as AtlasEntry;
+      final bold =
+          cache.addCodepoint(0x41, bold: true, italic: false) as AtlasEntry;
+      final wide =
+          cache.addCodepoint(0x41, bold: false, italic: false, span: 2)
+              as AtlasEntry;
 
       expect(bold, isNot(same(plain)));
       expect(wide, isNot(same(plain)));
@@ -97,23 +143,28 @@ void main() {
     });
 
     test('sprite codepoints are independent from text style', () {
-      final plain = cache.addCodepoint(0x2500, bold: false, italic: false);
-      final styled = cache.addCodepoint(0x2500, bold: true, italic: true);
+      final plain =
+          cache.addCodepoint(0x2500, bold: false, italic: false) as AtlasEntry;
+      final styled =
+          cache.addCodepoint(0x2500, bold: true, italic: true) as AtlasEntry;
 
       expect(styled, same(plain));
       expect(cache.size, 1);
     });
 
     test('sprite and text lanes keep separate entries', () {
-      final text = cache.add((text: '\u2500', bold: false, italic: false));
-      final sprite = cache.addCodepoint(0x2500, bold: false, italic: false);
+      final text =
+          cache.add((text: '\u2500', bold: false, italic: false)) as AtlasEntry;
+      final sprite =
+          cache.addCodepoint(0x2500, bold: false, italic: false) as AtlasEntry;
 
       expect(sprite, isNot(same(text)));
       expect(cache.size, 2);
     });
 
     test('single-cell non-ASCII text entries include source padding', () {
-      final entry = cache.addCodepoint(0x25C6, bold: false, italic: false);
+      final entry =
+          cache.addCodepoint(0x25C6, bold: false, italic: false) as AtlasEntry;
 
       expect(entry.lane, AtlasEntryLane.text);
       expect(entry.srcRight - entry.srcLeft, 12);
@@ -125,21 +176,20 @@ void main() {
     test('shares non-ASCII text entries with codepoint entries', () {
       const key = (text: '\u25C6', bold: false, italic: false);
 
-      final text = cache.add(key);
-      final codepoint = cache.addCodepoint(0x25C6, bold: false, italic: false);
+      final text = cache.add(key) as AtlasEntry;
+      final codepoint =
+          cache.addCodepoint(0x25C6, bold: false, italic: false) as AtlasEntry;
 
       expect(codepoint, same(text));
       expect(cache.size, 1);
     });
 
     test('sprite span participates in the cache key', () {
-      final single = cache.addCodepoint(0x2500, bold: false, italic: false);
-      final wide = cache.addCodepoint(
-        0x2500,
-        bold: false,
-        italic: false,
-        span: 2,
-      );
+      final single =
+          cache.addCodepoint(0x2500, bold: false, italic: false) as AtlasEntry;
+      final wide =
+          cache.addCodepoint(0x2500, bold: false, italic: false, span: 2)
+              as AtlasEntry;
 
       expect(wide, isNot(same(single)));
       expect(cache.size, 2);
@@ -151,8 +201,8 @@ void main() {
     });
 
     test('shares decoration entries for matching styles', () {
-      final first = cache.addDecoration(UnderlineStyle.single);
-      final second = cache.addDecoration(UnderlineStyle.single);
+      final first = cache.addDecoration(UnderlineStyle.single) as AtlasEntry;
+      final second = cache.addDecoration(UnderlineStyle.single) as AtlasEntry;
 
       expect(second, same(first));
     });
@@ -167,13 +217,12 @@ void main() {
     });
 
     test('clear removes all cache lanes', () {
-      final textBefore = cache.addCodepoint(0x41, bold: false, italic: false);
-      final spriteBefore = cache.addCodepoint(
-        0x2500,
-        bold: false,
-        italic: false,
-      );
-      final decorationBefore = cache.addDecoration(UnderlineStyle.single);
+      final textBefore =
+          cache.addCodepoint(0x41, bold: false, italic: false) as AtlasEntry;
+      final spriteBefore =
+          cache.addCodepoint(0x2500, bold: false, italic: false) as AtlasEntry;
+      final decorationBefore =
+          cache.addDecoration(UnderlineStyle.single) as AtlasEntry;
       expect(cache.size, 3);
 
       cache.clear();
@@ -193,21 +242,22 @@ void main() {
       );
     });
 
-    test('preseedCommonEntries seeds normal ASCII and decorations only', () {
-      cache.preseedCommonEntries();
-
-      final preseedSize = 94 + UnderlineStyle.values.length - 1;
-      expect(cache.size, preseedSize);
-      final ascii = cache.addCodepoint(0x41, bold: false, italic: false);
-      final boldAscii = cache.addCodepoint(0x41, bold: true, italic: false);
-      final sprite = cache.addCodepoint(0x2500, bold: false, italic: false);
-      final decoration = cache.addDecoration(UnderlineStyle.single);
+    test('keeps common entries lazy until requested', () {
+      expect(cache.size, 0);
+      final ascii =
+          cache.addCodepoint(0x41, bold: false, italic: false) as AtlasEntry;
+      final boldAscii =
+          cache.addCodepoint(0x41, bold: true, italic: false) as AtlasEntry;
+      final sprite =
+          cache.addCodepoint(0x2500, bold: false, italic: false) as AtlasEntry;
+      final decoration =
+          cache.addDecoration(UnderlineStyle.single) as AtlasEntry;
 
       expect(ascii, isNotNull);
       expect(boldAscii, isNotNull);
       expect(sprite, isNotNull);
       expect(decoration, isNotNull);
-      expect(cache.size, preseedSize + 2);
+      expect(cache.size, 4);
     });
   });
 }

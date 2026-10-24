@@ -1,3 +1,5 @@
+import 'dart:convert' show utf8;
+
 import 'dart:typed_data' show Uint8List;
 
 import 'package:libghostty/libghostty.dart'
@@ -59,6 +61,46 @@ void main() {
       cells.reset(rows);
       cells.next();
     }
+
+    test('independent iterators preserve rows when another row is bound', () {
+      final otherRows = RowIterator();
+      final otherCells = CellIterator();
+      addTearDown(() {
+        otherCells.dispose();
+        otherRows.dispose();
+      });
+      terminal.write(Uint8List.fromList(utf8.encode('alpha\r\nbravo')));
+      renderState.update(terminal);
+      rows.reset(renderState);
+      expect(rows.next(), isTrue);
+      cells.reset(rows);
+      otherRows.reset(renderState);
+      expect(otherRows.next(), isTrue);
+      expect(otherRows.next(), isTrue);
+      otherCells.reset(otherRows);
+      for (var col = 0; col < 5; col++) {
+        expect(cells.next(), isTrue);
+        expect(cells.content, 'alpha'[col]);
+        expect(otherCells.next(), isTrue);
+        expect(otherCells.content, 'bravo'[col]);
+      }
+      terminal.write(Uint8List.fromList(utf8.encode('\x1b[HGAMMA')));
+      renderState.update(terminal);
+      expect(otherCells.next, throwsStateError);
+      rows.reset(renderState);
+      expect(rows.next(), isTrue);
+      cells.reset(rows);
+      for (var col = 0; col < 5; col++) {
+        expect(cells.next(), isTrue);
+        expect(cells.content, 'GAMMA'[col]);
+      }
+      otherRows.reset(renderState);
+      expect(otherRows.next(), isTrue);
+      expect(otherRows.next(), isTrue);
+      otherCells.reset(otherRows);
+      expect(otherCells.next(), isTrue);
+      expect(otherCells.content, 'b');
+    });
 
     test('rejects cells after their render state is disposed', () {
       terminal.write(Uint8List.fromList('hello'.codeUnits));
@@ -202,6 +244,49 @@ void main() {
         expect(cells.backgroundArgb, 0xFFFF8000);
         expect(cells.foregroundArgb, 0xFF00FF40);
       });
+    });
+
+    test(
+      'preserves style and graphemes after advancing through plain cells',
+      () {
+        terminal.write(
+          utf8.encode('AB\x1b[1;38;2;7;8;9;48;2;10;11;12me\u0301Z'),
+        );
+        bindFirstCell();
+        expect(cells.content, 'A');
+        expect(cells.next(), isTrue);
+        expect(cells.content, 'B');
+        expect(cells.next(), isTrue);
+        expect(cells.graphemeLength, 2);
+        expect(cells.content, 'e\u0301');
+        expect(cells.style.bold, isTrue);
+        expect(cells.foregroundArgb, 0xff070809);
+        expect(cells.backgroundArgb, 0xff0a0b0c);
+        expect(cells.next(), isTrue);
+        expect(cells.content, 'Z');
+        expect(cells.style.bold, isTrue);
+        expect(cells.foregroundArgb, 0xff070809);
+      },
+    );
+
+    test('select and next retain final cell after exhaustion', () {
+      terminal.write(utf8.encode('ABCDEFGHIJ'));
+      bindFirstCell();
+      cells.next();
+      expect(cells.content, 'B');
+      cells.select(5);
+      expect(cells.content, 'F');
+      expect(cells.next(), isTrue);
+      expect(cells.content, 'G');
+      cells.select(1);
+      expect(cells.next(), isTrue);
+      expect(cells.content, 'C');
+      cells.select(9);
+      expect(cells.next(), isFalse);
+      expect(cells.next(), isFalse);
+      expect(cells.col, 9);
+      expect(cells.content, 'J');
+      expect(cells.foregroundArgb, isNull);
     });
 
     group('select', () {

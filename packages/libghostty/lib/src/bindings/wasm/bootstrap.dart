@@ -21,6 +21,7 @@ import '../utility/wasm.dart' as utility;
 import '../wasm.dart' as platform;
 import 'adapter.dart';
 import 'layouts.dart';
+import 'loader.dart';
 import 'memory.dart';
 
 Future<void>? _initializationFuture;
@@ -81,10 +82,7 @@ Future<void> _initialize(Uri wasmUri) async {
         '(HTTP ${response.status}).',
       );
     }
-    final bytes = await response.arrayBuffer().toDart;
-    final resultObj =
-        (await _wasmInstantiate(bytes, _buildImports()).toDart)! as JSObject;
-    final instance = resultObj['instance']! as JSObject;
+    final instance = await instantiateArtifact(response, _buildImports());
     final exportsObject = instance['exports']! as JSObject;
     _requireExports(exportsObject);
     final exports = GhosttyExports(exportsObject);
@@ -121,6 +119,3 @@ void _requireExports(JSObject exports) {
     throw StateError('libghostty WebAssembly export is missing: memory');
   }
 }
-
-@JS('WebAssembly.instantiate')
-external JSPromise _wasmInstantiate(JSArrayBuffer bytes, JSObject imports);

@@ -53,7 +53,7 @@ void main() {
   }
   WebAssembly.instantiate = async (...args) => {
     const result = await instantiate(...args);
-    const original = result.instance.exports;
+    const original = result.exports;
     memory = original.memory;
     const exports = {};
     for (const name of Object.keys(original)) {
@@ -92,7 +92,7 @@ void main() {
       };
     }
     WebAssembly.instantiate = instantiate;
-    return {module: result.module, instance: {exports}};
+    return {exports};
   };
 })();
 '''
@@ -212,11 +212,11 @@ void main() {
 
       expect(rows.next(), isTrue);
 
+      _watch();
       cells.reset(rows);
 
       expect(cells.next(), isTrue);
 
-      _watch();
       expect(cells.content, 'A');
       expect(_reads().toDartInt, greaterThan(0));
 

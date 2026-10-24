@@ -15,6 +15,7 @@ external JSPromise _instantiate(JSArrayBuffer bytes, JSObject imports);
 
 final class WasmBindingFixture {
   late Layouts layout;
+  late GhosttyExports exports;
   late StreamChannel<Object?> _assetChannel;
 
   Future<void> load() async {
@@ -36,7 +37,7 @@ final class WasmBindingFixture {
             ).toDart)!
             as JSObject;
     final instance = result['instance']! as JSObject;
-    final exports = GhosttyExports(instance['exports']! as JSObject);
+    exports = GhosttyExports(instance['exports']! as JSObject);
     layout = Layouts.fromJson(
       Memory(exports).readCString(exports.ghostty_type_json()),
     );

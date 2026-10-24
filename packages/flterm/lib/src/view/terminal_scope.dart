@@ -9,11 +9,16 @@ AtlasPool? terminalScopeAtlasPoolOf(BuildContext context) {
       ?.atlasPool;
 }
 
+final _fallbackAtlasPool = AtlasPool();
+
+Widget terminalFallbackScope(Widget child) =>
+    _TerminalScopeInherited(atlasPool: _fallbackAtlasPool, child: child);
+
 /// Shares terminal resources across descendant [TerminalView] widgets.
 ///
 /// Wrapping multiple terminals in the same scope lets compatible renderers
-/// reuse compatible glyph atlases. Terminals outside a scope create an
-/// isolated local scope automatically.
+/// reuse compatible glyph atlases. Terminals outside a scope share the
+/// fallback pool automatically.
 class TerminalScope extends StatefulWidget {
   final Widget child;
 

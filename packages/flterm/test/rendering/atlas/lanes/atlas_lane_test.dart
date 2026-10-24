@@ -2,6 +2,7 @@ import 'dart:ui';
 
 import 'package:flterm/src/foundation/cell_metrics.dart';
 import 'package:flterm/src/rendering/atlas/atlas_config.dart';
+import 'package:flterm/src/rendering/atlas/atlas_entry.dart';
 import 'package:flterm/src/rendering/atlas/lanes/decoration_lane.dart';
 import 'package:flterm/src/rendering/atlas/lanes/emoji_lane.dart';
 import 'package:flterm/src/rendering/atlas/lanes/sprite_lane.dart';
@@ -36,7 +37,8 @@ void main() {
         );
       addTearDown(lane.dispose);
 
-      final entry = lane.rasterizeText('A', bold: false, italic: false);
+      final entry =
+          lane.rasterizeText('A', bold: false, italic: false) as AtlasEntry;
       lane.ensureImage();
 
       expect(entry.srcRight, lessThanOrEqualTo(lane.image!.width));

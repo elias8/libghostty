@@ -360,7 +360,7 @@ void main() {
       expect(find.byType(TerminalView), findsOneWidget);
     });
 
-    testWidgets('creates an isolated atlas pool without explicit scope', (
+    testWidgets('uses the shared fallback without explicit scope', (
       tester,
     ) async {
       final controller2 = TerminalController();
@@ -372,7 +372,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(TerminalRenderer), findsNWidgets(2));
-      expect(find.byType(TerminalScope), findsNWidgets(2));
+      expect(find.byType(TerminalScope), findsNothing);
     });
 
     testWidgets('uses explicit TerminalScope for descendant terminals', (
@@ -481,6 +481,52 @@ void main() {
 
       expect(renderer(tester).devicePixelRatio, tester.view.devicePixelRatio);
     });
+
+    for (final devicePixelRatio in [1.0, 2.0]) {
+      testWidgets('first mount at DPR $devicePixelRatio sizes and hits links', (
+        tester,
+      ) async {
+        tester.view
+          ..devicePixelRatio = devicePixelRatio
+          ..physicalSize = const Size(800, 480) * devicePixelRatio;
+        addTearDown(tester.view.resetDevicePixelRatio);
+        addTearDown(tester.view.resetPhysicalSize);
+        final links = <ActivatedLink>[];
+        writeUtf8(
+          controller,
+          '          \x1b]8;;https://initial.example\x07LINK\x1b]8;;\x07',
+        );
+
+        await tester.pumpWidget(
+          wrapInApp(
+            controller: controller,
+            linkSettings: LinkSettings(
+              modifier: .none,
+              types: const {LinkType.osc8},
+              onActivate: links.add,
+            ),
+          ),
+        );
+
+        final renderBox = renderer(tester);
+        final metrics = renderBox.metrics;
+        expect(renderBox.devicePixelRatio, devicePixelRatio);
+        expect(
+          tester
+              .renderObject<TerminalRenderBox>(find.byType(TerminalRenderer))
+              .debugGridSize,
+          (
+            cols: (800 / metrics.cellWidth).floor(),
+            rows: (480 / metrics.cellHeight).floor(),
+          ),
+        );
+        await tester.tapAt(
+          tester.getTopLeft(find.byType(TerminalView)) +
+              Offset(metrics.cellWidth * 10.5, metrics.cellHeight / 2),
+        );
+        expect(links.single.uri, Uri.parse('https://initial.example'));
+      });
+    }
 
     testWidgets('DPR changes recommit physical geometry', (tester) async {
       final output = <Uint8List>[];
@@ -643,6 +689,219 @@ void main() {
       await tester.pump();
 
       expect(utf8.decode(output.single), 'a');
+    });
+
+    testWidgets('reattaches the same render box and keeps painting and input', (
+      tester,
+    ) async {
+      final theme = TerminalTheme.dark();
+      const surfaceKey = ValueKey('reattached terminal surface');
+
+      Widget host() => MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 800,
+            height: 480,
+            child: RepaintBoundary(
+              key: surfaceKey,
+              child: TerminalView(
+                controller: controller,
+                theme: theme,
+                padding: EdgeInsets.zero,
+                autofocus: true,
+              ),
+            ),
+          ),
+        ),
+      );
+
+      Future<Uint8List> capturePixels() async {
+        final boundary = tester.renderObject<RenderRepaintBoundary>(
+          find.byKey(surfaceKey),
+        );
+        final bytes = await tester.runAsync(() async {
+          final image = await boundary.toImage();
+          try {
+            final data = await image.toByteData();
+            return Uint8List.fromList(
+              data!.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
+            );
+          } finally {
+            image.dispose();
+          }
+        });
+        return bytes!;
+      }
+
+      await tester.pumpWidget(host());
+      writeUtf8(controller, '\x1b[48;2;40;50;60m \x1b[0mBEFORE');
+      await tester.pump();
+      final pixelsBefore = await capturePixels();
+      expect(pixelsBefore.take(4), [40, 50, 60, 255]);
+      final renderBoxBefore = tester.renderObject<TerminalRenderBox>(
+        find.byType(TerminalRenderer),
+      );
+
+      final renderView = tester.binding.renderViews.single;
+      final pipelineOwner = renderView.owner!;
+      renderView.detach();
+      expect(renderBoxBefore.attached, isFalse);
+      renderView.attach(pipelineOwner);
+      final renderBoxAfter = tester.renderObject<TerminalRenderBox>(
+        find.byType(TerminalRenderer),
+      );
+      expect(identical(renderBoxAfter, renderBoxBefore), isTrue);
+      expect(renderBoxAfter.attached, isTrue);
+
+      writeUtf8(controller, '\r\x1b[2K\x1b[48;2;11;22;33m \x1b[0mAFTER');
+      await tester.pump();
+      final pixelsAfter = await capturePixels();
+      expect(pixelsAfter, hasLength(pixelsBefore.length));
+      expect(pixelsAfter, isNot(orderedEquals(pixelsBefore)));
+      expect(pixelsAfter.take(4), [11, 22, 33, 255]);
+
+      final output = <Uint8List>[];
+      controller.onOutput = output.add;
+      await tester.tap(find.byType(TerminalView));
+      output.clear();
+      tester.testTextInput.enterText('x');
+      await tester.pump();
+      expect(output, hasLength(1));
+      expect(output.single, utf8.encode('x'));
+    });
+
+    testWidgets('reparents one view state with live links, paint, and input', (
+      tester,
+    ) async {
+      final replacement = TerminalController();
+      addTearDown(replacement.dispose);
+      final key = GlobalKey();
+      final output = <Uint8List>[];
+      final links = <ActivatedLink>[];
+      controller.onOutput = output.add;
+      replacement.onOutput = output.add;
+
+      Future<Uint8List> capturePixels() async {
+        final boundary = tester.renderObject<RenderRepaintBoundary>(
+          find.byKey(const ValueKey('reparented terminal surface')),
+        );
+        final bytes = await tester.runAsync(() async {
+          final image = await boundary.toImage();
+          try {
+            final data = await image.toByteData();
+            return Uint8List.fromList(
+              data!.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
+            );
+          } finally {
+            image.dispose();
+          }
+        });
+        return bytes!;
+      }
+
+      Widget terminalWithBoundary(TerminalController target) => RepaintBoundary(
+        key: const ValueKey('reparented terminal surface'),
+        child: TerminalView(
+          key: key,
+          controller: target,
+          padding: EdgeInsets.zero,
+          autofocus: true,
+          linkSettings: LinkSettings(
+            modifier: .none,
+            types: const {LinkType.osc8},
+            onActivate: links.add,
+          ),
+        ),
+      );
+
+      Widget host({required bool right, required TerminalController target}) =>
+          MaterialApp(
+            home: Scaffold(
+              body: SizedBox(
+                width: 800,
+                height: 480,
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: right
+                          ? const SizedBox()
+                          : terminalWithBoundary(target),
+                    ),
+                    Expanded(
+                      child: right
+                          ? terminalWithBoundary(target)
+                          : const SizedBox(),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+
+      await tester.pumpWidget(host(right: false, target: controller));
+      final state = key.currentState;
+      final renderBoxBefore = tester.renderObject<TerminalRenderBox>(
+        find.byType(TerminalRenderer),
+      );
+      writeUtf8(
+        controller,
+        '\x1b]8;;https://before.example\x07BEFORE\x1b]8;;\x07',
+      );
+      await tester.pump();
+      final pixelsBefore = await capturePixels();
+      await tester.tapAt(
+        tester.getTopLeft(find.byType(TerminalView)) + const Offset(4, 8),
+      );
+      expect(links.single.uri, Uri.parse('https://before.example'));
+      links.clear();
+
+      await tester.pumpWidget(host(right: true, target: controller));
+      expect(tester.takeException(), isNull);
+      expect(key.currentState, same(state));
+      final renderBoxAfter = tester.renderObject<TerminalRenderBox>(
+        find.byType(TerminalRenderer),
+      );
+      expect(renderBoxAfter, same(renderBoxBefore));
+
+      writeUtf8(
+        controller,
+        '\r\x1b[2K\x1b]8;;https://after.example\x07AFTER\x1b]8;;\x07',
+      );
+      await tester.pump();
+      final pixelsAfter = await capturePixels();
+      expect(pixelsAfter, hasLength(pixelsBefore.length));
+      expect(pixelsAfter, isNot(orderedEquals(pixelsBefore)));
+      await tester.tapAt(
+        tester.getTopLeft(find.byType(TerminalView)) + const Offset(4, 8),
+      );
+      expect(links.single.uri, Uri.parse('https://after.example'));
+      links.clear();
+
+      tester.testTextInput.enterText('reparented');
+      await tester.pump();
+      expect(decodeOutput(output), 'reparented');
+
+      writeUtf8(
+        replacement,
+        '\x1b]8;;https://replacement.example\x07REPLACED\x1b]8;;\x07',
+      );
+      await tester.pumpWidget(host(right: false, target: replacement));
+      expect(tester.takeException(), isNull);
+      controller.dispose();
+      await tester.tapAt(
+        tester.getTopLeft(find.byType(TerminalView)) + const Offset(4, 8),
+      );
+      expect(links.single.uri, Uri.parse('https://replacement.example'));
+      output.clear();
+      tester.testTextInput.enterText('replacement');
+      await tester.pump();
+      expect(decodeOutput(output), 'replacement');
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(host(right: false, target: replacement));
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
     });
 
     testWidgets('text input applies virtual ctrl to single-char commit', (
@@ -3532,18 +3791,21 @@ void main() {
         return pixels!;
       }
 
-      Widget wrappedPixelSurface() => MaterialApp(
-        home: Scaffold(
-          body: RepaintBoundary(
-            key: const ValueKey('synchronized output surface'),
-            child: SizedBox(
-              width: 800,
-              height: 480,
-              child: TerminalView(controller: controller),
+      Widget wrappedPixelSurface({TerminalController? pixelController}) =>
+          MaterialApp(
+            home: Scaffold(
+              body: RepaintBoundary(
+                key: const ValueKey('synchronized output surface'),
+                child: SizedBox(
+                  width: 800,
+                  height: 480,
+                  child: TerminalView(
+                    controller: pixelController ?? controller,
+                  ),
+                ),
+              ),
             ),
-          ),
-        ),
-      );
+          );
 
       testWidgets('shows the captured frame until the deadline', (
         tester,
@@ -3561,6 +3823,128 @@ void main() {
 
         expect(controller.modeGet(syncOutput), isFalse);
         expect(await surfacePixels(tester), isNot(orderedEquals(readyFrame)));
+      });
+
+      testWidgets('preserves a captured hold when an output callback throws', (
+        tester,
+      ) async {
+        await tester.pumpWidget(wrappedPixelSurface());
+        writeUtf8(controller, '\x1b[?12lREADY');
+        await tester.pump();
+        final readyFrame = await surfacePixels(tester);
+        final error = StateError('bell callback');
+        controller.onBell = () => throw error;
+
+        expect(
+          () => writeUtf8(controller, '\x1b[?2026h\x1b[2J\x1b[HPARTIAL\x07'),
+          throwsA(same(error)),
+        );
+        expect(controller.modeGet(syncOutput), isTrue);
+        await tester.pump();
+        expect(await surfacePixels(tester), orderedEquals(readyFrame));
+
+        controller.onBell = null;
+        writeUtf8(controller, '\x1b[?2026l');
+        await tester.pump();
+        expect(controller.modeGet(syncOutput), isFalse);
+        expect(await surfacePixels(tester), isNot(orderedEquals(readyFrame)));
+      });
+
+      testWidgets('preserves unpainted bytes before a completed hold', (
+        tester,
+      ) async {
+        const initial = '\x1b[?12l\x1b[HREADY';
+        const before = '\x1b[2;1H\x1b[31;44mBEFORE\x1b[0m';
+        const after = '\x1b[3;1H\x1b[32mAFTER\x1b[0m';
+        await tester.pumpWidget(wrappedPixelSurface());
+        writeUtf8(controller, initial);
+        await tester.pump();
+
+        writeUtf8(controller, '$before\x1b[?2026h$after\x1b[?2026l');
+        await tester.pump();
+        final completedFrame = await surfacePixels(tester);
+
+        final oracle = TerminalController();
+        addTearDown(oracle.dispose);
+        await tester.pumpWidget(wrappedPixelSurface(pixelController: oracle));
+        writeUtf8(oracle, '$initial$before$after');
+        await tester.pump();
+
+        expect(completedFrame, orderedEquals(await surfacePixels(tester)));
+      });
+
+      testWidgets('captures unpainted styled cells and the wide cursor cell', (
+        tester,
+      ) async {
+        const initial = '\x1b[?12l\x1b[HREADY';
+        const before =
+            '\x1b[2;1H\x1b[31;44mBEFORE'
+            '\x1b[3;1H界Z\x1b[0m\x1b[3;2H\x1b[32m';
+        const after = '\x1b[0m\x1b[2J\x1b[HAFTER\x1b[4;8H';
+        final oracle = TerminalController();
+        addTearDown(oracle.dispose);
+        await tester.pumpWidget(wrappedPixelSurface(pixelController: oracle));
+        writeUtf8(oracle, '$initial$before');
+        await tester.pump();
+        final callbackFrame = await surfacePixels(tester);
+
+        await tester.pumpWidget(wrappedPixelSurface());
+        writeUtf8(controller, initial);
+        await tester.pump();
+        final readyFrame = await surfacePixels(tester);
+        expect(callbackFrame, isNot(orderedEquals(readyFrame)));
+
+        writeUtf8(controller, '$before\x1b[?2026h');
+        writeUtf8(controller, after);
+        await tester.pump();
+        expect(await surfacePixels(tester), orderedEquals(callbackFrame));
+
+        writeUtf8(controller, '\x1b[?2026l');
+        await tester.pump();
+        final releasedFrame = await surfacePixels(tester);
+        expect(releasedFrame, isNot(orderedEquals(callbackFrame)));
+
+        await tester.pumpWidget(wrappedPixelSurface(pixelController: oracle));
+        writeUtf8(oracle, after);
+        await tester.pump();
+        expect(releasedFrame, orderedEquals(await surfacePixels(tester)));
+      });
+
+      testWidgets('preserves rows through completed holds without painting', (
+        tester,
+      ) async {
+        const initial = '\x1b[?12l\x1b[HREADY';
+        final before = <String>[
+          for (var row = 2; row <= 9; row++)
+            '\x1b[$row;1H\x1b[31;44mBEFORE $row\x1b[0m',
+        ];
+        final after = <String>[
+          for (var row = 2; row <= 9; row++)
+            '\x1b[$row;20H\x1b[32mAFTER $row\x1b[0m',
+        ];
+        await tester.pumpWidget(wrappedPixelSurface());
+        writeUtf8(controller, initial);
+        await tester.pump();
+
+        for (var index = 0; index < before.length; index++) {
+          writeUtf8(
+            controller,
+            '${before[index]}\x1b[?2026h${after[index]}\x1b[?2026l',
+          );
+        }
+        await tester.pump();
+        final completedFrame = await surfacePixels(tester);
+
+        final oracle = TerminalController();
+        addTearDown(oracle.dispose);
+        await tester.pumpWidget(wrappedPixelSurface(pixelController: oracle));
+        writeUtf8(oracle, initial);
+        for (var index = 0; index < before.length; index++) {
+          writeUtf8(oracle, '${before[index]}${after[index]}');
+        }
+        await tester.pump();
+
+        expect(completedFrame, orderedEquals(await surfacePixels(tester)));
       });
 
       testWidgets(

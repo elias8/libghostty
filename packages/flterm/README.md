@@ -37,7 +37,7 @@ libghostty-vt engine.
 
 ```yaml
 dependencies:
-  flterm: ^0.0.5
+  flterm: ^0.0.6
 ```
 
 On web, initialize the wasm module once before mounting any terminal:

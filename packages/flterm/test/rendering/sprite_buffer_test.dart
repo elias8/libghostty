@@ -2,6 +2,7 @@ import 'dart:typed_data';
 import 'dart:ui';
 
 import 'package:flterm/src/rendering/atlas/atlas.dart';
+import 'package:flterm/src/rendering/atlas/shaped_paragraph_cache.dart';
 import 'package:flterm/src/rendering/atlas/sprite_buffer.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -17,6 +18,7 @@ void main() {
     srcRight: srcRight,
     srcBottom: srcBottom,
     bearingY: 0,
+    lane: .text,
   );
 
   ShapedRun shapedRun(String text) {
@@ -32,6 +34,143 @@ void main() {
     );
   }
 
+  group('ShapedParagraphCache', () {
+    Paragraph build(String text, int foreground, {bool italic = false}) =>
+        (ParagraphBuilder(ParagraphStyle(textDirection: TextDirection.ltr))
+              ..pushStyle(
+                TextStyle(
+                  color: Color(foreground),
+                  fontSize: 18,
+                  fontStyle: italic ? FontStyle.italic : FontStyle.normal,
+                  fontFeatures: const [FontFeature.enable('liga')],
+                ),
+              )
+              ..addText(text)
+              ..pop())
+            .build()
+          ..layout(const ParagraphConstraints(width: double.infinity));
+
+    Future<Uint8List> pixels(Paragraph paragraph, double dpr) async {
+      final recorder = PictureRecorder();
+      final canvas = Canvas(recorder)..scale(dpr);
+      canvas.clipRect(const Rect.fromLTWH(0, 0, 160, 28));
+      canvas.drawParagraph(paragraph, const Offset(0, 2));
+      final picture = recorder.endRecording();
+      final image = await picture.toImage(
+        (160 * dpr).ceil(),
+        (32 * dpr).ceil(),
+      );
+      final data = await image.toByteData();
+      final result = Uint8List.fromList(data!.buffer.asUint8List());
+      image.dispose();
+      picture.dispose();
+      return result;
+    }
+
+    test('idle entry churn evicts old paragraphs', () {
+      final cache = ShapedParagraphCache();
+      addTearDown(cache.dispose);
+      ShapedParagraphLease acquire(String text) => cache.acquire(
+        text,
+        foreground: 0xFFFFFFFF,
+        bold: false,
+        italic: false,
+        create: () => build(text, 0xFFFFFFFF),
+      );
+      final first = acquire('first');
+      final paragraph = first.paragraph;
+      first.release();
+      for (var index = 0; index < 140; index++) {
+        acquire('entry $index').release();
+      }
+      final replacement = acquire('first');
+      expect(replacement.paragraph, isNot(same(paragraph)));
+      replacement.release();
+    });
+
+    test('long idle text is bounded independently of entry count', () {
+      final cache = ShapedParagraphCache();
+      addTearDown(cache.dispose);
+      ShapedParagraphLease acquire(String text) => cache.acquire(
+        text,
+        foreground: 0xFFFFFFFF,
+        bold: false,
+        italic: false,
+        create: () => build(text, 0xFFFFFFFF),
+      );
+      final text = List.filled(18000, '=').join();
+      final first = acquire(text);
+      final paragraph = first.paragraph;
+      first.release();
+      acquire('$text>').release();
+      final replacement = acquire(text);
+      expect(replacement.paragraph, isNot(same(paragraph)));
+      replacement.release();
+    });
+
+    for (final dpr in [1.0, 1.25, 2.0]) {
+      test(
+        'leased paragraphs preserve pixels through churn at DPR $dpr',
+        () async {
+          var cache = ShapedParagraphCache();
+          addTearDown(() => cache.dispose());
+          for (final text in [
+            '=> === != !== <= >= -> <->',
+            r'$$$@@@%%%',
+            '${List.filled(260, '=').join()}>',
+          ]) {
+            for (final foreground in [0xFFFFFFFF, 0x887733EE]) {
+              final baseline = build(text, foreground, italic: true);
+              addTearDown(baseline.dispose);
+              ShapedParagraphLease acquire() => cache.acquire(
+                text,
+                foreground: foreground,
+                bold: false,
+                italic: true,
+                create: () => build(text, foreground, italic: true),
+              );
+              final first = acquire();
+              final second = acquire();
+              expect(second.paragraph, same(first.paragraph));
+              final expected = await pixels(baseline, dpr);
+              first.release();
+              for (var index = 0; index < 140; index++) {
+                final otherText = '=>$index';
+                cache
+                    .acquire(
+                      otherText,
+                      foreground: foreground,
+                      bold: false,
+                      italic: false,
+                      create: () => build(otherText, foreground),
+                    )
+                    .release();
+              }
+              expect(
+                await pixels(second.paragraph, dpr),
+                orderedEquals(expected),
+              );
+              cache.dispose();
+              cache = ShapedParagraphCache();
+              final replacement = acquire();
+              expect(replacement.paragraph, isNot(same(second.paragraph)));
+              expect(
+                await pixels(second.paragraph, dpr),
+                orderedEquals(expected),
+              );
+              expect(
+                await pixels(replacement.paragraph, dpr),
+                orderedEquals(expected),
+              );
+              second.release();
+              replacement.release();
+            }
+          }
+        },
+      );
+    }
+  });
+
   group('AtlasSprites', () {
     test('count and hasSprites are zero before any emit', () {
       final sprites = AtlasSprites()..configure(4, 4);
@@ -39,6 +178,45 @@ void main() {
       expect(sprites.count, 0);
       expect(sprites.hasSprites, isFalse);
       expect(sprites.sealedTransforms.length, 0);
+    });
+
+    test('empty seals allow the first sprite in a lower row', () {
+      final sprites = AtlasSprites()..configure(3, 2);
+      sprites.seal();
+      sprites.seal();
+
+      sprites.beginRow(2);
+      sprites.add(7, 8, entry(), 0.5, 0xFFAABBCC);
+      sprites.endRow();
+      sprites.seal();
+
+      expect(sprites.count, 1);
+      expect(sprites.sealedTransforms, [0.5, 0.0, 7.0, 8.0]);
+      expect(sprites.sealedRects, [0.0, 0.0, 8.0, 16.0]);
+      expect(sprites.sealedColors, [0xFFAABBCC.toSigned(32)]);
+    });
+
+    test('populated channel can empty and repopulate after sealing', () {
+      final sprites = AtlasSprites()..configure(2, 3);
+      sprites.beginRow(1);
+      sprites.add(1, 2, entry(), 1.0, 0xFF111111);
+      sprites.endRow();
+      sprites.seal();
+
+      sprites.beginRow(1);
+      sprites.endRow();
+      sprites.seal();
+      expect(sprites.count, 0);
+      expect(sprites.sealedTransforms, isEmpty);
+
+      sprites.beginRow(0);
+      sprites.add(9, 10, entry(), 0.25, 0xFFABCDEF);
+      sprites.endRow();
+      sprites.seal();
+
+      expect(sprites.count, 1);
+      expect(sprites.sealedTransforms, [0.25, 0.0, 9.0, 10.0]);
+      expect(sprites.sealedColors, [0xFFABCDEF.toSigned(32)]);
     });
 
     test('seal packs active slots across rows', () {
@@ -296,6 +474,31 @@ void main() {
       expect(buffer.underline.count, 0);
       expect(buffer.decoration.count, 0);
       expect(buffer.shaped.count, 0);
+    });
+
+    test('resize rebuilds atlas and rectangle outputs for the new grid', () {
+      final buffer = SpriteBuffer()..configure(30, 30);
+      addTearDown(buffer.dispose);
+      buffer.beginRow(29);
+      buffer.regular.add(1, 2, entry(), 1.0, 0xFF111111);
+      buffer.background.add(1, 2, 3, 4, 0xFF222222);
+      buffer.decoration.add(5, 6, 7, 8, 0xFF333333);
+      buffer.endRow();
+      buffer.seal();
+
+      buffer.configure(2, 2);
+      buffer.beginRow(1);
+      buffer.regular.add(9, 10, entry(), 0.5, 0xFFABCDEF);
+      buffer.background.add(11, 12, 13, 14, 0xFF123456);
+      buffer.decoration.add(15, 16, 17, 18, 0xFF654321);
+      buffer.endRow();
+      buffer.seal();
+
+      expect(buffer.regular.count, 1);
+      expect(buffer.regular.sealedTransforms, [0.5, 0.0, 9.0, 10.0]);
+      expect(buffer.regular.sealedColors, [0xFFABCDEF.toSigned(32)]);
+      expect(buffer.backgroundVertices, hasLength(1));
+      expect(buffer.decorationVertices, hasLength(1));
     });
 
     test('seal builds backgroundVertices when any row has bg rects', () {

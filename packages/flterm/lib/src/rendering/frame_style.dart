@@ -52,9 +52,8 @@ RgbColor? _rgbColor(Color? color) {
   );
 }
 
-/// Resolves and caches style-derived colors for the current frame.
+/// Resolves and caches style-derived colors for the current row.
 final class _StyleCache {
-  // Covers common 256-color fg/bg animation palettes within one frame.
   static const _maxEntries = 1024;
 
   final PaintState _state;
@@ -62,24 +61,23 @@ final class _StyleCache {
   final Int32List _foreground;
   final Int32List _background;
   final Uint8List _explicitBg;
-  final List<Style?> _styles;
   var _generation = 0;
 
   _StyleCache(this._state)
     : _gen = Int32List(_maxEntries),
       _foreground = Int32List(_maxEntries),
       _background = Int32List(_maxEntries),
-      _explicitBg = Uint8List(_maxEntries),
-      _styles = List<Style?>.filled(_maxEntries, null);
+      _explicitBg = Uint8List(_maxEntries);
 
-  void beginFrame() => _generation++;
+  void beginRow() => _generation++;
 
   (int foreground, int background, Style style, bool explicitBg) resolve(
-    _DecodedCell cell, {
+    _DecodedRow row,
+    int column, {
     required int? backgroundArgb,
   }) {
-    final id = cell.styleId;
-    if (!cell.hasStyling && backgroundArgb == null) {
+    final id = row.styleIds[column];
+    if (!row.hasStyling(column) && backgroundArgb == null) {
       return (
         _state.terminalForegroundArgb,
         _state.terminalBackgroundArgb,
@@ -88,7 +86,7 @@ final class _StyleCache {
       );
     }
 
-    final style = cell.style;
+    final style = row.style(column);
     final contentBackground = style.background is DefaultColor
         ? backgroundArgb
         : null;
@@ -103,12 +101,7 @@ final class _StyleCache {
     }
 
     if (id < _maxEntries && _gen[id] == _generation) {
-      return (
-        _foreground[id],
-        _background[id],
-        _styles[id]!,
-        _explicitBg[id] != 0,
-      );
+      return (_foreground[id], _background[id], style, _explicitBg[id] != 0);
     }
 
     final (foreground, background) = _resolveStyleColors(_state, style);
@@ -121,7 +114,6 @@ final class _StyleCache {
       _foreground[id] = foreground;
       _background[id] = background;
       _explicitBg[id] = explicitBg ? 1 : 0;
-      _styles[id] = style;
     }
 
     return (foreground, background, style, explicitBg);

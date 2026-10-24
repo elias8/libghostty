@@ -6,6 +6,8 @@ import 'dart:typed_data';
 
 import 'package:flterm/src/controller/terminal_controller.dart';
 import 'package:flterm/src/foundation.dart';
+import 'package:flterm/src/links/link_interaction.dart';
+import 'package:flterm/src/links/link_settings.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:libghostty/libghostty.dart'
@@ -17,14 +19,17 @@ void main() {
   group('ViewAttachment', () {
     late TerminalController controller;
     late ViewAttachment attachment;
+    late LinkInteraction links;
 
     setUp(() {
       controller = TerminalController();
-      attachment = ViewAttachment(controller);
+      links = LinkInteraction();
+      attachment = ViewAttachment(controller, links: links);
     });
 
     tearDown(() {
       attachment.dispose();
+      links.dispose();
       controller.dispose();
     });
 
@@ -35,19 +40,120 @@ void main() {
     );
 
     group('ownership', () {
+      test('refreshes retained links changed while detached', () {
+        const metrics = CellMetrics(cellWidth: 8, cellHeight: 16, baseline: 12);
+        const settings = LinkSettings(types: {LinkType.osc8});
+        void configure() => attachment.configureLinks(
+          settings: settings,
+          idleStyle: const HyperlinkStyle(underline: .single),
+          metrics: metrics,
+        );
+        controller.write(
+          Uint8List.fromList(
+            utf8.encode('\x1b]8;;https://retained.example\x07LINK\x1b]8;;\x07'),
+          ),
+        );
+        configure();
+        expect(links.snapshot().matches, hasLength(1));
+
+        attachment.dispose();
+        controller.write(Uint8List.fromList(utf8.encode('\r\x1b[2Kplain')));
+        attachment = ViewAttachment(controller, links: links);
+        configure();
+
+        expect(links.snapshot().matches, isEmpty);
+      });
+
+      test(
+        'releases a pending link press without disposing borrowed links',
+        () {
+          const metrics = CellMetrics(
+            cellWidth: 8,
+            cellHeight: 16,
+            baseline: 12,
+          );
+          final settings = LinkSettings(
+            modifier: .none,
+            types: const {LinkType.osc8},
+            onActivate: (_) {},
+          );
+          controller.write(
+            Uint8List.fromList(
+              utf8.encode(
+                '\x1b]8;;https://retained.example\x07LINK\x1b]8;;\x07',
+              ),
+            ),
+          );
+          void configure() => attachment.configureLinks(
+            settings: settings,
+            idleStyle: const HyperlinkStyle(),
+            metrics: metrics,
+          );
+          bool press() => links.handlePress(
+            localPosition: const Offset(4, 8),
+            metrics: metrics,
+            pointerKind: .mouse,
+            virtualMods: const Mods.none(),
+          );
+          configure();
+          expect(press(), isTrue);
+          attachment.dispose();
+          expect(
+            links.handleRelease(
+              localPosition: const Offset(4, 8),
+              metrics: metrics,
+            ),
+            isNull,
+          );
+
+          var changes = 0;
+          links.addListener(() => changes++);
+          attachment = ViewAttachment(controller, links: links);
+          configure();
+          expect(press(), isTrue);
+          expect(
+            links
+                .handleRelease(
+                  localPosition: const Offset(4, 8),
+                  metrics: metrics,
+                )
+                ?.uri,
+            Uri.parse('https://retained.example'),
+          );
+          links.handleHover(
+            localPosition: const Offset(4, 8),
+            metrics: metrics,
+            virtualMods: const Mods.none(),
+          );
+          expect(changes, 1);
+        },
+      );
+
       test('rejects a second active view attachment', () {
-        expect(() => ViewAttachment(controller), throwsA(isA<StateError>()));
+        final secondLinks = LinkInteraction();
+        expect(
+          () => ViewAttachment(controller, links: secondLinks),
+          throwsA(isA<StateError>()),
+        );
+        secondLinks.dispose();
       });
 
       test('stale attachment disposal does not detach a newer view', () {
         final first = attachment;
         first.dispose();
-        final second = ViewAttachment(controller);
+        links.dispose();
+        links = LinkInteraction();
+        final second = ViewAttachment(controller, links: links);
         attachment = second;
 
         first.dispose();
 
-        expect(() => ViewAttachment(controller), throwsA(isA<StateError>()));
+        final thirdLinks = LinkInteraction();
+        expect(
+          () => ViewAttachment(controller, links: thirdLinks),
+          throwsA(isA<StateError>()),
+        );
+        thirdLinks.dispose();
       });
     });
 
@@ -81,13 +187,15 @@ void main() {
           ..background = const RgbColor(65, 43, 21);
         addTearDown(source.dispose);
         attachment.dispose();
+        links.dispose();
         controller.dispose();
         controller = TerminalController.fromSnapshot(
           source.encodeSnapshot(),
           progressive: false,
           preserveSnapshotColors: preserveSnapshotColors,
         );
-        attachment = ViewAttachment(controller);
+        links = LinkInteraction();
+        attachment = ViewAttachment(controller, links: links);
       }
 
       test('applies view colors to the terminal session', () {

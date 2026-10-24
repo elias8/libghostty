@@ -17,16 +17,10 @@ class SpritePainter {
   SpritePainter(this._atlas, this._sprites) : _paint = Paint();
 
   void paint(Canvas canvas) {
-    final sprites = _sprites.sprite;
-    final image = _atlas.spriteImage;
-    if (image == null || !sprites.hasSprites) return;
-    canvas.drawRawAtlas(
-      image,
-      sprites.sealedTransforms,
-      sprites.sealedRects,
-      sprites.sealedColors,
-      BlendMode.modulate,
-      null,
+    _sprites.sprite.paint(
+      canvas,
+      _atlas.spriteImage,
+      1 / _atlas.devicePixelRatio,
       _paint,
     );
   }

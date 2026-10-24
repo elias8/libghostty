@@ -39,7 +39,7 @@ final class PaintState {
   var cursorWide = false;
   var cursorFocused = true;
   var cursorColorArgb = 0xFFFFFFFF;
-  AtlasEntry? cursorAtlasEntry;
+  Glyph? cursorGlyph;
   final cursorGlyphPaint = Paint();
 
   /// Whether preedit text currently replaces cells at the cursor row.

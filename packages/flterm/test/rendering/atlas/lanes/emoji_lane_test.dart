@@ -65,12 +65,9 @@ void main() {
       String text, {
       int span = 1,
     }) async {
-      final entry = lane.rasterizeEmoji(
-        text,
-        bold: false,
-        italic: false,
-        span: span,
-      );
+      final entry =
+          lane.rasterizeEmoji(text, bold: false, italic: false, span: span)
+              as AtlasEntry;
       lane.ensureImage();
 
       return (entry, await paintedRect(lane.image!));
@@ -87,11 +84,9 @@ void main() {
     });
 
     test('rasterizeEmoji allocates a pending emoji entry', () {
-      final entry = lane.rasterizeEmoji(
-        '\u{1F600}',
-        bold: false,
-        italic: false,
-      );
+      final entry =
+          lane.rasterizeEmoji('\u{1F600}', bold: false, italic: false)
+              as AtlasEntry;
 
       expect(entry.lane, AtlasEntryLane.emoji);
       expect(entry.srcRight, greaterThan(entry.srcLeft));
