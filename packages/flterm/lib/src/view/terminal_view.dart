@@ -469,6 +469,7 @@ final class _TerminalViewState extends State<TerminalView>
       fontFamilyFallback: _theme.fontFamilyFallback,
       fontData: fontData ?? widget.fontData ?? _resolvedFontData,
       devicePixelRatio: _devicePixelRatio!,
+      adjustments: _theme.fontAdjustments,
     );
   }
 
@@ -536,7 +537,8 @@ final class _TerminalViewState extends State<TerminalView>
         _theme.fontSize != oldTheme.fontSize ||
         _theme.fontWeight != oldTheme.fontWeight ||
         fontFamilyChanged ||
-        _theme.fontFamilyFallback != oldTheme.fontFamilyFallback;
+        _theme.fontFamilyFallback != oldTheme.fontFamilyFallback ||
+        _theme.fontAdjustments != oldTheme.fontAdjustments;
     if (fontMetricsChanged) {
       _metrics = _measureMetrics();
     }

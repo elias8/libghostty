@@ -60,6 +60,7 @@ export 'src/controller/terminal_search_controller.dart'
 export 'src/foundation/cell_range.dart' show CellRange;
 export 'src/foundation/color_palette.dart' show ColorPalette;
 export 'src/foundation/dynamic_color.dart' show DynamicColor;
+export 'src/foundation/font_adjustments.dart' show FontAdjustments;
 export 'src/foundation/input_types.dart' show MouseAutoHide;
 export 'src/foundation/terminal_config.dart'
     show ScrollToBottom, TerminalConfig;
