@@ -5,6 +5,7 @@ import 'package:libghostty/libghostty.dart';
 
 import 'color_palette.dart';
 import 'dynamic_color.dart';
+import 'font_adjustments.dart';
 
 /// Default dark ANSI palette using the Tomorrow Night color scheme.
 const _darkAnsiColors = [
@@ -347,6 +348,7 @@ final class SelectionTheme {
 /// - [boldIsBright], [boldColor], [faintOpacity], [minimumContrast]: text
 ///   rendering
 /// - [backgroundOpacity], [backgroundOpacityCells]: transparent background
+/// - [fontAdjustments]: Ghostty-style cell, underline, and cursor metrics
 ///
 /// ```dart
 /// final theme = TerminalTheme.dark();
@@ -426,6 +428,10 @@ final class TerminalTheme {
   /// alpha scaling in the per-cell hot loop of the frame builder.
   final int backgroundOpacityAlpha;
 
+  /// Ghostty-style font metric adjustments: cell width and height (line
+  /// spacing), underline position and thickness, and cursor thickness.
+  final FontAdjustments fontAdjustments;
+
   TerminalTheme({
     required this.palette,
     this.cursor = const CursorTheme(),
@@ -442,6 +448,7 @@ final class TerminalTheme {
     this.minimumContrast = 1.0,
     this.backgroundOpacity = 1.0,
     this.backgroundOpacityCells = false,
+    this.fontAdjustments = const FontAdjustments(),
   }) : assert(fontSize > 0, 'fontSize must be positive'),
        assert(
          backgroundOpacity >= 0.0 && backgroundOpacity <= 1.0,
@@ -494,6 +501,7 @@ final class TerminalTheme {
     minimumContrast,
     backgroundOpacity,
     backgroundOpacityCells,
+    fontAdjustments,
   );
 
   @override
@@ -513,7 +521,8 @@ final class TerminalTheme {
       other.faintOpacity == faintOpacity &&
       other.minimumContrast == minimumContrast &&
       other.backgroundOpacity == backgroundOpacity &&
-      other.backgroundOpacityCells == backgroundOpacityCells;
+      other.backgroundOpacityCells == backgroundOpacityCells &&
+      other.fontAdjustments == fontAdjustments;
 
   /// Returns a copy of this theme with the given fields replaced.
   ///
@@ -535,6 +544,7 @@ final class TerminalTheme {
     double? minimumContrast,
     double? backgroundOpacity,
     bool? backgroundOpacityCells,
+    FontAdjustments? fontAdjustments,
   }) => TerminalTheme(
     palette: palette ?? this.palette,
     cursor: cursor ?? this.cursor,
@@ -552,6 +562,7 @@ final class TerminalTheme {
     backgroundOpacity: backgroundOpacity ?? this.backgroundOpacity,
     backgroundOpacityCells:
         backgroundOpacityCells ?? this.backgroundOpacityCells,
+    fontAdjustments: fontAdjustments ?? this.fontAdjustments,
   );
 
   /// Resolves a [CellColor] to a Flutter [Color] using this theme's palette.
@@ -604,6 +615,7 @@ final class TerminalTheme {
       backgroundOpacityCells: t < 0.5
           ? a.backgroundOpacityCells
           : b.backgroundOpacityCells,
+      fontAdjustments: t < 0.5 ? a.fontAdjustments : b.fontAdjustments,
     );
   }
 }

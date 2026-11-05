@@ -1,3 +1,4 @@
+import 'package:flterm/src/foundation.dart';
 import 'package:flterm/src/rendering/font/measure_cell_metrics.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -38,6 +39,37 @@ void main() {
       );
 
       expect(metrics.cellWidth, closeTo(17 / 3, 0.0001));
+    });
+
+    testWidgets('applies Ghostty-style adjustments', (tester) async {
+      CellMetrics measure(FontAdjustments adjustments) => measureCellMetrics(
+        fontFamily: 'JetBrains Mono',
+        fontSize: 14.0,
+        fontData: jetBrainsMonoBytes,
+        adjustments: adjustments,
+      );
+      final plain = measure(const FontAdjustments());
+      final adjusted = measure(
+        const FontAdjustments(
+          cellWidth: 0.5,
+          cellHeight: 0.5,
+          underlinePosition: 0.1,
+          underlineThickness: 2,
+        ),
+      );
+
+      expect(adjusted.cellWidth, closeTo(plain.cellWidth * 1.5, 1));
+      expect(adjusted.cellHeight, closeTo(plain.cellHeight * 1.5, 1));
+      expect(adjusted.underlineThickness, plain.underlineThickness + 2);
+      // The baseline moved down with the centered glyphs, the underline
+      // with it and a further tenth of the cell.
+      expect(
+        adjusted.underlinePosition - adjusted.baseline,
+        closeTo(
+          plain.underlinePosition - plain.baseline + adjusted.cellHeight * 0.1,
+          1,
+        ),
+      );
     });
 
     testWidgets('accepts fontFamilyFallback', (tester) async {

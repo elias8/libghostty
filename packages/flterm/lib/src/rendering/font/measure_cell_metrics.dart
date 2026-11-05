@@ -3,7 +3,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/painting.dart';
 
-import '../../foundation.dart' show CellMetrics;
+import '../../foundation.dart' show CellMetrics, FontAdjustments;
 import 'font_table_metrics.dart';
 
 /// Measures cell dimensions by laying out reference characters with
@@ -16,6 +16,7 @@ import 'font_table_metrics.dart';
 ///   snapped up to the device pixel grid.
 /// - Baseline: distance from the top of the cell, centered within the
 ///   snapped cell height.
+/// - [adjustments] applied on top, as Ghostty's `adjust-*` keys are.
 /// - Underline and strikethrough positions and thicknesses read from the
 ///   font's `post` and `OS/2` tables when [fontData] (raw TTF/OTF bytes)
 ///   is provided. Heuristic fallbacks are used otherwise.
@@ -35,6 +36,7 @@ CellMetrics measureCellMetrics({
   List<String>? fontFamilyFallback,
   Uint8List? fontData,
   double devicePixelRatio = 1.0,
+  FontAdjustments adjustments = const FontAdjustments(),
 }) {
   assert(devicePixelRatio > 0, 'devicePixelRatio must be positive');
 
@@ -62,8 +64,15 @@ CellMetrics measureCellMetrics({
   final faceHeight = vertPainter.height;
   vertPainter.dispose();
 
-  final cellWidth = _ceilToDevicePixel(faceWidth, devicePixelRatio);
-  final cellHeight = _ceilToDevicePixel(faceHeight, devicePixelRatio);
+  final cellWidth = _ceilToDevicePixel(
+    faceWidth * (1 + adjustments.cellWidth),
+    devicePixelRatio,
+  );
+  // Extra height splits evenly above and below: the glyphs stay centered.
+  final cellHeight = _ceilToDevicePixel(
+    faceHeight * (1 + adjustments.cellHeight),
+    devicePixelRatio,
+  );
 
   final baseline = _roundToDevicePixel(
     ascent + (cellHeight - faceHeight) / 2,
@@ -86,15 +95,18 @@ CellMetrics measureCellMetrics({
   final underlineThickness = max(
     1.0,
     (fontMetrics?.underlineThickness != null
-            ? fontMetrics!.underlineThickness! * ppu
-            : 0.15 * exHeight)
-        .ceilToDouble(),
+                ? fontMetrics!.underlineThickness! * ppu
+                : 0.15 * exHeight)
+            .ceilToDouble() +
+        adjustments.underlineThickness,
   );
 
   // Fallback position: one thickness below baseline.
-  final rawUnderlinePosition = fontMetrics?.underlinePosition != null
-      ? (baseline - fontMetrics!.underlinePosition! * ppu).roundToDouble()
-      : (baseline + underlineThickness).roundToDouble();
+  final rawUnderlinePosition =
+      (fontMetrics?.underlinePosition != null
+          ? (baseline - fontMetrics!.underlinePosition! * ppu).roundToDouble()
+          : (baseline + underlineThickness).roundToDouble()) +
+      adjustments.underlinePosition * cellHeight;
   final underlinePosition = min(
     rawUnderlinePosition,
     cellHeight - underlineThickness,
