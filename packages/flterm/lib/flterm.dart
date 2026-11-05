@@ -67,6 +67,7 @@ export 'src/foundation/terminal_gesture_settings.dart'
     show
         GestureModifier,
         LineSelectMode,
+        TerminalFocusGesture,
         TerminalGestureSettings,
         TerminalSelectionShape;
 export 'src/foundation/terminal_theme.dart'

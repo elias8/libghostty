@@ -21,6 +21,7 @@ final class TerminalSelectionHandles extends StatefulWidget {
   final ValueGetter<Mods> readVirtualMods;
   final ValueChanged<int> onViewportRowChanged;
   final ValueChanged<bool>? onDragStateChanged;
+  final bool focusOnDrag;
   final ValueGetter<bool>? onContentInteraction;
   final GestureModifier? blockSelectionModifier;
   final TextMagnifierConfiguration? magnifierConfiguration;
@@ -31,6 +32,7 @@ final class TerminalSelectionHandles extends StatefulWidget {
     required this.metrics,
     required this.selection,
     this.onDragStateChanged,
+    this.focusOnDrag = true,
     this.onContentInteraction,
     this.magnifierConfiguration,
     required this.readVirtualMods,
@@ -253,7 +255,7 @@ final class _SelectionHandlesState extends State<TerminalSelectionHandles> {
     _dragAnchor = layout.anchor;
     _dragOffset = layout.anchor - box.globalToLocal(details.globalPosition);
     _gesturePosition = details.globalPosition;
-    Focus.maybeOf(context)?.requestFocus();
+    if (widget.focusOnDrag) Focus.maybeOf(context)?.requestFocus();
     final magnifierContext = _magnifierContext.currentContext;
     if (magnifierContext == null) return;
     _magnifier = SelectionMagnifier(

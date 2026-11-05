@@ -20,12 +20,30 @@ enum LineSelectMode {
   full,
 }
 
+/// Which pointer gestures may move keyboard focus to the terminal.
+///
+/// Used by [TerminalGestureSettings.focusGesture]. On a phone, focus raises
+/// the soft keyboard, so a host may want it only on a deliberate tap, or
+/// never from a gesture at all.
+enum TerminalFocusGesture {
+  /// Taps, drags, long presses, handle drags, and touch scrolls all focus.
+  any,
+
+  /// Only a completed tap focuses, on release. A scroll, a long press, or a
+  /// selection drag leaves focus where it is.
+  tap,
+
+  /// No gesture focuses. Focus still follows [FocusNode.requestFocus] and
+  /// autofocus.
+  none,
+}
+
 /// Controls which terminal selection affordances are enabled and how press
 /// gestures behave.
 ///
-/// Passed to [TerminalView.gestureSettings]. Only affects selection
-/// behavior: mouse tracking (for terminal programs) and focus gestures
-/// work regardless of these settings.
+/// Passed to [TerminalView.gestureSettings]. Apart from [focusGesture], only
+/// affects selection behavior: mouse tracking (for terminal programs) works
+/// regardless of these settings.
 ///
 /// ```dart
 /// TerminalView(
@@ -116,6 +134,11 @@ final class TerminalGestureSettings {
   /// as one word.
   final String? wordBoundaries;
 
+  /// Which gestures may focus the terminal.
+  ///
+  /// Defaults to [TerminalFocusGesture.any].
+  final TerminalFocusGesture focusGesture;
+
   const TerminalGestureSettings({
     this.dragSelection = true,
     this.selectAllShortcut = true,
@@ -127,6 +150,7 @@ final class TerminalGestureSettings {
     this.selectionBehaviors = .standard,
     this.longPressSelectionShape = .normal,
     this.wordBoundaries,
+    this.focusGesture = .any,
   });
 
   @override
@@ -143,6 +167,7 @@ final class TerminalGestureSettings {
     magnifierConfiguration,
     selectAllShortcut,
     wordBoundaries,
+    focusGesture,
   );
 
   @override
@@ -163,7 +188,8 @@ final class TerminalGestureSettings {
           touchSelectionHandles == other.touchSelectionHandles &&
           magnifierConfiguration == other.magnifierConfiguration &&
           selectAllShortcut == other.selectAllShortcut &&
-          wordBoundaries == other.wordBoundaries;
+          wordBoundaries == other.wordBoundaries &&
+          focusGesture == other.focusGesture;
 }
 
 /// Selection shape used for gestures that start without a keyboard modifier.

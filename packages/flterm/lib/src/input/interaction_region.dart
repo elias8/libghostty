@@ -165,6 +165,7 @@ final class _InteractionRegionState extends State<InteractionRegion> {
                 widget.settings.touchSelectionHandles,
             magnifierConfiguration: widget.settings.magnifierConfiguration,
             onDragStateChanged: (active) => _selectionHandleDragActive = active,
+            focusOnDrag: widget.settings.focusGesture == .any,
             onContentInteraction: _consumeContentInteraction,
             terminalBackground: widget.terminalBackground,
             blockSelectionModifier: widget.settings.blockSelectionModifier,
@@ -320,7 +321,7 @@ final class _InteractionRegionState extends State<InteractionRegion> {
       _cancelSelectionInteraction(widget.selection, clearSelection: true);
       return;
     }
-    Focus.maybeOf(context)?.requestFocus();
+    _requestFocus();
     _cancelLinkPress();
     if (_terminalOwnsInteraction) {
       _terminalDragActive = true;
@@ -362,7 +363,7 @@ final class _InteractionRegionState extends State<InteractionRegion> {
       _cancelSelectionInteraction(widget.selection, clearSelection: true);
       return;
     }
-    Focus.maybeOf(context)?.requestFocus();
+    _requestFocus();
     if (_terminalOwnsInteraction) return;
     if (!widget.settings.longPressSelection) {
       _cancelSelectionPress();
@@ -392,7 +393,7 @@ final class _InteractionRegionState extends State<InteractionRegion> {
     _hideSelectionHandles();
     _cancelSelectionInteraction(widget.selection, clearSelection: true);
     if (kind == .touch) {
-      Focus.maybeOf(context)?.requestFocus();
+      _requestFocus();
       _activePointers.removeWhere((_, pointer) => pointer.kind == .touch);
     }
   }
@@ -440,7 +441,7 @@ final class _InteractionRegionState extends State<InteractionRegion> {
       return;
     }
     _hideSelectionHandles();
-    Focus.maybeOf(context)?.requestFocus();
+    _requestFocus();
     if (_terminalOwnsInteraction) return;
     if (widget.links.handlePress(
       localPosition: details.localPosition,
@@ -463,6 +464,7 @@ final class _InteractionRegionState extends State<InteractionRegion> {
       _terminalOwnsInteraction = false;
       return;
     }
+    _requestFocus(tap: true);
     if (_linkPressActive) {
       _linkPressActive = false;
       final link = widget.links.handleRelease(
@@ -623,6 +625,17 @@ final class _InteractionRegionState extends State<InteractionRegion> {
   }
 
   MouseButton? _mouseButtonForBit(int button) => _mouseButtons[button];
+
+  /// Focuses the terminal when [TerminalGestureSettings.focusGesture] lets
+  /// this gesture do it. [tap] marks a completed tap, on release.
+  void _requestFocus({bool tap = false}) {
+    final allowed = switch (widget.settings.focusGesture) {
+      .any => true,
+      .tap => tap,
+      .none => false,
+    };
+    if (allowed) Focus.maybeOf(context)?.requestFocus();
+  }
 
   void _releaseSelectionPress([Position? cell]) {
     final releaseCell = cell ?? _pressCell;
