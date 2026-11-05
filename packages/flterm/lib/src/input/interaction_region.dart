@@ -93,6 +93,7 @@ final class _InteractionRegionState extends State<InteractionRegion> {
       kForwardMouseButton;
 
   final _activePointers = <int, _TrackedPointer>{};
+  _TwoFingerTap? _twoFingerTap;
   _DragState? _drag;
   int? _interactionPointer;
   Duration? _interactionTimeStamp;
@@ -485,6 +486,11 @@ final class _InteractionRegionState extends State<InteractionRegion> {
 
   void _handleTrackedCancel(PointerCancelEvent event) {
     _consumeTap = false;
+    final tap = _twoFingerTap;
+    if (tap != null) {
+      tap.cancel(event.pointer);
+      if (tap.done) _twoFingerTap = null;
+    }
     final pointer = _activePointers[event.pointer];
     if (pointer != null && pointer.kind != .touch) {
       _cancelTrackedPointer(event.pointer, event.localPosition);
@@ -520,7 +526,10 @@ final class _InteractionRegionState extends State<InteractionRegion> {
     }
     if (!tracked) return;
     if (button == null) return;
-    if (event.kind == .touch && _interactionPointer != event.pointer) return;
+    if (event.kind == .touch && _interactionPointer != event.pointer) {
+      _handleSecondTouchDown(event);
+      return;
+    }
 
     final pointer = _TrackedPointer(
       button: button,
@@ -554,6 +563,7 @@ final class _InteractionRegionState extends State<InteractionRegion> {
       _cancelTrackedPointer(event.pointer, event.localPosition);
       return;
     }
+    _twoFingerTap?.move(event.pointer, event.localPosition);
     final pointer = _activePointers[event.pointer];
     if (pointer == null) return;
     if (pointer.tapCandidate &&
@@ -591,11 +601,51 @@ final class _InteractionRegionState extends State<InteractionRegion> {
       _cancelSelectionInteraction(widget.selection, clearSelection: true);
       return;
     }
+    _releaseTwoFingerTap(event.pointer);
     _releaseTrackedPointer(event.pointer, event.localPosition);
     if (_interactionPointer == event.pointer) {
       _interactionPointer = null;
       _interactionTimeStamp = null;
     }
+  }
+
+  /// A second finger on a touch screen turns the tap into a right click, the
+  /// way a trackpad's two-finger click does. The first finger's left click is
+  /// withdrawn; travel or a third finger leaves the pair to scroll and pinch.
+  void _handleSecondTouchDown(PointerDownEvent event) {
+    final first = _activePointers[_interactionPointer];
+    final tap = _twoFingerTap;
+    if (tap != null) {
+      tap.add(event.pointer, event.localPosition);
+      return;
+    }
+    if (first == null || first.kind != .touch) return;
+    first.tapCandidate = false;
+    _twoFingerTap = _TwoFingerTap(first.downPosition, target: first.target)
+      ..add(_interactionPointer!, first.position)
+      ..add(event.pointer, event.localPosition);
+  }
+
+  void _releaseTwoFingerTap(int pointer) {
+    final tap = _twoFingerTap;
+    if (tap == null || !tap.release(pointer)) return;
+    if (!tap.aborted && !tap.fired) {
+      tap.fired = true;
+      final mods = readPointerModifiers(tap.target.readVirtualMods());
+      for (final action in const [MouseAction.press, MouseAction.release]) {
+        tap.target.send(
+          MouseInput(
+            action: action,
+            anyButtonPressed: action == .press,
+            button: .right,
+            mods: mods,
+            pixelX: tap.anchor.dx,
+            pixelY: tap.anchor.dy,
+          ),
+        );
+      }
+    }
+    if (tap.done) _twoFingerTap = null;
   }
 
   void _hideSelectionHandles() {
@@ -943,4 +993,44 @@ final class _TrackedPointer {
     required this.tapCandidate,
     required this.target,
   }) : downPosition = position;
+}
+
+final class _TwoFingerTap {
+  static const _moveSlop = 16.0;
+
+  /// Where the first finger landed: the click goes where a left tap would
+  /// have.
+  final Offset anchor;
+  final _MouseTarget target;
+  final _downs = <int, Offset>{};
+
+  /// The pair travelled, or a third finger joined: no click.
+  var aborted = false;
+
+  /// The first finger to lift already reported the click.
+  var fired = false;
+
+  _TwoFingerTap(this.anchor, {required this.target});
+
+  bool get done => _downs.isEmpty;
+
+  void add(int pointer, Offset position) {
+    _downs[pointer] = position;
+    if (_downs.length > 2) aborted = true;
+  }
+
+  void cancel(int pointer) {
+    _downs.remove(pointer);
+    aborted = true;
+  }
+
+  void move(int pointer, Offset position) {
+    final down = _downs[pointer];
+    if (down != null && (position - down).distance > _moveSlop) {
+      aborted = true;
+    }
+  }
+
+  /// Forgets [pointer]; false when it is not one of this tap's fingers.
+  bool release(int pointer) => _downs.remove(pointer) != null;
 }
