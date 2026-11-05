@@ -86,6 +86,8 @@ final class ViewAttachment extends ChangeNotifier {
 
   ValueListenable<TerminalInteractionState> get interaction => _interaction;
 
+  set autocorrect(bool value) => _textInput.autocorrect = value;
+
   set mouseAutoHide(MouseAutoHide value) => _mouseAutoHide = value;
 
   MouseCursor get mouseCursor {
