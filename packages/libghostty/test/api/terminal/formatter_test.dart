@@ -4,7 +4,7 @@ import 'dart:typed_data';
 import 'package:libghostty/libghostty.dart';
 import 'package:test/test.dart';
 
-import '../helpers/setup.dart';
+import '../../helpers/setup.dart';
 
 void main() {
   setUp(() => testEnvironment);

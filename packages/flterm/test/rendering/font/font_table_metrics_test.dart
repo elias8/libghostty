@@ -3,7 +3,7 @@ import 'dart:typed_data';
 import 'package:flterm/src/rendering/font/font_table_metrics.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'helpers/font_loader.dart';
+import '../helpers/font_loader.dart';
 
 void main() {
   group('parseFontTableMetrics', () {

@@ -1,7 +1,7 @@
 import 'package:flterm/src/rendering/font/measure_cell_metrics.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'helpers/font_loader.dart';
+import '../helpers/font_loader.dart';
 
 void main() {
   setUpAll(loadBundledFonts);
