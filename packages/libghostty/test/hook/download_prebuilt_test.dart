@@ -6,7 +6,8 @@ import 'dart:io';
 import 'package:code_assets/code_assets.dart';
 import 'package:crypto/crypto.dart';
 import 'package:hooks/hooks.dart';
-import 'package:libghostty/src/hook/asset_hashes.dart' show releaseTag;
+import 'package:libghostty/src/hook/asset_hashes.dart'
+    show prebuiltGhosttyCommit, releaseTag;
 import 'package:libghostty/src/hook/library_provider.dart';
 import 'package:test/test.dart';
 
@@ -56,6 +57,28 @@ void main() {
     }
 
     group('provide', () {
+      test(
+        'rejects cached binaries built from another Ghostty commit',
+        () async {
+          final input = createTestBuildInput(
+            outputDirectoryShared: Uri.directory('${tmpDir.path}/cache/'),
+          );
+          File.fromUri(
+            input.packageRoot.resolve('ghostty.version'),
+          ).writeAsStringSync('different-commit');
+          final cacheDir = Directory(
+            '${tmpDir.path}/cache/prebuilt-$releaseTag',
+          )..createSync(recursive: true);
+          final content = [0xCA, 0xFE];
+          File('${cacheDir.path}/$binaryName').writeAsBytesSync(content);
+          final target = File('${tmpDir.path}/output/lib/target.dylib');
+          final provider = DownloadPrebuilt(input, hashes: hashFor(content));
+
+          await expectLater(provider.provide(target), throwsStateError);
+          expect(target.existsSync(), isFalse);
+        },
+      );
+
       test('downloads binary from server to target', () async {
         final content = [0xCA, 0xFE, 0xBA, 0xBE];
         seedBinary(content);
@@ -214,10 +237,11 @@ BuildInput createTestBuildInput({
 }) {
   final tmp = Directory.systemTemp.createTempSync('build_input_test_');
   addTearDown(() => tmp.deleteSync(recursive: true));
+  File('${tmp.path}/ghostty.version').writeAsStringSync(prebuiltGhosttyCommit);
 
   return BuildInput(<String, dynamic>{
     'package_name': 'test_package',
-    'package_root': tmp.path,
+    'package_root': '${tmp.path}/',
     'out_dir': '${tmp.path}/out',
     'out_dir_shared': outputDirectoryShared.toFilePath(),
     'user_defines': <String, String>{},

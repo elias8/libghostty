@@ -226,6 +226,17 @@ final class DownloadPrebuilt extends LibraryProvider {
 
   @override
   Future<void> provide(File target) async {
+    final commit = pinnedCommit(input.packageRoot);
+    if (commit != prebuiltGhosttyCommit) {
+      throw StateError(
+        'Prebuilt binaries for $releaseTag were built from Ghostty commit '
+        '$prebuiltGhosttyCommit, but ghostty.version pins $commit. '
+        'Set hooks.user_defines.libghostty.source to compile in the workspace '
+        'pubspec.yaml and install Zig, or update the prebuilt binaries and '
+        'their generated metadata.',
+      );
+    }
+
     final os = input.config.code.targetOS;
     final targetTriple = input.targetTriple();
     if (targetTriple == null) {

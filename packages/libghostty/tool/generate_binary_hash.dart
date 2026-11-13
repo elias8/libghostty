@@ -2,6 +2,7 @@
 import 'dart:io';
 
 import 'package:crypto/crypto.dart';
+import 'package:libghostty/src/hook/ghostty_source.dart';
 import 'package:path/path.dart' as p;
 
 /// SHA256 hashes for pre-built native binaries.
@@ -21,6 +22,7 @@ void main(List<String> args) {
     );
   }
 
+  final commit = pinnedCommit(Directory.current.uri);
   final artifactsPath = args[0];
   final releaseTag = args.length > 1 ? args[1] : null;
   final artifacts = Directory(artifactsPath);
@@ -52,6 +54,9 @@ void main(List<String> args) {
 
 /// The release tag used for downloading prebuilt binaries.
 const releaseTag = ${releaseTag != null ? "'$releaseTag'" : 'null'};
+
+/// Ghostty commit used to build these binaries.
+const prebuiltGhosttyCommit = '$commit';
 
 /// SHA256 hashes for pre-built native binaries. Keys are the artifact
 /// filenames.

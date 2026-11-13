@@ -1,3 +1,6 @@
+@TestOn('vm')
+library;
+
 import 'dart:io';
 
 import 'package:crypto/crypto.dart';
@@ -17,12 +20,12 @@ void main() {
     final binary = File('${artifacts.path}/libghostty-test.so')
       ..writeAsBytesSync([1, 2, 3]);
 
-    final result = await Process.run(Platform.resolvedExecutable, [
-      '--packages=$packageConfig',
-      script,
-      artifacts.path,
-      'libghostty-v1',
-    ], workingDirectory: tmp.path);
+    final result = await Process.run(
+      'dart',
+      ['--packages=$packageConfig', script, artifacts.path, 'libghostty-v1'],
+      workingDirectory: tmp.path,
+      runInShell: Platform.isWindows,
+    );
 
     expect(result.exitCode, 0, reason: '${result.stdout}\n${result.stderr}');
     final generated = File(
