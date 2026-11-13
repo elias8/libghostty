@@ -218,7 +218,7 @@ final class _RowBuilder {
           )
         : _foregroundArgb;
 
-    if (style.underline != UnderlineStyle.none) {
+    if (style.underline != .none) {
       final entry = _atlas.addDecoration(style.underline);
       for (var i = 0; i < span; i++) {
         final glyph = i == 0 || entry is AtlasEntry

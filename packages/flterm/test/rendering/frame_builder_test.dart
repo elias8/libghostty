@@ -816,7 +816,7 @@ void main() {
     test('sync skips cursor glyph for non-block cursors', () {
       state.updateTheme(
         TerminalTheme.dark().copyWith(
-          cursor: const CursorTheme(shape: CursorShape.underline),
+          cursor: const CursorTheme(shape: CursorStyle.underline),
         ),
       );
       writeUtf8(terminal, 'A\x1b[1;1H');
@@ -824,7 +824,7 @@ void main() {
       builder.sync(terminal, terminalDirty: true);
 
       expect(state.cursor.visible, isTrue);
-      expect(state.cursor.visualStyle, CursorShape.underline);
+      expect(state.cursor.visualStyle, CursorStyle.underline);
       expect(state.cursorGlyph, isNull);
     });
 

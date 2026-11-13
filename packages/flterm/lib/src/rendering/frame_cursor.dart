@@ -82,7 +82,7 @@ final class _CursorFrameBuilder {
     final cell = _lastCell;
     if (cell == null ||
         !_state.cursorFocused ||
-        _state.cursor.visualStyle != CursorShape.block) {
+        _state.cursor.visualStyle != .block) {
       return null;
     }
     final style = cell.style;

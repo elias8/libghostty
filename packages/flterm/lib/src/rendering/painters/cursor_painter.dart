@@ -58,7 +58,7 @@ class CursorPainter {
       endCol,
       .zero,
     );
-    final CursorShape shape = switch ((
+    final CursorStyle shape = switch ((
       focused,
       cursor.passwordInput,
       cursor.visualStyle,

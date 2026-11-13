@@ -730,7 +730,7 @@ final class FfiTerminalBindings implements TerminalBindings {
   @override
   void terminalSetDefaultCursorShape(
     LibGhosttyHandle terminal,
-    TerminalCursorShape? shape,
+    CursorStyle? shape,
   ) => _setI32(terminal, .defaultCursorStyle, shape?.value);
 
   @override

@@ -5,6 +5,7 @@ import 'package:ffi/ffi.dart';
 
 import '../../generated/libghostty.g.dart' as native;
 import '../../generated/libghostty_enums.g.dart';
+import '../../types/snapshot_progress.dart';
 import '../result_helpers.dart';
 import '../types.dart';
 import 'snapshot.dart';
@@ -101,7 +102,7 @@ final class FfiSnapshotBindings implements SnapshotBindings {
   }
 
   @override
-  RawSnapshotProgress? snapshotDecoderNext(LibGhosttyHandle decoder) {
+  SnapshotProgress? snapshotDecoderNext(LibGhosttyHandle decoder) {
     final result = native.ghostty_snapshot_decoder_next(
       Pointer.fromAddress(decoder.value),
     );
@@ -134,16 +135,16 @@ final class FfiSnapshotBindings implements SnapshotBindings {
     );
     final screen = TerminalScreen.fromValue(_progressScreen.value);
     return switch (kind) {
-      .page => RawSnapshotPageProgress(
-        screen,
-        _progressRows.value,
-        _progressRemaining.value,
+      .page => SnapshotPageProgress(
+        screen: screen,
+        rows: _progressRows.value,
+        remaining: _progressRemaining.value,
       ),
-      .image => RawSnapshotImageProgress(
-        screen,
-        _progressRemaining.value,
-        _progressFrame.value,
-        _progressRows.value,
+      .image => SnapshotImageProgress(
+        screen: screen,
+        imageId: _progressRemaining.value,
+        frame: _progressFrame.value,
+        bytes: _progressRows.value,
       ),
     };
   }

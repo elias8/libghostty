@@ -35,13 +35,13 @@ void main() {
       expect(cells.next(), isTrue);
       expect(cells.codepoint, 128578);
       expect(cells.content, '🙂');
-      expect(cells.wide, CellWidth.wide);
+      expect(cells.wide, CellWide.wide);
 
       cells.select(2);
       expect(cells.content, 'e\u0301');
       expect(cells.hasHyperlink, isFalse);
       expect(cells.isProtected, isFalse);
-      expect(cells.semanticContent, SemanticContent.output);
+      expect(cells.semanticContent, CellSemanticContent.output);
 
       cells.select(4);
       expect(cells.content, '');

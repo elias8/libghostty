@@ -125,7 +125,7 @@ final class MouseEncoder {
   ///
   /// Controls which mouse events are reported. Typically synced from the
   /// terminal via [sync], but can be set directly.
-  void setTrackingMode(MouseTracking mode) {
+  void setTrackingMode(MouseTrackingMode mode) {
     final handle = _requireHandle();
     bindings.mouse.mouseEncoderSetTrackingMode(handle, mode);
   }

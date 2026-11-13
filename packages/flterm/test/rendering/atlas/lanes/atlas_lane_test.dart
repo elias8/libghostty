@@ -9,7 +9,7 @@ import 'package:flterm/src/rendering/atlas/lanes/sprite_lane.dart';
 import 'package:flterm/src/rendering/atlas/lanes/text_lane.dart';
 import 'package:flterm/src/rendering/sprite/sprite_face.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:libghostty/libghostty.dart' show UnderlineStyle;
+import 'package:libghostty/libghostty.dart' show SgrUnderline;
 
 void main() {
   group('AtlasLane', () {
@@ -64,7 +64,7 @@ void main() {
       text.rasterizeText('A', bold: false, italic: false);
       emoji.rasterizeEmoji('\u{1F600}', bold: false, italic: false);
       sprite.rasterizeSprite(SpriteFace().glyphFor(0x2500)!);
-      decoration.rasterizeDecoration(UnderlineStyle.single);
+      decoration.rasterizeDecoration(SgrUnderline.single);
 
       text.ensureImage();
       emoji.ensureImage();

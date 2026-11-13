@@ -126,7 +126,7 @@ final class RowIterator {
   }
 
   /// Semantic prompt state of the current row.
-  SemanticPrompt get semanticPrompt {
+  RowSemanticPrompt get semanticPrompt {
     _ensureMetadata();
     return _rowSummary.semanticPrompt;
   }

@@ -2,16 +2,16 @@ import 'package:libghostty/libghostty.dart';
 import 'package:test/test.dart';
 
 void main() {
-  group('CursorShape', () {
+  group('CursorStyle', () {
     group('values', () {
       test('contains supported shapes', () {
         expect(
-          CursorShape.values,
+          CursorStyle.values,
           containsAll([
-            CursorShape.block,
-            CursorShape.underline,
-            CursorShape.bar,
-            CursorShape.blockHollow,
+            CursorStyle.block,
+            CursorStyle.underline,
+            CursorStyle.bar,
+            CursorStyle.blockHollow,
           ]),
         );
       });
@@ -72,7 +72,7 @@ void main() {
 
         expect(moved.viewportX, 11);
         expect(moved.viewportY, 6);
-        expect(moved.visualStyle, CursorShape.bar);
+        expect(moved.visualStyle, CursorStyle.bar);
         expect(moved.visible, isTrue);
       });
     });
@@ -97,7 +97,7 @@ void main() {
         expect(style.foreground, isA<DefaultColor>());
         expect(style.background, isA<DefaultColor>());
         expect(style.underlineColor, isNull);
-        expect(style.underline, UnderlineStyle.none);
+        expect(style.underline, SgrUnderline.none);
       });
     });
 

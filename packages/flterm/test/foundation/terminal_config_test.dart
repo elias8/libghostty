@@ -15,7 +15,7 @@ void main() {
         expect(config.resizePullScrollback, isTrue);
         expect(config.continuationMaxBytes, 0);
         expect(config.unknownSequenceMaxBytes, 0);
-        expect(config.cursorStyle, CursorShape.block);
+        expect(config.cursorStyle, CursorStyle.block);
         expect(config.cursorBlink, isNull);
         expect(config.glyphProtocol, isFalse);
         expect(config.apcBufferLimit, TerminalConfig.defaultApcBufferLimit);

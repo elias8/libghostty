@@ -2253,7 +2253,7 @@ void main() {
             kittyImageStorageLimit: 1 << 20,
             apcBufferLimit: 1,
             clipboardWriteMaxBytes: 1024,
-            cursorStyle: CursorShape.underline,
+            cursorStyle: CursorStyle.underline,
             cursorBlink: true,
           ),
         );
@@ -2272,7 +2272,7 @@ void main() {
         writeTerminalUtf8(access(custom).terminal, '\x1b[0 q');
         renderState.update(access(custom).terminal);
 
-        expect(renderState.cursor.visualStyle, CursorShape.underline);
+        expect(renderState.cursor.visualStyle, CursorStyle.underline);
         expect(renderState.cursor.blinking, isTrue);
       });
 
@@ -2336,13 +2336,13 @@ void main() {
         addTearDown(renderState.dispose);
 
         controller.config = const TerminalConfig(
-          cursorStyle: CursorShape.bar,
+          cursorStyle: CursorStyle.bar,
           cursorBlink: false,
         );
         writeTerminalUtf8(binding.terminal, '\x1b[0 q');
         renderState.update(binding.terminal);
 
-        expect(renderState.cursor.visualStyle, CursorShape.bar);
+        expect(renderState.cursor.visualStyle, CursorStyle.bar);
         expect(renderState.cursor.blinking, isFalse);
       });
     });

@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import '../../generated/libghostty_enums.g.dart';
 import '../../generated/libghostty_wasm.g.dart';
 import '../../types/exceptions.dart';
+import '../../types/snapshot_progress.dart';
 import '../result_helpers.dart';
 import '../types.dart';
 import '../wasm/allocator.dart';
@@ -126,7 +127,7 @@ final class WasmSnapshotBindings implements SnapshotBindings {
   }
 
   @override
-  RawSnapshotProgress? snapshotDecoderNext(LibGhosttyHandle decoder) {
+  SnapshotProgress? snapshotDecoderNext(LibGhosttyHandle decoder) {
     final result = _exports.ghostty_snapshot_decoder_next(decoder.value);
     if (result == Result.noValue.value) return null;
     checkResultCode(result, operation: 'ghostty_snapshot_decoder_next');
@@ -182,16 +183,16 @@ final class WasmSnapshotBindings implements SnapshotBindings {
       _memory.readU32(_progressStorage + _progressScreen),
     );
     return switch (kind) {
-      .page => RawSnapshotPageProgress(
-        screen,
-        _memory.readU32(_progressStorage + _progressRows),
-        _memory.readU32(_progressStorage + _progressRemaining),
+      .page => SnapshotPageProgress(
+        screen: screen,
+        rows: _memory.readU32(_progressStorage + _progressRows),
+        remaining: _memory.readU32(_progressStorage + _progressRemaining),
       ),
-      .image => RawSnapshotImageProgress(
-        screen,
-        _memory.readU32(_progressStorage + _progressRemaining),
-        _memory.readU32(_progressStorage + _progressFrame),
-        _memory.readU32(_progressStorage + _progressRows),
+      .image => SnapshotImageProgress(
+        screen: screen,
+        imageId: _memory.readU32(_progressStorage + _progressRemaining),
+        frame: _memory.readU32(_progressStorage + _progressFrame),
+        bytes: _memory.readU32(_progressStorage + _progressRows),
       ),
     };
   }

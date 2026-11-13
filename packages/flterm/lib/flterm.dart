@@ -15,7 +15,7 @@ export 'package:libghostty/libghostty.dart'
         ClipboardWrite,
         ClipboardWriteCallback,
         ClipboardWriteResult,
-        CursorShape,
+        CursorStyle,
         DesktopNotification,
         DeviceAttributesResponse,
         Formatter,
@@ -25,7 +25,7 @@ export 'package:libghostty/libghostty.dart'
         Key,
         Mods,
         MouseShape,
-        MouseTracking,
+        MouseTrackingMode,
         OscTerminator,
         PointTag,
         Position,
@@ -38,6 +38,7 @@ export 'package:libghostty/libghostty.dart'
         SelectionGestureBehaviors,
         SemanticPromptKind,
         SemanticPromptPromptKind,
+        SgrUnderline,
         TerminalMemoryUsage,
         TerminalMode,
         TerminalProgramStatus,
@@ -50,7 +51,6 @@ export 'package:libghostty/libghostty.dart'
         TerminalUnknownSequence,
         TerminalUnknownSequenceCallback,
         TerminalUnknownSequenceTag,
-        UnderlineStyle,
         initializeForWeb;
 
 export 'src/controller/terminal_controller.dart'

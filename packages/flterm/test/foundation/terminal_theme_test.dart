@@ -9,7 +9,7 @@ void main() {
       test('uses default values', () {
         const cursor = CursorTheme();
 
-        expect(cursor.shape, CursorShape.block);
+        expect(cursor.shape, CursorStyle.block);
         expect(cursor.color, isNull);
         expect(cursor.blinkInterval, const Duration(milliseconds: 600));
         expect(cursor.opacity, 1.0);
@@ -17,14 +17,14 @@ void main() {
 
       test('stores custom values', () {
         const cursor = CursorTheme(
-          shape: CursorShape.bar,
+          shape: CursorStyle.bar,
           color: DynamicColor.fixed(Color(0xFFFF0000)),
           text: DynamicColor.cellBackground(),
           blinkInterval: Duration(milliseconds: 500),
           opacity: 0.7,
         );
 
-        expect(cursor.shape, CursorShape.bar);
+        expect(cursor.shape, CursorStyle.bar);
         expect(cursor.color, const DynamicColor.fixed(Color(0xFFFF0000)));
         expect(cursor.text, const DynamicColor.cellBackground());
         expect(cursor.blinkInterval, const Duration(milliseconds: 500));
@@ -39,7 +39,7 @@ void main() {
 
         expect(a, equals(b));
         expect(a.hashCode, b.hashCode);
-        expect(a, isNot(equals(const CursorTheme(shape: CursorShape.bar))));
+        expect(a, isNot(equals(const CursorTheme(shape: CursorStyle.bar))));
         expect(a, isNot(equals(const CursorTheme(opacity: 0.5))));
         expect(
           a,
@@ -56,32 +56,32 @@ void main() {
           opacity: 0.2,
         );
         const b = CursorTheme(
-          shape: CursorShape.bar,
+          shape: CursorStyle.bar,
           color: DynamicColor.fixed(Color(0xFFFFFFFF)),
           blinkInterval: Duration(milliseconds: 800),
           opacity: 0.8,
         );
 
         final at0 = CursorTheme.lerp(a, b, 0.0)!;
-        expect(at0.shape, CursorShape.block);
+        expect(at0.shape, CursorStyle.block);
         expect(at0.blinkInterval, const Duration(milliseconds: 400));
         expect(at0.opacity, 0.2);
 
         final at1 = CursorTheme.lerp(a, b, 1.0)!;
-        expect(at1.shape, CursorShape.bar);
+        expect(at1.shape, CursorStyle.bar);
         expect(at1.blinkInterval, const Duration(milliseconds: 800));
         expect(at1.opacity, 0.8);
       });
 
       test('interpolates opacity and snaps shape at midpoint', () {
         const a = CursorTheme(opacity: 0.0);
-        const b = CursorTheme(shape: CursorShape.bar);
+        const b = CursorTheme(shape: CursorStyle.bar);
 
         final mid = CursorTheme.lerp(a, b, 0.5)!;
 
         expect(mid.opacity, 0.5);
-        expect(CursorTheme.lerp(a, b, 0.49)!.shape, CursorShape.block);
-        expect(CursorTheme.lerp(a, b, 0.5)!.shape, CursorShape.bar);
+        expect(CursorTheme.lerp(a, b, 0.49)!.shape, CursorStyle.block);
+        expect(CursorTheme.lerp(a, b, 0.5)!.shape, CursorStyle.bar);
       });
 
       test('returns nullable endpoints at boundaries', () {
@@ -180,18 +180,18 @@ void main() {
   group('HyperlinkStyle', () {
     test('defaults: no underline, no colors', () {
       const style = HyperlinkStyle();
-      expect(style.underline, UnderlineStyle.none);
+      expect(style.underline, SgrUnderline.none);
       expect(style.underlineColor, isNull);
       expect(style.textColor, isNull);
     });
 
     test('stores custom values', () {
       const style = HyperlinkStyle(
-        underline: UnderlineStyle.single,
+        underline: SgrUnderline.single,
         underlineColor: Color(0xFF00FF00),
         textColor: Color(0xFF0000FF),
       );
-      expect(style.underline, UnderlineStyle.single);
+      expect(style.underline, SgrUnderline.single);
       expect(style.underlineColor, const Color(0xFF00FF00));
       expect(style.textColor, const Color(0xFF0000FF));
     });
@@ -203,7 +203,7 @@ void main() {
       expect(a.hashCode, b.hashCode);
       expect(
         a,
-        isNot(equals(const HyperlinkStyle(underline: UnderlineStyle.single))),
+        isNot(equals(const HyperlinkStyle(underline: SgrUnderline.single))),
       );
       expect(
         a,
@@ -217,9 +217,9 @@ void main() {
 
     test('lerp snaps underline at midpoint', () {
       const a = HyperlinkStyle();
-      const b = HyperlinkStyle(underline: UnderlineStyle.single);
-      expect(HyperlinkStyle.lerp(a, b, 0.49)!.underline, UnderlineStyle.none);
-      expect(HyperlinkStyle.lerp(a, b, 0.5)!.underline, UnderlineStyle.single);
+      const b = HyperlinkStyle(underline: SgrUnderline.single);
+      expect(HyperlinkStyle.lerp(a, b, 0.49)!.underline, SgrUnderline.none);
+      expect(HyperlinkStyle.lerp(a, b, 0.5)!.underline, SgrUnderline.single);
     });
 
     test('lerp interpolates colors', () {
@@ -242,9 +242,9 @@ void main() {
   group('HyperlinkTheme', () {
     test('defaults: idle plain, highlighted single underline', () {
       const theme = HyperlinkTheme();
-      expect(theme.idle.underline, UnderlineStyle.none);
+      expect(theme.idle.underline, SgrUnderline.none);
       expect(theme.idle.textColor, isNull);
-      expect(theme.highlighted.underline, UnderlineStyle.single);
+      expect(theme.highlighted.underline, SgrUnderline.single);
       expect(theme.highlighted.textColor, isNull);
     });
 
@@ -423,7 +423,7 @@ void main() {
     test('copyWith without palette reuses the same instance', () {
       final original = TerminalTheme.dark();
       final modified = original.copyWith(
-        cursor: const CursorTheme(shape: CursorShape.bar),
+        cursor: const CursorTheme(shape: CursorStyle.bar),
         hyperlink: const HyperlinkTheme(),
       );
       expect(identical(modified.palette, original.palette), isTrue);

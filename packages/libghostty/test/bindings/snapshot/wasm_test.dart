@@ -4,6 +4,8 @@ library;
 import 'dart:js_interop';
 import 'dart:js_interop_unsafe';
 
+import 'package:libghostty/libghostty.dart'
+    show SnapshotImageProgress, SnapshotPageProgress;
 import 'package:libghostty/src/bindings/snapshot/wasm.dart';
 import 'package:libghostty/src/bindings/types.dart';
 import 'package:libghostty/src/bindings/wasm/memory.dart';
@@ -70,14 +72,13 @@ void main() {
 
     final bindings = WasmSnapshotBindings(harness.exports);
     const decoder = LibGhosttyHandle.fromAddress(64);
-    final page =
-        bindings.snapshotDecoderNext(decoder)! as RawSnapshotPageProgress;
+    final page = bindings.snapshotDecoderNext(decoder)! as SnapshotPageProgress;
     expect(
       (page.screen, page.rows, page.remaining),
       (TerminalScreen.primary, 12, 2),
     );
     final image =
-        bindings.snapshotDecoderNext(decoder)! as RawSnapshotImageProgress;
+        bindings.snapshotDecoderNext(decoder)! as SnapshotImageProgress;
     expect(
       (image.screen, image.imageId, image.frame, image.bytes),
       (TerminalScreen.alternate, 42, 3, 768),

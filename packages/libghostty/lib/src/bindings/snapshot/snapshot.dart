@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import '../../generated/libghostty_enums.g.dart';
+import '../../types/snapshot_progress.dart';
 import '../types.dart';
 
 abstract interface class SnapshotBindings {
@@ -16,7 +17,7 @@ abstract interface class SnapshotBindings {
     bool retainContinuation = false,
     bool compressHistory = false,
   });
-  RawSnapshotProgress? snapshotDecoderNext(LibGhosttyHandle decoder);
+  SnapshotProgress? snapshotDecoderNext(LibGhosttyHandle decoder);
   LibGhosttyHandle snapshotDecoderReady(LibGhosttyHandle decoder);
   bool snapshotDecoderRetainContinuation(LibGhosttyHandle decoder);
   bool snapshotDecoderCompressHistory(LibGhosttyHandle decoder);

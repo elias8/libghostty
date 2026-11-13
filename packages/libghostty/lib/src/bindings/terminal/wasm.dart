@@ -835,7 +835,7 @@ final class WasmTerminalBindings implements TerminalBindings {
   @override
   void terminalSetDefaultCursorShape(
     LibGhosttyHandle terminal,
-    TerminalCursorShape? shape,
+    CursorStyle? shape,
   ) {
     _setI32(terminal, .defaultCursorStyle, shape?.value);
   }

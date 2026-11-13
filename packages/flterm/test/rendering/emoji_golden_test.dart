@@ -34,7 +34,7 @@ void main() {
       fontFamilyFallback: bundledFontFamilyFallback,
     );
 
-    TerminalTheme cursorTheme(CursorShape shape, {List<String>? fallback}) =>
+    TerminalTheme cursorTheme(CursorStyle shape, {List<String>? fallback}) =>
         TerminalTheme.dark().copyWith(
           fontSize: 24.0,
           fontFamilyFallback: fallback ?? bundledFontFamilyFallback,

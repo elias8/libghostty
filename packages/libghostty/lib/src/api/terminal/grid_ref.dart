@@ -72,7 +72,7 @@ final class GridRef {
   }
 
   /// Whether the cell is the first cell of a wide character.
-  bool get isWide => wide == CellWidth.wide;
+  bool get isWide => wide == CellWide.wide;
 
   /// Whether this row is soft-wrapped to the next row.
   bool get rowWrap => bindings.render.rowGetWrap(_row);
@@ -83,9 +83,9 @@ final class GridRef {
     return bindings.render.gridRefStyle(_value);
   }
 
-  /// The cell's width: [CellWidth.narrow], [CellWidth.wide], or
-  /// [CellWidth.spacerTail].
-  CellWidth get wide => bindings.render.cellGetWide(_cell);
+  /// The cell's width: [CellWide.narrow], [CellWide.wide], or
+  /// [CellWide.spacerTail].
+  CellWide get wide => bindings.render.cellGetWide(_cell);
 
   RawCell get _cell {
     _terminal._requireHandle();

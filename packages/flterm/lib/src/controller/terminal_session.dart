@@ -5,7 +5,7 @@ enum _RenderHoldPhase { released, captured, releaseAfterWrite }
 typedef _TerminalSessionState = ({
   TerminalScreen activeScreen,
   MouseShape mouseShape,
-  MouseTracking mouseTracking,
+  MouseTrackingMode mouseTracking,
   bool alternateScroll,
   bool cursorKeyApplication,
   bool cursorBlinking,
@@ -183,7 +183,7 @@ final class TerminalSession extends TerminalController with ChangeNotifier {
   bool get isResizeDeferred => _deferResize && _restorationState == .restoring;
 
   @override
-  MouseTracking get mouseTracking {
+  MouseTrackingMode get mouseTracking {
     _checkNotDisposed();
     return _state.mouseTracking;
   }

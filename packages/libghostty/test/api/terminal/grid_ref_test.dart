@@ -2,15 +2,15 @@ import 'dart:typed_data' show Uint8List;
 
 import 'package:libghostty/libghostty.dart'
     show
-        CellWidth,
+        CellWide,
         GridRef,
         InvalidValueException,
         PaletteColor,
         Position,
         RgbColor,
+        SgrUnderline,
         Style,
-        Terminal,
-        UnderlineStyle;
+        Terminal;
 import 'package:test/test.dart';
 
 import '../../helpers/setup.dart';
@@ -92,7 +92,7 @@ void main() {
         expect(style.italic, isTrue);
         expect(style.strikethrough, isTrue);
         expect(style.faint, isFalse);
-        expect(style.underline, UnderlineStyle.single);
+        expect(style.underline, SgrUnderline.single);
         expect(style.foreground, const RgbColor(1, 2, 3));
         expect(style.background, const PaletteColor(42));
       });
@@ -133,7 +133,7 @@ void main() {
 
         final result = ref.wide;
 
-        expect(result, CellWidth.narrow);
+        expect(result, CellWide.narrow);
       });
 
       test('returns wide for a leading wide cell', () {
@@ -142,7 +142,7 @@ void main() {
 
         final result = ref.wide;
 
-        expect(result, CellWidth.wide);
+        expect(result, CellWide.wide);
       });
     });
 

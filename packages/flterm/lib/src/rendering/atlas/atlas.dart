@@ -86,7 +86,7 @@ class Atlas {
   );
 
   /// Returns or creates a decoration sprite for the given underline [style].
-  Glyph addDecoration(UnderlineStyle style) => _cache.addDecoration(style);
+  Glyph addDecoration(SgrUnderline style) => _cache.addDecoration(style);
 
   void dispose() {
     paragraphs.dispose();

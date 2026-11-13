@@ -299,7 +299,7 @@ void main() {
           (
             decoration,
             ({required admit}) => decoration.rasterizeDecoration(
-              UnderlineStyle.curly,
+              SgrUnderline.curly,
               admit: admit,
             ),
           ),

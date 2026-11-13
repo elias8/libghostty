@@ -119,7 +119,7 @@ abstract interface class TerminalBindings {
   });
   void terminalSetDefaultCursorShape(
     LibGhosttyHandle terminal,
-    TerminalCursorShape? shape,
+    CursorStyle? shape,
   );
   void terminalSetGlyphProtocol(
     LibGhosttyHandle terminal, {

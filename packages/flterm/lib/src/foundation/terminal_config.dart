@@ -176,7 +176,7 @@ class TerminalConfig {
   final int xtChecksumExtension;
 
   /// Initial cursor shape. Terminal programs can override via DECSCUSR.
-  final CursorShape cursorStyle;
+  final CursorStyle cursorStyle;
 
   /// Cursor blink policy.
   ///
@@ -343,7 +343,7 @@ class TerminalConfig {
     bool? glyphProtocol,
     bool? xtChecksumReport,
     int? xtChecksumExtension,
-    CursorShape? cursorStyle,
+    CursorStyle? cursorStyle,
     bool? cursorBlink,
     Map<TerminalMode, bool>? modes,
     ScrollToBottom? scrollToBottom,

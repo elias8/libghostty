@@ -1,7 +1,7 @@
 import 'dart:math';
 import 'dart:ui';
 
-import 'package:libghostty/libghostty.dart' show UnderlineStyle;
+import 'package:libghostty/libghostty.dart' show SgrUnderline;
 
 import '../atlas_config.dart';
 import '../atlas_entry.dart';
@@ -36,7 +36,7 @@ class DecorationLane extends AtlasLane {
     _pxDecorationPadding = (_pxCellHeight / 4).ceilToDouble();
   }
 
-  Glyph rasterizeDecoration(UnderlineStyle style, {bool admit = true}) {
+  Glyph rasterizeDecoration(SgrUnderline style, {bool admit = true}) {
     return addRaster(
       _DecorationRaster(
         style,
@@ -55,7 +55,7 @@ class DecorationLane extends AtlasLane {
 }
 
 final class _DecorationRaster extends GlyphRaster {
-  final UnderlineStyle style;
+  final SgrUnderline style;
   final double cellHeight;
   final double underlinePosition;
   final double thickness;
@@ -76,10 +76,10 @@ final class _DecorationRaster extends GlyphRaster {
     const ox = 0.0;
     const oy = 0.0;
     switch (style) {
-      case UnderlineStyle.none:
+      case SgrUnderline.none:
         break;
 
-      case UnderlineStyle.single:
+      case SgrUnderline.single:
         // Clamp underline to stay within the sprite (cell + padding).
         final underlineY = min(
           underlinePosition,
@@ -90,7 +90,7 @@ final class _DecorationRaster extends GlyphRaster {
           Paint()..color = const Color(0xFFFFFFFF),
         );
 
-      case UnderlineStyle.double:
+      case SgrUnderline.double:
         // Place both lines symmetrically around the underline position,
         // clamped so the lower line stays within the padded sprite.
         final underlineY = min(
@@ -109,7 +109,7 @@ final class _DecorationRaster extends GlyphRaster {
           paint,
         );
 
-      case UnderlineStyle.dotted:
+      case SgrUnderline.dotted:
         // Dot radius derived from line thickness (sqrt(1/2) gives area-
         // equivalent circle). Dot count is bounded: at least 1 dot,
         // at most enough to fit with 2-radius spacing, and at least
@@ -139,7 +139,7 @@ final class _DecorationRaster extends GlyphRaster {
           );
         }
 
-      case UnderlineStyle.dashed:
+      case SgrUnderline.dashed:
         final underlineY = min(
           underlinePosition,
           cellHeight + padding - thickness,
@@ -160,7 +160,7 @@ final class _DecorationRaster extends GlyphRaster {
           );
         }
 
-      case UnderlineStyle.curly:
+      case SgrUnderline.curly:
         // S-shaped cubic Bezier: starts at bottom-left, curves up to center,
         // then back down to bottom-right. controlRatio (0.4) flattens the
         // curve slightly for a smooth wave that tiles seamlessly across

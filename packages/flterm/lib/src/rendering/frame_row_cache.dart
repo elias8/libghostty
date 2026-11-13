@@ -47,10 +47,15 @@ final class _DecodedRow {
   }
 
   bool hasText(int col) => flags[col] & _text != 0;
+
   bool hasStyling(int col) => flags[col] & _styled != 0;
-  CellWidth width(int col) => CellWidth.values[flags[col] & 3];
+
+  CellWide width(int col) => CellWide.values[flags[col] & 3];
+
   int? background(int col) =>
       flags[col] & _background != 0 ? backgrounds[col] : null;
+
   Style style(int col) => styles[styleIds[col]] ?? const Style();
+
   int graphemeLength(int col) => graphemes[col]?.$1 ?? (hasText(col) ? 1 : 0);
 }

@@ -1,7 +1,6 @@
 import 'package:meta/meta.dart';
 
 import '../generated/libghostty_enums.g.dart';
-import 'aliases.dart';
 import 'color.dart';
 
 /// Number of extra rows requested or captured above and below the viewport.
@@ -80,7 +79,7 @@ final class RenderStateCursor {
   final bool passwordInput;
 
   /// Visual style of the cursor.
-  final CursorShape visualStyle;
+  final CursorStyle visualStyle;
 
   /// Creates an immutable cursor state.
   ///
@@ -130,7 +129,7 @@ final class RenderStateCursor {
     bool? visible,
     bool? blinking,
     bool? passwordInput,
-    CursorShape? visualStyle,
+    CursorStyle? visualStyle,
   }) {
     return RenderStateCursor(
       viewportHasValue: viewportHasValue ?? this.viewportHasValue,
@@ -194,7 +193,7 @@ final class SgrAttribute {
   final List<int> unknownPartial;
 
   /// Underline style when [tag] is [SgrAttributeTag.underline].
-  /// [UnderlineStyle.none] for other attributes.
+  /// [SgrUnderline.none] for other attributes.
   final SgrUnderline underlineStyle;
 
   const SgrAttribute({
@@ -212,7 +211,7 @@ final class SgrAttribute {
 /// Combines text attributes (bold, italic, etc.), foreground/background
 /// colors, and underline style/color. All attributes default to off,
 /// colors default to [DefaultColor], and underline defaults to
-/// [UnderlineStyle.none].
+/// [SgrUnderline.none].
 @immutable
 final class Style {
   /// Whether bold (SGR 1) is active.

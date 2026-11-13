@@ -63,12 +63,12 @@ const _lightAnsiColors = [
 /// The visual style of the terminal cursor.
 ///
 /// ```dart
-/// const cursor = CursorTheme(shape: CursorShape.bar);
+/// const cursor = CursorTheme(shape: CursorStyle.bar);
 /// ```
 @immutable
 final class CursorTheme {
   /// Cursor shape: block, underline, bar, or block-hollow.
-  final CursorShape shape;
+  final CursorStyle shape;
 
   /// Cursor fill color. When null, defaults to the terminal foreground.
   /// See [DynamicColor] for per-cell variants.
@@ -85,7 +85,7 @@ final class CursorTheme {
   final double opacity;
 
   const CursorTheme({
-    this.shape = CursorShape.block,
+    this.shape = CursorStyle.block,
     this.color,
     this.text,
     this.blinkInterval = const Duration(milliseconds: 600),
@@ -134,14 +134,14 @@ final class CursorTheme {
 /// Visual properties for hyperlinks in a single interaction state.
 ///
 /// ```dart
-/// const style = HyperlinkStyle(underline: UnderlineStyle.single);
+/// const style = HyperlinkStyle(underline: SgrUnderline.single);
 /// ```
 @immutable
 final class HyperlinkStyle {
   /// Underline decoration for hyperlinked cells.
   ///
   /// Only applied when the cell has no explicit underline of its own.
-  final UnderlineStyle underline;
+  final SgrUnderline underline;
 
   /// Explicit underline color. When null, the text foreground color is used.
   final Color? underlineColor;
@@ -186,7 +186,7 @@ final class HyperlinkStyle {
 ///
 /// ```dart
 /// const theme = HyperlinkTheme(
-///   highlighted: HyperlinkStyle(underline: UnderlineStyle.single),
+///   highlighted: HyperlinkStyle(underline: SgrUnderline.single),
 /// );
 /// ```
 @immutable

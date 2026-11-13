@@ -1,4 +1,13 @@
-export '../generated/libghostty_enums.g.dart' show MouseFormat, OptimizeMode;
+export '../generated/libghostty_enums.g.dart'
+    show
+        CellSemanticContent,
+        CellWide,
+        CursorStyle,
+        MouseFormat,
+        MouseTrackingMode,
+        OptimizeMode,
+        RowSemanticPrompt,
+        SgrUnderline;
 export 'aliases.dart';
 export 'color.dart';
 export 'exceptions.dart';
