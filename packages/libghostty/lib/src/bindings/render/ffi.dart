@@ -554,6 +554,7 @@ final class _FfiRenderRaw {
   final _outSize = calloc<Size>();
   final _outColorRgb = calloc<ColorRgb>();
   final _graphemeBuf = calloc<Uint32>(32);
+  final _graphemeBuffer = calloc<CodepointBuffer>();
   final _multiKeys = calloc<UnsignedInt>(12);
   final _multiValues = calloc<Pointer<Void>>(12);
   final _multiOut = calloc<Uint64>(12);
@@ -975,21 +976,20 @@ final class _FfiRenderRaw {
     if (len <= 0) return (.success, const []);
     final buf = len <= 32 ? _graphemeBuf : calloc<Uint32>(len);
     try {
-      return using((arena) {
-        final buffer = CodepointBuffer.$allocate(
-          arena,
-          ptr: buf,
-          cap: len,
-          len: 0,
-        );
-        final result = ghostty_render_state_row_cells_get(
-          Pointer.fromAddress(cells),
-          .graphemesBuf,
-          buffer.cast(),
-        );
-        if (result != .success) return (result, const <int>[]);
-        return (result, [for (var i = 0; i < buffer.ref.len; i++) buf[i]]);
-      });
+      _graphemeBuffer.ref
+        ..ptr = buf
+        ..cap = len
+        ..len = 0;
+      final result = ghostty_render_state_row_cells_get(
+        Pointer.fromAddress(cells),
+        .graphemesBuf,
+        _graphemeBuffer.cast(),
+      );
+      if (result != .success) return (result, const <int>[]);
+      return (
+        result,
+        [for (var i = 0; i < _graphemeBuffer.ref.len; i++) buf[i]],
+      );
     } finally {
       if (len > 32) calloc.free(buf);
     }

@@ -76,6 +76,7 @@ void main() {
         () => render.rowCellsGetGraphemes(cells, 1),
         throwsA(isA<OutOfSpaceException>()),
       );
+      expect(render.rowCellsGetGraphemes(cells, 2), [0x1f642, 0x301]);
     });
 
     test('decodes borrowed row cells to the native getter values', () {
