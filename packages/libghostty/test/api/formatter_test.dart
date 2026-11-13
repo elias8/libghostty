@@ -110,6 +110,114 @@ void main() {
       });
     });
 
+    test('tracks selected cells across writes, scrolling and resize', () {
+      final terminal = Terminal(cols: 8, rows: 3);
+      addTearDown(terminal.dispose);
+      terminal.write(Uint8List.fromList('alpha\r\nbravo\r\ncharlie'.codeUnits));
+      final selection = Selection.fromRefs(
+        start: GridRef.at(terminal, const Position(row: 0, col: 0)),
+        end: GridRef.at(terminal, const Position(row: 0, col: 4)),
+      );
+      final formatter = Formatter(
+        terminal: terminal,
+        format: .plain,
+        trim: true,
+        selection: selection,
+      );
+      addTearDown(formatter.dispose);
+      expect(formatter.format(), 'alpha');
+
+      terminal.write(Uint8List.fromList('\r\ndelta'.codeUnits));
+      expect(formatter.format(), 'alpha');
+      terminal.resize(cols: 10, rows: 3, cellWidthPx: 8, cellHeightPx: 16);
+      expect(formatter.format(), 'alpha');
+    });
+
+    test('reads changed content at tracked selection endpoints', () {
+      terminal.write(Uint8List.fromList('Hello'.codeUnits));
+      final selection = Selection.fromRefs(
+        start: GridRef.at(terminal, const Position(row: 0, col: 0)),
+        end: GridRef.at(terminal, const Position(row: 0, col: 4)),
+      );
+      final formatter = Formatter(
+        terminal: terminal,
+        format: .plain,
+        trim: true,
+        selection: selection,
+      );
+      addTearDown(formatter.dispose);
+      expect(formatter.format(), 'Hello');
+      terminal.write(Uint8List.fromList('\x1b[HWorld'.codeUnits));
+      expect(formatter.format(), 'World');
+      expect(formatter.format(), 'World');
+    });
+
+    test('rejects selection after reset discards tracked endpoints', () {
+      terminal.write(Uint8List.fromList('Hello'.codeUnits));
+      final selection = Selection.fromRefs(
+        start: GridRef.at(terminal, const Position(row: 0, col: 0)),
+        end: GridRef.at(terminal, const Position(row: 0, col: 4)),
+      );
+      final formatter = Formatter(
+        terminal: terminal,
+        format: .plain,
+        selection: selection,
+      );
+      addTearDown(formatter.dispose);
+      expect(formatter.format(), contains('Hello'));
+      terminal.reset();
+      expect(formatter.format, throwsStateError);
+    });
+
+    test('rejects selection while another screen is active', () {
+      terminal.write(Uint8List.fromList('Hello'.codeUnits));
+      final selection = Selection.fromRefs(
+        start: GridRef.at(terminal, const Position(row: 0, col: 0)),
+        end: GridRef.at(terminal, const Position(row: 0, col: 4)),
+      );
+      final formatter = Formatter(
+        terminal: terminal,
+        format: .plain,
+        trim: true,
+        selection: selection,
+      );
+      addTearDown(formatter.dispose);
+      terminal.write(Uint8List.fromList('\x1b[?1049h'.codeUnits));
+      expect(formatter.format, throwsStateError);
+      terminal.write(Uint8List.fromList('\x1b[?1049l'.codeUnits));
+      expect(formatter.format(), 'Hello');
+    });
+
+    test('disposes tracked selection after terminal disposal', () {
+      final selection = Selection.fromRefs(
+        start: GridRef.at(terminal, const Position(row: 0, col: 0)),
+        end: GridRef.at(terminal, const Position(row: 0, col: 1)),
+      );
+      final formatter = Formatter(
+        terminal: terminal,
+        format: .plain,
+        selection: selection,
+      );
+      terminal.dispose();
+      expect(formatter.format, throwsStateError);
+      expect(formatter.dispose, returnsNormally);
+      expect(formatter.dispose, returnsNormally);
+    });
+
+    test('rejects a selection from another terminal', () {
+      final other = Terminal(cols: 8, rows: 2);
+      addTearDown(other.dispose);
+      final selection = Selection.fromRefs(
+        start: GridRef.at(other, const Position(row: 0, col: 0)),
+        end: GridRef.at(other, const Position(row: 0, col: 1)),
+      );
+      expect(
+        () =>
+            Formatter(terminal: terminal, format: .plain, selection: selection),
+        throwsArgumentError,
+      );
+    });
+
     test('rejects formatting after its terminal is disposed', () {
       terminal.write(Uint8List.fromList('owned content'.codeUnits));
       final formatter = Formatter(

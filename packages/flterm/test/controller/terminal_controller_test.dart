@@ -83,7 +83,7 @@ void main() {
     group('fromSnapshot', () {
       Terminal terminalWithHistory({int lineCount = 10000}) {
         final terminal = Terminal(cols: 16, rows: 2)
-          ..scrollbackMaxBytes = null
+          ..scrollbackMaxBytes = 16 * 1024 * 1024
           ..scrollbackMaxLines = null;
         addTearDown(terminal.dispose);
         terminal.write(
@@ -91,6 +91,7 @@ void main() {
             List.generate(lineCount, (index) => 'line$index').join('\r\n'),
           ),
         );
+        expect(terminal.scrollbackRows, lineCount - 2);
         return terminal;
       }
 

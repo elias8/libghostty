@@ -29,7 +29,9 @@ final class FfiParserBindings implements ParserBindings {
         OscCommandData.changeWindowTitleStr,
         out.cast(),
       );
-      if (!present || out.value == nullptr) return null;
+      if (present == .noValue) return null;
+      checkResultCode(present.value, operation: 'ghostty_osc_command_data');
+      if (out.value == nullptr) return null;
       return out.value.cast<Utf8>().toDartString();
     });
   }
@@ -39,13 +41,16 @@ final class FfiParserBindings implements ParserBindings {
     return using((arena) {
       final nativeCommand = native.OscCommand.fromAddress(command.value);
       final content = arena<native.String>();
-      if (!native.ghostty_osc_command_data(
+      final contentResult = native.ghostty_osc_command_data(
         nativeCommand,
         OscCommandData.unknownContent,
         content.cast(),
-      )) {
-        return null;
-      }
+      );
+      if (contentResult == .noValue) return null;
+      checkResultCode(
+        contentResult.value,
+        operation: 'ghostty_osc_command_data',
+      );
       final truncated = arena<Bool>();
       final hasTruncated = native.ghostty_osc_command_data(
         nativeCommand,
@@ -58,7 +63,15 @@ final class FfiParserBindings implements ParserBindings {
         OscCommandData.unknownTerminator,
         terminator.cast(),
       );
-      if (!hasTruncated || !hasTerminator) return null;
+      if (hasTruncated == .noValue || hasTerminator == .noValue) return null;
+      checkResultCode(
+        hasTruncated.value,
+        operation: 'ghostty_osc_command_data',
+      );
+      checkResultCode(
+        hasTerminator.value,
+        operation: 'ghostty_osc_command_data',
+      );
       return (
         content: Uint8List.fromList(
           content.ref.ptr.asTypedList(content.ref.len),

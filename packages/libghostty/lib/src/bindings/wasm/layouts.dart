@@ -307,33 +307,6 @@ final class Layouts {
   late final int deviceAttrsRomCartridge;
   late final int deviceAttrsUnitId;
 
-  // GhosttyFormatterTerminalOptions
-  late final int formatterOptsSize;
-  late final int formatterOptsFormat;
-  late final int formatterOptsUnwrap;
-  late final int formatterOptsTrim;
-  late final int formatterOptsExtra;
-  late final int formatterOptsSelection;
-
-  // GhosttyFormatterTerminalExtra
-  late final int formatterTermExtraSize;
-  late final int formatterTermExtraPalette;
-  late final int formatterTermExtraModes;
-  late final int formatterTermExtraScrollingRegion;
-  late final int formatterTermExtraTabstops;
-  late final int formatterTermExtraPwd;
-  late final int formatterTermExtraKeyboard;
-  late final int formatterTermExtraScreen;
-
-  // GhosttyFormatterScreenExtra
-  late final int formatterScreenExtraSize;
-  late final int formatterScreenExtraCursor;
-  late final int formatterScreenExtraStyle;
-  late final int formatterScreenExtraHyperlink;
-  late final int formatterScreenExtraProtection;
-  late final int formatterScreenExtraKittyKeyboard;
-  late final int formatterScreenExtraCharsets;
-
   // GhosttySelection
   late final int selectionSize;
   late final int selectionStart;
@@ -359,13 +332,6 @@ final class Layouts {
   late final int selectLineWhitespace;
   late final int selectLineWhitespaceLen;
   late final int selectLineSemanticPromptBoundary;
-
-  // GhosttyTerminalSelectionFormatOptions
-  late final int selectionFormatSize;
-  late final int selectionFormatEmit;
-  late final int selectionFormatUnwrap;
-  late final int selectionFormatTrim;
-  late final int selectionFormatSelection;
 
   // GhosttyGridRef
   late final int gridRefSize;
@@ -482,15 +448,7 @@ final class Layouts {
   late final int styleFg;
   late final int styleBg;
   late final int styleUnderlineColor;
-  late final int styleBold;
-  late final int styleItalic;
-  late final int styleFaint;
-  late final int styleBlink;
-  late final int styleInverse;
-  late final int styleInvisible;
-  late final int styleStrikethrough;
-  late final int styleOverline;
-  late final int styleUnderline;
+  late final int styleFlags;
 
   // GhosttyStyleColor
   late final int styleColorR;
@@ -741,33 +699,6 @@ final class Layouts {
     sub = _Struct(types, 'GhosttyDeviceAttributesTertiary');
     deviceAttrsUnitId = tertiaryOff + sub['unit_id'];
 
-    struct = _Struct(types, 'GhosttyFormatterTerminalOptions');
-    formatterOptsSize = struct.size;
-    formatterOptsFormat = struct['emit'];
-    formatterOptsUnwrap = struct['unwrap'];
-    formatterOptsTrim = struct['trim'];
-    formatterOptsExtra = struct['extra'];
-    formatterOptsSelection = struct['selection'];
-
-    struct = _Struct(types, 'GhosttyFormatterTerminalExtra');
-    formatterTermExtraSize = struct.size;
-    formatterTermExtraPalette = struct['palette'];
-    formatterTermExtraModes = struct['modes'];
-    formatterTermExtraScrollingRegion = struct['scrolling_region'];
-    formatterTermExtraTabstops = struct['tabstops'];
-    formatterTermExtraPwd = struct['pwd'];
-    formatterTermExtraKeyboard = struct['keyboard'];
-    formatterTermExtraScreen = struct['screen'];
-
-    struct = _Struct(types, 'GhosttyFormatterScreenExtra');
-    formatterScreenExtraSize = struct.size;
-    formatterScreenExtraCursor = struct['cursor'];
-    formatterScreenExtraStyle = struct['style'];
-    formatterScreenExtraHyperlink = struct['hyperlink'];
-    formatterScreenExtraProtection = struct['protection'];
-    formatterScreenExtraKittyKeyboard = struct['kitty_keyboard'];
-    formatterScreenExtraCharsets = struct['charsets'];
-
     struct = _Struct(types, 'GhosttySelection');
     selectionSize = struct.size;
     selectionStart = struct['start'];
@@ -793,13 +724,6 @@ final class Layouts {
     selectLineWhitespace = struct['whitespace'];
     selectLineWhitespaceLen = struct['whitespace_len'];
     selectLineSemanticPromptBoundary = struct['semantic_prompt_boundary'];
-
-    struct = _Struct(types, 'GhosttyTerminalSelectionFormatOptions');
-    selectionFormatSize = struct.size;
-    selectionFormatEmit = struct['emit'];
-    selectionFormatUnwrap = struct['unwrap'];
-    selectionFormatTrim = struct['trim'];
-    selectionFormatSelection = struct['selection'];
 
     struct = _Struct(types, 'GhosttyGridRef');
     gridRefSize = struct.size;
@@ -918,15 +842,7 @@ final class Layouts {
     styleFg = struct['fg_color'];
     styleBg = struct['bg_color'];
     styleUnderlineColor = struct['underline_color'];
-    styleBold = struct['bold'];
-    styleItalic = struct['italic'];
-    styleFaint = struct['faint'];
-    styleBlink = struct['blink'];
-    styleInverse = struct['inverse'];
-    styleInvisible = struct['invisible'];
-    styleStrikethrough = struct['strikethrough'];
-    styleOverline = struct['overline'];
-    styleUnderline = struct['underline'];
+    styleFlags = struct['flags'];
 
     struct = _Struct(types, 'GhosttyStyleColor');
     final scValueOff = struct['value'];

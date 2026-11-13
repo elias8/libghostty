@@ -20,7 +20,7 @@ final class FfiMouseBindings implements MouseBindings {
     var allocation = calloc<Uint8>(lengthBytes + capacity);
     try {
       var length = allocation.cast<Size>();
-      var buffer = (allocation + lengthBytes).cast<Char>();
+      var buffer = (allocation + lengthBytes).cast<Uint8>();
       var result = native.ghostty_mouse_encoder_encode(
         Pointer.fromAddress(encoder.value),
         Pointer.fromAddress(event.value),
@@ -34,7 +34,7 @@ final class FfiMouseBindings implements MouseBindings {
         allocation = nullptr;
         allocation = calloc<Uint8>(lengthBytes + capacity);
         length = allocation.cast<Size>();
-        buffer = (allocation + lengthBytes).cast<Char>();
+        buffer = (allocation + lengthBytes).cast<Uint8>();
         result = native.ghostty_mouse_encoder_encode(
           Pointer.fromAddress(encoder.value),
           Pointer.fromAddress(event.value),
@@ -67,7 +67,10 @@ final class FfiMouseBindings implements MouseBindings {
 
   @override
   void mouseEncoderReset(LibGhosttyHandle encoder) {
-    native.ghostty_mouse_encoder_reset(.fromAddress(encoder.value));
+    checkResultCode(
+      native.ghostty_mouse_encoder_reset(.fromAddress(encoder.value)).value,
+      operation: 'ghostty_mouse_encoder_reset',
+    );
   }
 
   @override
@@ -78,10 +81,15 @@ final class FfiMouseBindings implements MouseBindings {
   }) {
     using((arena) {
       final pointer = arena<Bool>()..value = value;
-      native.ghostty_mouse_encoder_setopt(
-        .fromAddress(encoder.value),
-        option,
-        pointer.cast(),
+      checkResultCode(
+        native
+            .ghostty_mouse_encoder_set(
+              .fromAddress(encoder.value),
+              option,
+              pointer.cast(),
+            )
+            .value,
+        operation: 'ghostty_mouse_encoder_set',
       );
     });
   }
@@ -90,10 +98,15 @@ final class FfiMouseBindings implements MouseBindings {
   void mouseEncoderSetFormat(LibGhosttyHandle encoder, MouseFormat format) {
     using((arena) {
       final pointer = arena<Int32>()..value = format.value;
-      native.ghostty_mouse_encoder_setopt(
-        .fromAddress(encoder.value),
-        MouseEncoderOption.format,
-        pointer.cast(),
+      checkResultCode(
+        native
+            .ghostty_mouse_encoder_set(
+              .fromAddress(encoder.value),
+              MouseEncoderOption.format,
+              pointer.cast(),
+            )
+            .value,
+        operation: 'ghostty_mouse_encoder_set',
       );
     });
   }
@@ -103,9 +116,14 @@ final class FfiMouseBindings implements MouseBindings {
     LibGhosttyHandle encoder,
     LibGhosttyHandle terminal,
   ) {
-    native.ghostty_mouse_encoder_setopt_from_terminal(
-      .fromAddress(encoder.value),
-      .fromAddress(terminal.value),
+    checkResultCode(
+      native
+          .ghostty_mouse_encoder_set_from_terminal(
+            .fromAddress(encoder.value),
+            .fromAddress(terminal.value),
+          )
+          .value,
+      operation: 'ghostty_mouse_encoder_set_from_terminal',
     );
   }
 
@@ -124,10 +142,15 @@ final class FfiMouseBindings implements MouseBindings {
         padding_left: size.paddingLeft,
         padding_right: size.paddingRight,
       );
-      native.ghostty_mouse_encoder_setopt(
-        .fromAddress(encoder.value),
-        MouseEncoderOption.size,
-        pointer.cast(),
+      checkResultCode(
+        native
+            .ghostty_mouse_encoder_set(
+              .fromAddress(encoder.value),
+              MouseEncoderOption.size,
+              pointer.cast(),
+            )
+            .value,
+        operation: 'ghostty_mouse_encoder_set',
       );
     });
   }
@@ -139,17 +162,25 @@ final class FfiMouseBindings implements MouseBindings {
   ) {
     using((arena) {
       final pointer = arena<Int32>()..value = mode.value;
-      native.ghostty_mouse_encoder_setopt(
-        .fromAddress(encoder.value),
-        MouseEncoderOption.event,
-        pointer.cast(),
+      checkResultCode(
+        native
+            .ghostty_mouse_encoder_set(
+              .fromAddress(encoder.value),
+              MouseEncoderOption.event,
+              pointer.cast(),
+            )
+            .value,
+        operation: 'ghostty_mouse_encoder_set',
       );
     });
   }
 
   @override
   void mouseEventClearButton(LibGhosttyHandle event) {
-    native.ghostty_mouse_event_clear_button(.fromAddress(event.value));
+    checkResultCode(
+      native.ghostty_mouse_event_clear_button(.fromAddress(event.value)).value,
+      operation: 'ghostty_mouse_event_clear_button',
+    );
   }
 
   @override
@@ -170,7 +201,12 @@ final class FfiMouseBindings implements MouseBindings {
         .fromAddress(event.value),
         out,
       );
-      if (!present) return null;
+      if (!checkOptionalCode(
+        present.value,
+        operation: 'ghostty_mouse_event_get_button',
+      )) {
+        return null;
+      }
       return MouseButton.fromValue(out.value);
     });
   }
@@ -200,26 +236,46 @@ final class FfiMouseBindings implements MouseBindings {
 
   @override
   void mouseEventSetAction(LibGhosttyHandle event, MouseAction action) {
-    native.ghostty_mouse_event_set_action(.fromAddress(event.value), action);
+    checkResultCode(
+      native
+          .ghostty_mouse_event_set_action(.fromAddress(event.value), action)
+          .value,
+      operation: 'ghostty_mouse_event_set_action',
+    );
   }
 
   @override
   void mouseEventSetButton(LibGhosttyHandle event, MouseButton button) {
-    native.ghostty_mouse_event_set_button(.fromAddress(event.value), button);
+    checkResultCode(
+      native
+          .ghostty_mouse_event_set_button(.fromAddress(event.value), button)
+          .value,
+      operation: 'ghostty_mouse_event_set_button',
+    );
   }
 
   @override
   void mouseEventSetMods(LibGhosttyHandle event, int mods) {
-    native.ghostty_mouse_event_set_mods(.fromAddress(event.value), mods);
+    checkResultCode(
+      native
+          .ghostty_mouse_event_set_mods(.fromAddress(event.value), mods)
+          .value,
+      operation: 'ghostty_mouse_event_set_mods',
+    );
   }
 
   @override
   void mouseEventSetPosition(LibGhosttyHandle event, double x, double y) {
     using((arena) {
       final position = native.MousePosition.$allocate(arena, x: x, y: y);
-      native.ghostty_mouse_event_set_position(
-        .fromAddress(event.value),
-        position.ref,
+      checkResultCode(
+        native
+            .ghostty_mouse_event_set_position(
+              .fromAddress(event.value),
+              position.ref,
+            )
+            .value,
+        operation: 'ghostty_mouse_event_set_position',
       );
     });
   }

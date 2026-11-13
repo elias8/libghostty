@@ -4,6 +4,22 @@ import '../../generated/libghostty_enums.g.dart';
 import '../../types/types.dart';
 import '../types.dart';
 
+T? terminalKittyOptional<T>(T? Function() operation) {
+  try {
+    return operation();
+  } on UnsupportedException {
+    return null;
+  }
+}
+
+void terminalKittySet(void Function() operation) {
+  try {
+    operation();
+  } on UnsupportedException {
+    return;
+  }
+}
+
 abstract interface class TerminalBindings {
   TerminalCompressionResult terminalCompress(
     LibGhosttyHandle terminal,

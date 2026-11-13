@@ -35,12 +35,32 @@ void checkCode(Result code, {String? operation}) =>
 /// A C function result: the result code paired with a value.
 typedef CResult<T> = (Result code, T value);
 
-/// Progress from restoring one terminal snapshot history page.
-typedef RawSnapshotProgress = ({
-  TerminalScreen screen,
-  int rows,
-  int remaining,
-});
+/// Progress from restoring one snapshot record.
+sealed class RawSnapshotProgress {
+  final TerminalScreen screen;
+
+  const RawSnapshotProgress(this.screen);
+}
+
+final class RawSnapshotPageProgress extends RawSnapshotProgress {
+  final int rows;
+  final int remaining;
+
+  const RawSnapshotPageProgress(super.screen, this.rows, this.remaining);
+}
+
+final class RawSnapshotImageProgress extends RawSnapshotProgress {
+  final int imageId;
+  final int frame;
+  final int bytes;
+
+  const RawSnapshotImageProgress(
+    super.screen,
+    this.imageId,
+    this.frame,
+    this.bytes,
+  );
+}
 
 /// Scalar cell metadata captured by one boundary query.
 typedef RawCellSummary = ({int codepoint, int styleId, CellWide wide});

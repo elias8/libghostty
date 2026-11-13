@@ -108,7 +108,6 @@ final class CompileFromSource extends LibraryProvider {
       '-p',
       Directory.fromUri(installDir).path,
       '--release=fast',
-      if (zigCacheDir != null) ...['--global-cache-dir', zigCacheDir],
       // Pass -Dtarget so source-compiled libraries use the target CPU baseline
       // instead of the build machine's CPU.
       '-Dtarget=$zig',

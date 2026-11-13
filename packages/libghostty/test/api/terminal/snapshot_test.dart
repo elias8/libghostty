@@ -43,7 +43,7 @@ void main() {
       return terminal;
     }
 
-    List<SnapshotProgress> drainPages(SnapshotDecoder decoder) {
+    List<SnapshotProgress> drainProgress(SnapshotDecoder decoder) {
       final pages = <SnapshotProgress>[];
       SnapshotProgress? page;
       while ((page = decoder.next()) != null) {
@@ -232,10 +232,119 @@ void main() {
         final restored = decoder.ready();
         addTearDown(restored.dispose);
 
-        final pages = drainPages(decoder);
+        final initialRows = restored.scrollbackRows;
+        final pages = drainProgress(decoder);
 
         expect(pages, isNotEmpty);
+        expect(pages.every((page) => page is SnapshotPageProgress), isTrue);
+        final historyPages = pages.cast<SnapshotPageProgress>();
+        expect(historyPages.last.remaining, 0);
+        expect(
+          historyPages.map((page) => page.rows).reduce((a, b) => a + b),
+          source.scrollbackRows - initialRows,
+        );
         expect(restored.scrollbackRows, source.scrollbackRows);
+      });
+
+      test('reports restored Kitty image pixels', () {
+        if (!LibGhosttyBuildInfo.instance.kittyGraphics) {
+          markTestSkipped('Kitty graphics is unavailable in this build');
+          return;
+        }
+        final source = Terminal(cols: 8, rows: 2)
+          ..kittyImageStorageLimit = 1024;
+        addTearDown(source.dispose);
+        source.write(
+          Uint8List.fromList(
+            '\x1b_Gf=24,s=1,v=1,a=t,i=42;/wAA\x1b\\'.codeUnits,
+          ),
+        );
+        final decoder = SnapshotDecoder(source.encodeSnapshot());
+        addTearDown(decoder.dispose);
+        final restored = decoder.ready();
+        addTearDown(restored.dispose);
+
+        final events = drainProgress(decoder);
+
+        expect(events, [
+          const SnapshotImageProgress(
+            screen: TerminalScreen.primary,
+            imageId: 42,
+            frame: 1,
+            bytes: 3,
+          ),
+        ]);
+        final pixels = Uint8List(3);
+        expect(
+          KittyGraphics.of(restored)!.image(42)!.copyPixelDataInto(pixels),
+          3,
+        );
+        expect(pixels, [255, 0, 0]);
+      });
+
+      test('restores image and history events in the same snapshot', () {
+        if (!LibGhosttyBuildInfo.instance.kittyGraphics) {
+          markTestSkipped('Kitty graphics is unavailable in this build');
+          return;
+        }
+        final source = terminalWithHistory()..kittyImageStorageLimit = 1024;
+        addTearDown(source.dispose);
+        source.write(
+          Uint8List.fromList(
+            '\x1b_Gf=24,s=1,v=1,a=t,i=42;/wAA\x1b\\'.codeUnits,
+          ),
+        );
+        final decoder = SnapshotDecoder(source.encodeSnapshot());
+        addTearDown(decoder.dispose);
+        final restored = decoder.ready();
+        addTearDown(restored.dispose);
+
+        final events = drainProgress(decoder);
+
+        expect(events.whereType<SnapshotPageProgress>(), isNotEmpty);
+        expect(events.whereType<SnapshotImageProgress>(), [
+          const SnapshotImageProgress(
+            screen: TerminalScreen.primary,
+            imageId: 42,
+            frame: 1,
+            bytes: 3,
+          ),
+        ]);
+        expect(restored.scrollbackRows, source.scrollbackRows);
+      });
+
+      test('reports zero bytes when live input deletes an image', () {
+        if (!LibGhosttyBuildInfo.instance.kittyGraphics) {
+          markTestSkipped('Kitty graphics is unavailable in this build');
+          return;
+        }
+        final source = Terminal(cols: 8, rows: 2)
+          ..kittyImageStorageLimit = 1024;
+        addTearDown(source.dispose);
+        source.write(
+          Uint8List.fromList(
+            '\x1b_Gf=24,s=1,v=1,a=t,i=42;/wAA\x1b\\'.codeUnits,
+          ),
+        );
+        final decoder = SnapshotDecoder(source.encodeSnapshot());
+        addTearDown(decoder.dispose);
+        final restored = decoder.ready();
+        addTearDown(restored.dispose);
+        restored.write(
+          Uint8List.fromList('\x1b_Ga=d,d=I,i=42\x1b\\'.codeUnits),
+        );
+
+        final events = drainProgress(decoder);
+
+        expect(events, [
+          const SnapshotImageProgress(
+            screen: TerminalScreen.primary,
+            imageId: 42,
+            frame: 1,
+            bytes: 0,
+          ),
+        ]);
+        expect(KittyGraphics.of(restored)!.image(42), isNull);
       });
 
       test('compresses history while restoring pages when requested', () {
@@ -249,7 +358,7 @@ void main() {
 
         final restored = decoder.ready();
         addTearDown(restored.dispose);
-        final pages = drainPages(decoder);
+        final pages = drainProgress(decoder);
 
         expect(pages, isNotEmpty);
         expect(decoder.compressHistory, isTrue);
@@ -264,7 +373,7 @@ void main() {
         addTearDown(decoder.dispose);
         final restored = decoder.ready();
         addTearDown(restored.dispose);
-        drainPages(decoder);
+        drainProgress(decoder);
 
         final progress = decoder.next();
 
@@ -281,7 +390,7 @@ void main() {
         final restored = decoder.ready();
         addTearDown(restored.dispose);
 
-        List<SnapshotProgress> restore() => drainPages(decoder);
+        List<SnapshotProgress> restore() => drainProgress(decoder);
 
         expect(restore, throwsA(isA<InvalidValueException>()));
       });
@@ -297,7 +406,7 @@ void main() {
         addTearDown(restored.dispose);
         final historyRows = decoder.primaryHistoryRows;
         expect(
-          () => drainPages(decoder),
+          () => drainProgress(decoder),
           throwsA(isA<InvalidValueException>()),
         );
 

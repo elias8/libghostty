@@ -55,9 +55,7 @@ final class FfiTerminalBindings implements TerminalBindings {
   final _multiOut = calloc<Uint64>(4);
 
   FfiTerminalBindings({Allocator callbackAllocator = calloc})
-    : _callbackAllocator = callbackAllocator {
-    _outStyle.ref.size = sizeOf<native.Style>();
-  }
+    : _callbackAllocator = callbackAllocator;
 
   @override
   TerminalCompressionResult terminalCompress(
@@ -263,7 +261,7 @@ final class FfiTerminalBindings implements TerminalBindings {
   Style terminalGetCursorStyle(LibGhosttyHandle terminal) {
     final result = native.ghostty_terminal_get(
       .fromAddress(terminal.value),
-      .cursorStyle,
+      .cursorSgrStyle,
       _outStyle.cast(),
     );
     checkRequiredCode(result.value, operation: 'ghostty_terminal_get');
@@ -311,19 +309,25 @@ final class FfiTerminalBindings implements TerminalBindings {
 
   @override
   bool? terminalGetKittyImageMediumFile(LibGhosttyHandle terminal) =>
-      _getBoolOptional(terminal, .kittyImageMediumFile);
+      terminalKittyOptional(
+        () => _getBoolOptional(terminal, .kittyImageMediumFile),
+      );
 
   @override
   bool? terminalGetKittyImageMediumSharedMem(LibGhosttyHandle terminal) =>
-      _getBoolOptional(terminal, .kittyImageMediumSharedMem);
+      terminalKittyOptional(
+        () => _getBoolOptional(terminal, .kittyImageMediumSharedMem),
+      );
 
   @override
   String? terminalGetKittyImageMediumTempFile(LibGhosttyHandle terminal) =>
-      _getString(terminal, .kittyImageMediumTempFile);
+      terminalKittyOptional(
+        () => _getString(terminal, .kittyImageMediumTempFile),
+      );
 
   @override
   int? terminalGetKittyImageStorageLimit(LibGhosttyHandle terminal) =>
-      _getU64(terminal, .kittyImageStorageLimit);
+      terminalKittyOptional(() => _getU64(terminal, .kittyImageStorageLimit));
 
   @override
   int terminalGetKittyKeyboardFlags(LibGhosttyHandle terminal) {
@@ -652,9 +656,13 @@ final class FfiTerminalBindings implements TerminalBindings {
         case .top || .bottom:
           viewport.ref.value.delta = 0;
       }
-      native.ghostty_terminal_scroll_viewport(
+      final result = native.ghostty_terminal_scroll_viewport(
         .fromAddress(terminal.value),
         viewport.ref,
+      );
+      checkResultCode(
+        result.value,
+        operation: 'ghostty_terminal_scroll_viewport',
       );
     });
   }
@@ -739,25 +747,32 @@ final class FfiTerminalBindings implements TerminalBindings {
   void terminalSetKittyImageMediumFile(
     LibGhosttyHandle terminal, {
     bool? enabled,
-  }) => _setBool(terminal, .kittyImageMediumFile, enabled);
+  }) => terminalKittySet(
+    () => _setBool(terminal, .kittyImageMediumFile, enabled),
+  );
 
   @override
   void terminalSetKittyImageMediumSharedMem(
     LibGhosttyHandle terminal, {
     bool? enabled,
-  }) => _setBool(terminal, .kittyImageMediumSharedMem, enabled);
+  }) => terminalKittySet(
+    () => _setBool(terminal, .kittyImageMediumSharedMem, enabled),
+  );
 
   @override
   void terminalSetKittyImageMediumTempFile(
     LibGhosttyHandle terminal,
     String? directory,
-  ) => _setString(terminal, .kittyImageMediumTempFile, directory);
+  ) => terminalKittySet(
+    () => _setString(terminal, .kittyImageMediumTempFile, directory),
+  );
 
   @override
   void terminalSetKittyImageStorageLimit(
     LibGhosttyHandle terminal,
     int? limit,
-  ) => _setU64(terminal, .kittyImageStorageLimit, limit);
+  ) =>
+      terminalKittySet(() => _setU64(terminal, .kittyImageStorageLimit, limit));
 
   @override
   void terminalSetOnBell(LibGhosttyHandle terminal, VoidCallback? callback) {
@@ -925,10 +940,6 @@ final class FfiTerminalBindings implements TerminalBindings {
           ) {
             try {
               final notification = pointer.ref;
-              if (notification.size <
-                  sizeOf<native.TerminalDesktopNotification>()) {
-                return;
-              }
               callback(
                 DesktopNotification(
                   title: _readString(notification.title),
@@ -1026,7 +1037,6 @@ final class FfiTerminalBindings implements TerminalBindings {
           ) {
             try {
               final report = pointer.ref;
-              if (report.size < sizeOf<native.TerminalProgressReport>()) return;
               callback(
                 TerminalProgress(
                   state: report.state,
@@ -1054,7 +1064,6 @@ final class FfiTerminalBindings implements TerminalBindings {
           ) {
             try {
               final value = pointer.ref;
-              if (value.size < sizeOf<native.TerminalProgramStatus>()) return;
               callback(
                 TerminalProgramStatus(
                   state: .fromValue(value.stateAsInt),
@@ -1087,7 +1096,6 @@ final class FfiTerminalBindings implements TerminalBindings {
           ) {
             try {
               final value = pointer.ref;
-              if (value.size < sizeOf<native.TerminalSemanticPrompt>()) return;
               callback(
                 TerminalSemanticPrompt(
                   kind: .fromValue(value.kindAsInt),
@@ -1272,7 +1280,8 @@ final class FfiTerminalBindings implements TerminalBindings {
 
   @override
   void terminalSetScrollbackMaxBytes(LibGhosttyHandle terminal, int? bytes) =>
-      _setSize(terminal, .scrollbackMaxBytes, bytes);
+      // Size truncates -1 to the platform's SIZE_MAX.
+      _setSize(terminal, .scrollbackMaxBytes, bytes ?? -1);
 
   @override
   void terminalSetScrollbackMaxLines(LibGhosttyHandle terminal, int? lines) =>
@@ -1364,19 +1373,21 @@ final class FfiTerminalBindings implements TerminalBindings {
             ? nullptr.cast<Uint8>()
             : arena<Uint8>(data.length);
         if (data.isNotEmpty) bytes.asTypedList(data.length).setAll(0, data);
-        final consumed = arena<Size>();
-        final result = native.ghostty_terminal_vt_write_until_ground(
+        final stop = arena<native.TerminalWriteStop>();
+        stop.ref.size = sizeOf<native.TerminalWriteStop>();
+        final result = native.ghostty_terminal_vt_write_until(
           .fromAddress(terminal.value),
           bytes,
           data.length,
-          consumed,
+          TerminalBoundary.ground.value,
+          stop,
         );
         if (result == .noValue) return null;
         checkResultCode(
           result.value,
-          operation: 'ghostty_terminal_vt_write_until_ground',
+          operation: 'ghostty_terminal_vt_write_until',
         );
-        return consumed.value;
+        return stop.ref.consumed;
       });
     }
 
@@ -1825,7 +1836,7 @@ final class FfiTerminalBindings implements TerminalBindings {
   }
 
   static RawColor _readColor(native.StyleColor color) => (
-    tag: .fromValue(color.tag.value),
+    tag: .fromValue(color.tag),
     palette: color.value.palette,
     r: color.value.rgb.r,
     g: color.value.rgb.g,
@@ -1846,15 +1857,15 @@ final class FfiTerminalBindings implements TerminalBindings {
         .rgb || .palette => cellColorFromRaw(underlineColor),
         .none => null,
       },
-      bold: style.bold,
-      italic: style.italic,
-      faint: style.faint,
-      blink: style.blink,
-      inverse: style.inverse,
-      invisible: style.invisible,
-      strikethrough: style.strikethrough,
-      overline: style.overline,
-      underline: .fromValue(style.underline),
+      bold: style.flags & (1 << 0) != 0,
+      italic: style.flags & (1 << 1) != 0,
+      faint: style.flags & (1 << 2) != 0,
+      blink: style.flags & (1 << 3) != 0,
+      inverse: style.flags & (1 << 4) != 0,
+      invisible: style.flags & (1 << 5) != 0,
+      strikethrough: style.flags & (1 << 6) != 0,
+      overline: style.flags & (1 << 7) != 0,
+      underline: .fromValue((style.flags >> 8) & 0x7),
     );
   }
 }

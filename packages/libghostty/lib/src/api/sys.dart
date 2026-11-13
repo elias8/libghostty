@@ -31,6 +31,10 @@ typedef LogCallback = SysLogCallback;
 /// }
 /// ```
 abstract final class LibGhostty {
+  /// Full version of the loaded library, including any pre-release or build
+  /// suffix.
+  static String get version => bindings.utility.version();
+
   /// Clears the installed logger and stops delivering messages to Dart.
   ///
   /// Safe to call multiple times. The process-global native transport remains

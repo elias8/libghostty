@@ -1,8 +1,7 @@
-import 'dart:convert';
-
 import '../../generated/libghostty_enums.g.dart';
 import '../../generated/libghostty_wasm.g.dart';
 import '../../types/types.dart';
+import '../formatter/wasm.dart';
 import '../result_helpers.dart';
 import '../types.dart';
 import '../wasm/allocation_owner.dart';
@@ -13,7 +12,6 @@ import '../wasm/scratch.dart';
 import 'selection.dart';
 
 const RawGridRef _emptyGridRef = (node: 0, x: 0, y: 0);
-const _formatBufferInitialCapacity = 4096;
 const _wasmEnumSize = 4;
 const _wasmOutputSlotSize = 8;
 
@@ -24,9 +22,8 @@ final class WasmSelectionBindings implements SelectionBindings {
   final Layouts _layout;
   final GhosttyExports _exports;
   final WasmScratchPool _scratch;
-  late int _formatBuffer;
-  var _formatBufferCapacity = _formatBufferInitialCapacity;
   late final int _outSize;
+  late final _formatter = WasmFormatterBindings(_exports, _layout);
   late final int _multiKeys;
   late final int _multiValues;
   late final int _multiOut;
@@ -53,7 +50,6 @@ final class WasmSelectionBindings implements SelectionBindings {
         WasmExportScratchAllocator(_exports),
         maxVariableLength: WasmScratchPool.defaultMaxVariableLength,
       ) {
-    _formatBuffer = owner.allocate(_formatBufferCapacity);
     _outSize = _allocatePersistentSize(owner);
     _multiKeys = owner.allocate(5 * _wasmEnumSize);
     _multiValues = owner.allocate(5 * _wasmPointerSize);
@@ -496,51 +492,19 @@ final class WasmSelectionBindings implements SelectionBindings {
     bool trim = false,
     RawSelection? selection,
   }) {
-    final frame = _scratch.acquire(const []);
+    final selected = selection ?? terminalGetSelection(terminal);
+    if (selected == null) return null;
+    final formatter = _formatter.formatterTerminalNew(
+      terminal,
+      format,
+      unwrap: unwrap,
+      trim: trim,
+      selection: selected,
+    );
     try {
-      final options = frame.variableAddress(0, _layout.selectionFormatSize);
-      final selected = selection == null
-          ? 0
-          : frame.variableAddress(1, _layout.selectionSize);
-      _zero(options, _layout.selectionFormatSize);
-      _memory.writeU32(options, _layout.selectionFormatSize);
-      _memory.writeU32(options + _layout.selectionFormatEmit, format.value);
-      _memory.writeU8(options + _layout.selectionFormatUnwrap, unwrap ? 1 : 0);
-      _memory.writeU8(options + _layout.selectionFormatTrim, trim ? 1 : 0);
-      if (selection != null) {
-        _zero(selected, _layout.selectionSize);
-        _writeSelection(selected, selection);
-      }
-      _memory.writeU32(options + _layout.selectionFormatSelection, selected);
-      var result = Result.fromValue(
-        _exports.ghostty_terminal_selection_format_buf(
-          terminal.value,
-          options,
-          _formatBuffer,
-          _formatBufferCapacity,
-          _outSize,
-        ),
-      );
-      if (result == .outOfSpace) {
-        _growFormatBuffer(_memory.readU32(_outSize));
-        result = Result.fromValue(
-          _exports.ghostty_terminal_selection_format_buf(
-            terminal.value,
-            options,
-            _formatBuffer,
-            _formatBufferCapacity,
-            _outSize,
-          ),
-        );
-      }
-      if (result == .noValue) return null;
-      _check(result, 'ghostty_terminal_selection_format_buf');
-      final length = _memory.readU32(_outSize);
-      return length == 0
-          ? ''
-          : utf8.decode(_memory.readBytes(_formatBuffer, length));
+      return _formatter.formatterFormat(formatter);
     } finally {
-      frame.release();
+      _formatter.formatterFree(formatter);
     }
   }
 
@@ -805,7 +769,6 @@ final class WasmSelectionBindings implements SelectionBindings {
   int _allocSelection([RawSelection? selection]) {
     final ptr = _allocateBytes(_layout.selectionSize);
     _zero(ptr, _layout.selectionSize);
-    _memory.writeU32(ptr, _layout.selectionSize);
     if (selection != null) _writeSelection(ptr, selection);
     return ptr;
   }
@@ -868,14 +831,6 @@ final class WasmSelectionBindings implements SelectionBindings {
     } finally {
       frame.release();
     }
-  }
-
-  void _growFormatBuffer(int required) {
-    if (required <= _formatBufferCapacity) return;
-    final replacement = _allocateBytes(required);
-    _exports.freeBytes(_formatBuffer, _formatBufferCapacity);
-    _formatBuffer = replacement;
-    _formatBufferCapacity = required;
   }
 
   RawGridRef _readGridRef(int ptr) => (
@@ -944,7 +899,6 @@ final class WasmSelectionBindings implements SelectionBindings {
   }
 
   void _writeGridRef(int ptr, RawGridRef ref) {
-    _memory.writeU32(ptr, _layout.gridRefSize);
     _memory.writeU32(ptr + _layout.gridRefNode, ref.node);
     _memory.writeU16(ptr + _layout.gridRefX, ref.x);
     _memory.writeU16(ptr + _layout.gridRefY, ref.y);
@@ -957,7 +911,6 @@ final class WasmSelectionBindings implements SelectionBindings {
   }
 
   void _writeSelection(int ptr, RawSelection selection) {
-    _memory.writeU32(ptr, _layout.selectionSize);
     _writeGridRef(ptr + _layout.selectionStart, selection.start);
     _writeGridRef(ptr + _layout.selectionEnd, selection.end);
     _memory.writeU8(

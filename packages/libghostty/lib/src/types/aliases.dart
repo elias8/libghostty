@@ -7,10 +7,10 @@ import 'terminal.dart';
 typedef CellWidth = CellWide;
 
 /// Visual style reported by a render-state cursor snapshot.
-typedef CursorShape = RenderStateCursorVisualStyle;
+typedef CursorShape = CursorStyle;
 
 /// Cursor style accepted by terminal configuration APIs.
-typedef TerminalCursorShape = TerminalCursorStyle;
+typedef TerminalCursorShape = CursorStyle;
 
 /// Mouse tracking mode exposed by the terminal API.
 typedef MouseTracking = MouseTrackingMode;

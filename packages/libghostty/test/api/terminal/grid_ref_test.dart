@@ -1,7 +1,16 @@
 import 'dart:typed_data' show Uint8List;
 
 import 'package:libghostty/libghostty.dart'
-    show CellWidth, GridRef, InvalidValueException, Position, Style, Terminal;
+    show
+        CellWidth,
+        GridRef,
+        InvalidValueException,
+        PaletteColor,
+        Position,
+        RgbColor,
+        Style,
+        Terminal,
+        UnderlineStyle;
 import 'package:test/test.dart';
 
 import '../../helpers/setup.dart';
@@ -68,6 +77,24 @@ void main() {
         final result = ref.style;
 
         expect(result, isA<Style>());
+      });
+
+      test('reads packed attributes and colors', () {
+        terminal.write(
+          Uint8List.fromList('\x1b[1;3;4;9;38;2;1;2;3;48;5;42mB'.codeUnits),
+        );
+        final style = GridRef.at(
+          terminal,
+          const Position(row: 0, col: 5),
+        ).style;
+
+        expect(style.bold, isTrue);
+        expect(style.italic, isTrue);
+        expect(style.strikethrough, isTrue);
+        expect(style.faint, isFalse);
+        expect(style.underline, UnderlineStyle.single);
+        expect(style.foreground, const RgbColor(1, 2, 3));
+        expect(style.background, const PaletteColor(42));
       });
 
       test('reflects bold text', () {

@@ -135,12 +135,10 @@ void main() {
         (JSNumber _, JSNumber key, JSNumber output) {
           expect(key.toDartInt, RenderStateRowCellsData.style.value);
           final address = output.toDartInt;
-          expect(memory.readU32(address), layout.styleSize);
           harness.memory.grow(1);
           memory.writeBytes(address, Uint8List(layout.styleSize));
-          memory.writeU32(address, layout.styleSize);
           void color(int offset, StyleColorTag tag, int r, int g, int b) {
-            memory.writeU32(address + offset, tag.value);
+            memory.writeU8(address + offset, tag.value);
             memory.writeU8(address + offset + layout.styleColorR, r);
             memory.writeU8(address + offset + layout.styleColorG, g);
             memory.writeU8(address + offset + layout.styleColorB, b);
@@ -149,13 +147,13 @@ void main() {
           color(layout.styleFg, StyleColorTag.palette, 241, 0, 0);
           color(layout.styleBg, StyleColorTag.rgb, 4, 128, 255);
           color(layout.styleUnderlineColor, StyleColorTag.none, 0, 0, 0);
-          memory.writeU8(address + layout.styleItalic, 1);
-          memory.writeU8(address + layout.styleBlink, 1);
-          memory.writeU8(address + layout.styleInvisible, 1);
-          memory.writeU8(address + layout.styleOverline, 1);
-          memory.writeI32(
-            address + layout.styleUnderline,
-            SgrUnderline.dashed.value,
+          memory.writeU16(
+            address + layout.styleFlags,
+            (1 << 1) |
+                (1 << 3) |
+                (1 << 5) |
+                (1 << 7) |
+                (SgrUnderline.dashed.value << 8),
           );
           return Result.success.value.toJS;
         }.toJS;

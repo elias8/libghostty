@@ -237,7 +237,7 @@ void main() {
     group('snapshot restoration', () {
       void replaceWithHistorySnapshot({int lineCount = 10000}) {
         final source = Terminal(cols: 12, rows: 3)
-          ..scrollbackMaxBytes = null
+          ..scrollbackMaxBytes = 16 * 1024 * 1024
           ..scrollbackMaxLines = null;
         addTearDown(source.dispose);
         source.write(
@@ -245,6 +245,7 @@ void main() {
             List.generate(lineCount, (index) => 'line$index').join('\r\n'),
           ),
         );
+        expect(source.scrollbackRows, lineCount - 3);
         controller.dispose();
         controller = TerminalController.fromSnapshot(source.encodeSnapshot());
       }
@@ -304,6 +305,7 @@ void main() {
           await tester.pump(const Duration(milliseconds: 1));
 
           final addedRows = controller.scrollbackRows - rowsBefore;
+          expect(addedRows, greaterThan(0));
           expect(
             scrollController.position.pixels,
             closeTo(pixelsBefore + addedRows * cellHeight, 0.01),

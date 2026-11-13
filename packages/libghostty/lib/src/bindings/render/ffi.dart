@@ -578,7 +578,6 @@ final class _FfiRenderRaw {
   _FfiRenderRaw() {
     _outColors.ref.size = sizeOf<RenderStateColors>();
     _outCursor.ref.size = sizeOf<native.RenderStateCursor>();
-    _outStyle.ref.size = sizeOf<native.Style>();
     for (var i = 0; i < _renderStateSummaryKeys.length; i++) {
       _renderStateSummaryMultiKeys[i] = _renderStateSummaryKeys[i].value;
       _renderStateSummaryMultiValues[i] = (_renderStateSummaryMultiOut + i)
@@ -660,7 +659,6 @@ final class _FfiRenderRaw {
     return using((arena) {
       final gridRef = GridRef.$allocate(
         arena,
-        size: sizeOf<GridRef>(),
         node: Pointer<Void>.fromAddress(ref.node),
         x: ref.x,
         y: ref.y,
@@ -676,7 +674,6 @@ final class _FfiRenderRaw {
       final outLen = arena<Size>();
       final gridRef = GridRef.$allocate(
         arena,
-        size: sizeOf<GridRef>(),
         node: Pointer<Void>.fromAddress(ref.node),
         x: ref.x,
         y: ref.y,
@@ -708,7 +705,6 @@ final class _FfiRenderRaw {
       var buf = arena<Uint8>(256);
       final gridRef = GridRef.$allocate(
         arena,
-        size: sizeOf<GridRef>(),
         node: Pointer<Void>.fromAddress(ref.node),
         x: ref.x,
         y: ref.y,
@@ -732,7 +728,6 @@ final class _FfiRenderRaw {
     return using((arena) {
       final gridRef = GridRef.$allocate(
         arena,
-        size: sizeOf<GridRef>(),
         node: Pointer<Void>.fromAddress(ref.node),
         x: ref.x,
         y: ref.y,
@@ -747,12 +742,10 @@ final class _FfiRenderRaw {
     return using((arena) {
       final gridRef = GridRef.$allocate(
         arena,
-        size: sizeOf<GridRef>(),
         node: Pointer<Void>.fromAddress(ref.node),
         x: ref.x,
         y: ref.y,
       );
-      _outStyle.ref.size = sizeOf<native.Style>();
       final result = ghostty_grid_ref_style(gridRef, _outStyle);
       if (result != .success) return (result, const Style());
       return (result, _readNativeStyle(_outStyle.ref));
@@ -982,13 +975,21 @@ final class _FfiRenderRaw {
     if (len <= 0) return (.success, const []);
     final buf = len <= 32 ? _graphemeBuf : calloc<Uint32>(len);
     try {
-      final result = ghostty_render_state_row_cells_get(
-        Pointer.fromAddress(cells),
-        .graphemesBuf,
-        buf.cast(),
-      );
-      if (result != .success) return (result, const []);
-      return (result, [for (var i = 0; i < len; i++) buf[i]]);
+      return using((arena) {
+        final buffer = CodepointBuffer.$allocate(
+          arena,
+          ptr: buf,
+          cap: len,
+          len: 0,
+        );
+        final result = ghostty_render_state_row_cells_get(
+          Pointer.fromAddress(cells),
+          .graphemesBuf,
+          buffer.cast(),
+        );
+        if (result != .success) return (result, const <int>[]);
+        return (result, [for (var i = 0; i < buffer.ref.len; i++) buf[i]]);
+      });
     } finally {
       if (len > 32) calloc.free(buf);
     }
@@ -1327,7 +1328,6 @@ final class _FfiRenderRaw {
       final point = arena<Point>();
       _writePoint(point.ref, pointTag, position);
       final gridRef = arena<GridRef>();
-      gridRef.ref.size = sizeOf<GridRef>();
       final result = ghostty_terminal_grid_ref(
         Pointer.fromAddress(terminal),
         point.ref,
@@ -1365,7 +1365,6 @@ final class _FfiRenderRaw {
       final out = arena<PointCoordinate>();
       final gridRef = GridRef.$allocate(
         arena,
-        size: sizeOf<GridRef>(),
         node: Pointer<Void>.fromAddress(ref.node),
         x: ref.x,
         y: ref.y,
@@ -1422,7 +1421,6 @@ final class _FfiRenderRaw {
   CResult<RawGridRef> trackedGridRefSnapshot(int ref) {
     return using((arena) {
       final gridRef = arena<GridRef>();
-      gridRef.ref.size = sizeOf<GridRef>();
       final result = ghostty_tracked_grid_ref_snapshot(
         Pointer.fromAddress(ref),
         gridRef,
@@ -1492,7 +1490,7 @@ final class _FfiRenderRaw {
   }
 
   static RawColor _readNativeColor(StyleColor c) => (
-    tag: .fromValue(c.tag.value),
+    tag: .fromValue(c.tag),
     palette: c.value.palette,
     r: c.value.rgb.r,
     g: c.value.rgb.g,
@@ -1508,15 +1506,15 @@ final class _FfiRenderRaw {
         .rgb || .palette => cellColorFromRaw(rawUnderlineColor),
         .none => null,
       },
-      bold: s.bold,
-      italic: s.italic,
-      faint: s.faint,
-      blink: s.blink,
-      inverse: s.inverse,
-      invisible: s.invisible,
-      strikethrough: s.strikethrough,
-      overline: s.overline,
-      underline: .fromValue(s.underline),
+      bold: s.flags & (1 << 0) != 0,
+      italic: s.flags & (1 << 1) != 0,
+      faint: s.flags & (1 << 2) != 0,
+      blink: s.flags & (1 << 3) != 0,
+      inverse: s.flags & (1 << 4) != 0,
+      invisible: s.flags & (1 << 5) != 0,
+      strikethrough: s.flags & (1 << 6) != 0,
+      overline: s.flags & (1 << 7) != 0,
+      underline: .fromValue((s.flags >> 8) & 7),
     );
   }
 

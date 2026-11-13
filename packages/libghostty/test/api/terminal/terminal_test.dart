@@ -393,6 +393,35 @@ void main() {
 
         expect(terminal.scrollbackMaxBytes, 1024);
       });
+
+      test('switches between the default, zero, and unlimited', () {
+        final defaultLimit = terminal.scrollbackMaxBytes;
+        expect(defaultLimit, 10000);
+
+        terminal.scrollbackMaxBytes = 0;
+        expect(terminal.scrollbackMaxBytes, 0);
+        terminal.scrollbackMaxBytes = null;
+        expect(terminal.scrollbackMaxBytes, isNull);
+        terminal.scrollbackMaxBytes = defaultLimit;
+        expect(terminal.scrollbackMaxBytes, defaultLimit);
+        terminal.scrollbackMaxBytes = null;
+        expect(terminal.scrollbackMaxBytes, isNull);
+      });
+
+      test('unlimited retains history beyond the default byte limit', () {
+        final limited = Terminal(cols: 80, rows: 24);
+        addTearDown(limited.dispose);
+        terminal.scrollbackMaxBytes = null;
+        final data = Uint8List.fromList(
+          utf8.encode('scrollback line\r\n' * 5000),
+        );
+
+        limited.write(data);
+        terminal.write(data);
+
+        expect(terminal.scrollbackRows, 5000 - 23);
+        expect(limited.scrollbackRows, lessThan(terminal.scrollbackRows));
+      });
     });
 
     group('continuationMaxBytes', () {
@@ -1211,10 +1240,15 @@ void main() {
     });
 
     group('compress', () {
-      test('completes full compression on supported targets', () {
+      test('reports the compression result for the target', () {
         final result = terminal.compress(mode: .full);
 
-        expect(result, TerminalCompressionResult.complete);
+        expect(
+          result,
+          isBrowser
+              ? TerminalCompressionResult.unsupported
+              : TerminalCompressionResult.complete,
+        );
       }, testOn: 'windows || linux || mac-os || android || ios');
     });
 

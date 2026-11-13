@@ -59,6 +59,8 @@ export 'src/api/terminal/terminal.dart'
         SelectionGestureGeometry,
         SelectionGestureState,
         SnapshotDecoder,
+        SnapshotImageProgress,
+        SnapshotPageProgress,
         SnapshotProgress,
         Terminal,
         TrackedGridRef;
@@ -73,11 +75,11 @@ export 'src/generated/libghostty_enums.g.dart'
         ColorScheme,
         FocusEvent,
         FormatterFormat,
+        ImageLayer,
         Key,
         KeyAction,
         KittyImageCompression,
         KittyImageFormat,
-        KittyPlacementLayer,
         ModeReportState,
         MouseAction,
         MouseButton,
@@ -180,4 +182,5 @@ export 'src/types/types.dart'
         TextPaste,
         UnderlineStyle,
         UnknownResultException,
+        UnsupportedException,
         X11ColorName;

@@ -11,12 +11,14 @@ import 'snapshot.dart';
 
 final class WasmSnapshotBindings implements SnapshotBindings {
   static const _progressKeys = 0;
-  static const _progressValues = 12;
-  static const _progressScreen = 24;
-  static const _progressRows = 28;
-  static const _progressRemaining = 32;
-  static const _progressWritten = 36;
-  static const _progressStorageLength = 40;
+  static const _progressValues = 16;
+  static const _progressScreen = 32;
+  static const _progressRows = 36;
+  static const _progressRemaining = 40;
+  static const _progressFrame = 44;
+  static const _progressKind = 48;
+  static const _progressWritten = 52;
+  static const _progressStorageLength = 56;
 
   final GhosttyExports _exports;
   final Memory _memory;
@@ -32,18 +34,6 @@ final class WasmSnapshotBindings implements SnapshotBindings {
       _written = _allocate(4);
       _progressStorage = _allocate(_progressStorageLength);
       _memory
-        ..writeU32(
-          _progressStorage + _progressKeys,
-          SnapshotDecoderData.progressScreen.value,
-        )
-        ..writeU32(
-          _progressStorage + _progressKeys + 4,
-          SnapshotDecoderData.progressRows.value,
-        )
-        ..writeU32(
-          _progressStorage + _progressKeys + 8,
-          SnapshotDecoderData.progressRemaining.value,
-        )
         ..writePtr(
           _progressStorage + _progressValues,
           _progressStorage + _progressScreen,
@@ -55,6 +45,10 @@ final class WasmSnapshotBindings implements SnapshotBindings {
         ..writePtr(
           _progressStorage + _progressValues + 8,
           _progressStorage + _progressRemaining,
+        )
+        ..writePtr(
+          _progressStorage + _progressValues + 12,
+          _progressStorage + _progressFrame,
         );
     } catch (_) {
       _exports.freeBytes(_encodeBuffer, _encodeCapacity);
@@ -136,23 +130,70 @@ final class WasmSnapshotBindings implements SnapshotBindings {
     final result = _exports.ghostty_snapshot_decoder_next(decoder.value);
     if (result == Result.noValue.value) return null;
     checkResultCode(result, operation: 'ghostty_snapshot_decoder_next');
+    _get(
+      decoder,
+      SnapshotDecoderData.progressKind,
+      _progressStorage + _progressKind,
+    );
+    final kind = SnapshotDecoderProgressKind.fromValue(
+      _memory.readU32(_progressStorage + _progressKind),
+    );
+    _memory.writeU32(
+      _progressStorage + _progressKeys,
+      SnapshotDecoderData.progressScreen.value,
+    );
+    switch (kind) {
+      case .page:
+        _memory
+          ..writeU32(
+            _progressStorage + _progressKeys + 4,
+            SnapshotDecoderData.progressRows.value,
+          )
+          ..writeU32(
+            _progressStorage + _progressKeys + 8,
+            SnapshotDecoderData.progressRemaining.value,
+          );
+      case .image:
+        _memory
+          ..writeU32(
+            _progressStorage + _progressKeys + 4,
+            SnapshotDecoderData.progressImageBytes.value,
+          )
+          ..writeU32(
+            _progressStorage + _progressKeys + 8,
+            SnapshotDecoderData.progressImageId.value,
+          )
+          ..writeU32(
+            _progressStorage + _progressKeys + 12,
+            SnapshotDecoderData.progressImageFrame.value,
+          );
+    }
     checkResultCode(
       _exports.ghostty_snapshot_decoder_get_multi(
         decoder.value,
-        3,
+        kind == .page ? 3 : 4,
         _progressStorage + _progressKeys,
         _progressStorage + _progressValues,
         _progressStorage + _progressWritten,
       ),
       operation: 'ghostty_snapshot_decoder_get_multi',
     );
-    return (
-      screen: TerminalScreen.fromValue(
-        _memory.readU32(_progressStorage + _progressScreen),
-      ),
-      rows: _memory.readU32(_progressStorage + _progressRows),
-      remaining: _memory.readU32(_progressStorage + _progressRemaining),
+    final screen = TerminalScreen.fromValue(
+      _memory.readU32(_progressStorage + _progressScreen),
     );
+    return switch (kind) {
+      .page => RawSnapshotPageProgress(
+        screen,
+        _memory.readU32(_progressStorage + _progressRows),
+        _memory.readU32(_progressStorage + _progressRemaining),
+      ),
+      .image => RawSnapshotImageProgress(
+        screen,
+        _memory.readU32(_progressStorage + _progressRemaining),
+        _memory.readU32(_progressStorage + _progressFrame),
+        _memory.readU32(_progressStorage + _progressRows),
+      ),
+    };
   }
 
   @override

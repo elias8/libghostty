@@ -1013,7 +1013,9 @@ final class TerminalSession extends TerminalController with ChangeNotifier {
       return;
     }
     _scheduleRestoration();
-    if (progress.rows > 0) _search.refresh();
+    if (progress is SnapshotPageProgress && progress.rows > 0) {
+      _search.refresh();
+    }
     if (!_disposed) _publishViewportChange();
     if (!_disposed) notifyListeners();
   }

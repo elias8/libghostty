@@ -10,30 +10,24 @@ import '../../types/types.dart';
 import '../result_helpers.dart';
 import 'sys.dart';
 
-void _writeNativeStderr(
+@Native<SysLogFnFunction>(
+  symbol: 'ghostty_sys_log_stderr',
+  assetId: 'package:libghostty/libghostty.dart',
+)
+external void _nativeStderr(
   Pointer<Void> userdata,
   int level,
   Pointer<Uint8> scope,
   int scopeLen,
   Pointer<Uint8> message,
   int messageLen,
-) {
-  ghostty_sys_log_stderr(
-    userdata,
-    .fromValue(level),
-    scope,
-    scopeLen,
-    message,
-    messageLen,
-  );
-}
+);
 
 final class FfiSystemBindings implements SystemBindings {
   // sys.h does not expose a quiescence operation for process-global callbacks.
   // Keep the transport trampolines alive for the binding lifetime so a native
   // thread already inside a callback can never call a closed function pointer.
   NativeCallable? _sysLogTransport;
-  NativeCallable? _sysStderrCallable;
   NativeCallable? _sysDecodePngCallable;
   NativeCallable? _sysRandomSecureCallable;
   SysLogCallback? _sysLogCallback;
@@ -87,9 +81,10 @@ final class FfiSystemBindings implements SystemBindings {
 
   @override
   void sysSetLogToStderr() {
-    final callable = _sysStderrCallable ??=
-        NativeCallable<SysLogFnFunction>.isolateGroupBound(_writeNativeStderr);
-    final result = ghostty_sys_set(.log, callable.nativeFunction.cast());
+    final result = ghostty_sys_set(
+      .log,
+      Native.addressOf<NativeFunction<SysLogFnFunction>>(_nativeStderr).cast(),
+    );
     checkResultCode(result.value, operation: 'ghostty_sys_set(log)');
     _sysLogCallback = null;
     _sysLogZone = null;

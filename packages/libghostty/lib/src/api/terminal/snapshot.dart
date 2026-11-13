@@ -5,7 +5,8 @@ part of 'terminal.dart';
 /// The decoder owns a copy of [bytes], so callers may reuse or modify their
 /// list after construction. Use [decode] for one-shot restoration, or [ready]
 /// followed by [next] to render the active screen before older history pages
-/// finish loading. A decoder supports only one of those flows.
+/// and Kitty image pixels finish loading. A decoder supports only one of
+/// those flows.
 ///
 /// Dispose the decoder after restoration. A terminal returned by [ready] must
 /// remain alive until [next] reaches the end or the decoder is disposed.
@@ -100,9 +101,9 @@ final class SnapshotDecoder {
     _state = _SnapshotDecoderState.disposed;
   }
 
-  /// Restores the next history page.
+  /// Restores one history page or Kitty image frame.
   ///
-  /// Returns progress for one decoded page, or null after the final snapshot
+  /// Returns progress for the decoded record, or null after the final snapshot
   /// marker is validated.
   SnapshotProgress? next() {
     final state = _state;
@@ -119,18 +120,26 @@ final class SnapshotDecoder {
         _state = _SnapshotDecoderState.complete;
         return null;
       }
-      return SnapshotProgress(
-        screen: progress.screen,
-        rows: progress.rows,
-        remaining: progress.remaining,
-      );
+      return switch (progress) {
+        RawSnapshotPageProgress() => SnapshotPageProgress(
+          screen: progress.screen,
+          rows: progress.rows,
+          remaining: progress.remaining,
+        ),
+        RawSnapshotImageProgress() => SnapshotImageProgress(
+          screen: progress.screen,
+          imageId: progress.imageId,
+          frame: progress.frame,
+          bytes: progress.bytes,
+        ),
+      };
     } catch (_) {
       _state = _SnapshotDecoderState.failed;
       rethrow;
     }
   }
 
-  /// Restores a renderable terminal without waiting for older history pages.
+  /// Restores a renderable terminal before history and image pixels finish.
   ///
   /// Continue with [next] until it returns null. The returned terminal remains
   /// caller-owned after the decoder is disposed.
@@ -184,22 +193,25 @@ final class SnapshotDecoder {
   }
 }
 
-/// Result of restoring one terminal snapshot history page.
+/// Result of restoring one terminal snapshot record.
 @immutable
-final class SnapshotProgress {
-  /// Screen whose history received the page.
+sealed class SnapshotProgress {
+  /// Screen affected by this record.
   final TerminalScreen screen;
 
-  /// Rows prepended from the page.
-  ///
-  /// Zero means the page was valid but could no longer be safely applied.
+  const SnapshotProgress({required this.screen});
+}
+
+/// Result of restoring a history page.
+final class SnapshotPageProgress extends SnapshotProgress {
+  /// Rows prepended from the page. Zero means the page could not be applied.
   final int rows;
 
-  /// Page records remaining in the current screen's history sequence.
+  /// Page records remaining in this screen's history sequence.
   final int remaining;
 
-  const SnapshotProgress({
-    required this.screen,
+  const SnapshotPageProgress({
+    required super.screen,
     required this.rows,
     required this.remaining,
   });
@@ -209,10 +221,40 @@ final class SnapshotProgress {
 
   @override
   bool operator ==(Object other) =>
-      other is SnapshotProgress &&
+      other is SnapshotPageProgress &&
       other.screen == screen &&
       other.rows == rows &&
       other.remaining == remaining;
+}
+
+/// Result of restoring pixels for a Kitty image or animation frame.
+final class SnapshotImageProgress extends SnapshotProgress {
+  /// Kitty image identifier.
+  final int imageId;
+
+  /// Kitty frame number. One is the image itself; later numbers are frames.
+  final int frame;
+
+  /// Bytes attached to the image. Zero means the pixels were dropped.
+  final int bytes;
+
+  const SnapshotImageProgress({
+    required super.screen,
+    required this.imageId,
+    required this.frame,
+    required this.bytes,
+  });
+
+  @override
+  int get hashCode => Object.hash(screen, imageId, frame, bytes);
+
+  @override
+  bool operator ==(Object other) =>
+      other is SnapshotImageProgress &&
+      other.screen == screen &&
+      other.imageId == imageId &&
+      other.frame == frame &&
+      other.bytes == bytes;
 }
 
 enum _SnapshotDecoderState { initial, ready, complete, failed, disposed }

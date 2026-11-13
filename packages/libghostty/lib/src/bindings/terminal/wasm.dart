@@ -268,7 +268,7 @@ final class WasmTerminalBindings implements TerminalBindings {
 
   @override
   Style terminalGetCursorStyle(LibGhosttyHandle terminal) =>
-      _getStyle(terminal, .cursorStyle);
+      _getStyle(terminal, .cursorSgrStyle);
 
   @override
   bool terminalGetCursorVisible(LibGhosttyHandle terminal) =>
@@ -341,19 +341,27 @@ final class WasmTerminalBindings implements TerminalBindings {
 
   @override
   bool? terminalGetKittyImageMediumFile(LibGhosttyHandle terminal) =>
-      _getOptionalBool(terminal, .kittyImageMediumFile);
+      terminalKittyOptional(
+        () => _getOptionalBool(terminal, .kittyImageMediumFile),
+      );
 
   @override
   bool? terminalGetKittyImageMediumSharedMem(LibGhosttyHandle terminal) =>
-      _getOptionalBool(terminal, .kittyImageMediumSharedMem);
+      terminalKittyOptional(
+        () => _getOptionalBool(terminal, .kittyImageMediumSharedMem),
+      );
 
   @override
   String? terminalGetKittyImageMediumTempFile(LibGhosttyHandle terminal) =>
-      _getOptionalString(terminal, .kittyImageMediumTempFile);
+      terminalKittyOptional(
+        () => _getOptionalString(terminal, .kittyImageMediumTempFile),
+      );
 
   @override
   int? terminalGetKittyImageStorageLimit(LibGhosttyHandle terminal) =>
-      _getOptionalU64(terminal, .kittyImageStorageLimit);
+      terminalKittyOptional(
+        () => _getOptionalU64(terminal, .kittyImageStorageLimit),
+      );
 
   @override
   int terminalGetKittyKeyboardFlags(LibGhosttyHandle terminal) =>
@@ -740,7 +748,11 @@ final class WasmTerminalBindings implements TerminalBindings {
         case .top || .bottom:
           _memory.writeI32(pointer + _layout.scrollViewportDelta, 0);
       }
-      _exports.ghostty_terminal_scroll_viewport(terminal.value, pointer);
+      final result = _exports.ghostty_terminal_scroll_viewport(
+        terminal.value,
+        pointer,
+      );
+      checkResultCode(result, operation: 'ghostty_terminal_scroll_viewport');
     } finally {
       frame.release();
     }
@@ -846,7 +858,7 @@ final class WasmTerminalBindings implements TerminalBindings {
     LibGhosttyHandle terminal, {
     bool? enabled,
   }) {
-    _setBool(terminal, .kittyImageMediumFile, enabled);
+    terminalKittySet(() => _setBool(terminal, .kittyImageMediumFile, enabled));
   }
 
   @override
@@ -854,7 +866,9 @@ final class WasmTerminalBindings implements TerminalBindings {
     LibGhosttyHandle terminal, {
     bool? enabled,
   }) {
-    _setBool(terminal, .kittyImageMediumSharedMem, enabled);
+    terminalKittySet(
+      () => _setBool(terminal, .kittyImageMediumSharedMem, enabled),
+    );
   }
 
   @override
@@ -862,7 +876,9 @@ final class WasmTerminalBindings implements TerminalBindings {
     LibGhosttyHandle terminal,
     String? directory,
   ) {
-    _setString(terminal, .kittyImageMediumTempFile, directory);
+    terminalKittySet(
+      () => _setString(terminal, .kittyImageMediumTempFile, directory),
+    );
   }
 
   @override
@@ -870,7 +886,7 @@ final class WasmTerminalBindings implements TerminalBindings {
     LibGhosttyHandle terminal,
     int? limit,
   ) {
-    _setU64(terminal, .kittyImageStorageLimit, limit);
+    terminalKittySet(() => _setU64(terminal, .kittyImageStorageLimit, limit));
   }
 
   @override
@@ -905,9 +921,6 @@ final class WasmTerminalBindings implements TerminalBindings {
       (reuseIndex) => _registerCallback(
         ((int _, int _, int readPointer) {
           try {
-            if (_memory.readU32(readPointer) < _layout.clipboardReadSize) {
-              return;
-            }
             final mimesPointer = _memory.readPtr(
               readPointer + _layout.clipboardReadMimes,
             );
@@ -961,9 +974,6 @@ final class WasmTerminalBindings implements TerminalBindings {
       (reuseIndex) => _registerCallback(
         ((int _, int _, int writePointer) {
           try {
-            if (_memory.readU32(writePointer) < _layout.clipboardWriteSize) {
-              return;
-            }
             final contentsPointer = _memory.readPtr(
               writePointer + _layout.clipboardWriteContents,
             );
@@ -1049,9 +1059,6 @@ final class WasmTerminalBindings implements TerminalBindings {
       (reuseIndex) => _registerCallback(
         ((int _, int _, int pointer) {
           try {
-            if (_memory.readU32(pointer) < _layout.desktopNotificationSize) {
-              return;
-            }
             callback!(
               DesktopNotification(
                 title: _readString(pointer + _layout.desktopNotificationTitle),
@@ -1172,9 +1179,6 @@ final class WasmTerminalBindings implements TerminalBindings {
       (reuseIndex) => _registerCallback(
         ((int _, int _, int pointer) {
           try {
-            if (_memory.readU32(pointer) < _layout.terminalProgressReportSize) {
-              return;
-            }
             final rawProgress = _memory.readU8(
               pointer + _layout.terminalProgressReportProgress,
             );
@@ -1210,9 +1214,6 @@ final class WasmTerminalBindings implements TerminalBindings {
       (reuseIndex) => _registerCallback(
         ((int _, int _, int pointer) {
           try {
-            if (_memory.readU32(pointer) < _layout.terminalProgramStatusSize) {
-              return;
-            }
             final progress = _memory.readU8(
               pointer + _layout.terminalProgramStatusProgress,
             );
@@ -1257,9 +1258,6 @@ final class WasmTerminalBindings implements TerminalBindings {
       (reuseIndex) => _registerCallback(
         ((int _, int _, int pointer) {
           try {
-            if (_memory.readU32(pointer) < _layout.terminalSemanticPromptSize) {
-              return;
-            }
             final hasExitCode =
                 _memory.readU8(
                   pointer + _layout.terminalSemanticPromptHasExitCode,
@@ -1548,7 +1546,7 @@ final class WasmTerminalBindings implements TerminalBindings {
 
   @override
   void terminalSetScrollbackMaxBytes(LibGhosttyHandle terminal, int? bytes) {
-    _setU32(terminal, .scrollbackMaxBytes, bytes);
+    _setU32(terminal, .scrollbackMaxBytes, bytes ?? 0xffffffff);
   }
 
   @override
@@ -1668,27 +1666,22 @@ final class WasmTerminalBindings implements TerminalBindings {
     try {
       final pointer = data.isEmpty ? 0 : frame.variableAddress(0, data.length);
       if (data.isNotEmpty) _memory.writeBytes(pointer, data);
-      final consumed = frame.variableAddress(
-        1,
-        _wasmSizeSize,
-        alignment: _wasmSizeSize,
-      );
+      final stop = frame.variableAddress(1, 28, alignment: _wasmSizeSize);
+      _memory.writeU32(stop, 28);
       var reachedGround = true;
       void operation() {
-        final result = _exports.ghostty_terminal_vt_write_until_ground(
+        final result = _exports.ghostty_terminal_vt_write_until(
           terminal.value,
           pointer,
           data.length,
-          consumed,
+          TerminalBoundary.ground.value,
+          stop,
         );
         if (result == Result.noValue.value) {
           reachedGround = false;
           return;
         }
-        checkResultCode(
-          result,
-          operation: 'ghostty_terminal_vt_write_until_ground',
-        );
+        checkResultCode(result, operation: 'ghostty_terminal_vt_write_until');
       }
 
       if (!hasCallbacks || _callbackError != null) {
@@ -1705,7 +1698,7 @@ final class WasmTerminalBindings implements TerminalBindings {
           Error.throwWithStackTrace(failure.error, failure.stackTrace);
         }
       }
-      final result = _memory.readU32(consumed);
+      final result = _memory.readU32(stop + _wasmSizeSize);
       return reachedGround ? result : null;
     } finally {
       frame.release();
@@ -1905,7 +1898,6 @@ final class WasmTerminalBindings implements TerminalBindings {
   Style _getStyle(LibGhosttyHandle terminal, TerminalData data) {
     final pointer = _allocateBytes(_layout.styleSize);
     try {
-      _memory.writeU32(pointer, _layout.styleSize);
       final result = _exports.ghostty_terminal_get(
         terminal.value,
         data.value,
@@ -1981,7 +1973,7 @@ final class WasmTerminalBindings implements TerminalBindings {
   }
 
   RawColor _readRawColor(int pointer) => (
-    tag: .fromValue(_memory.readU32(pointer)),
+    tag: .fromValue(_memory.readU8(pointer)),
     palette: _memory.readU8(pointer + _layout.styleColorR),
     r: _memory.readU8(pointer + _layout.styleColorR),
     g: _memory.readU8(pointer + _layout.styleColorG),
@@ -2003,6 +1995,7 @@ final class WasmTerminalBindings implements TerminalBindings {
 
   Style _readStyle(int pointer) {
     final underlineColor = _readRawColor(pointer + _layout.styleUnderlineColor);
+    final flags = _memory.readU16(pointer + _layout.styleFlags);
     return Style(
       foreground: cellColorFromRaw(_readRawColor(pointer + _layout.styleFg)),
       background: cellColorFromRaw(_readRawColor(pointer + _layout.styleBg)),
@@ -2010,15 +2003,15 @@ final class WasmTerminalBindings implements TerminalBindings {
         .rgb || .palette => cellColorFromRaw(underlineColor),
         .none => null,
       },
-      bold: _memory.readU8(pointer + _layout.styleBold) != 0,
-      italic: _memory.readU8(pointer + _layout.styleItalic) != 0,
-      faint: _memory.readU8(pointer + _layout.styleFaint) != 0,
-      blink: _memory.readU8(pointer + _layout.styleBlink) != 0,
-      inverse: _memory.readU8(pointer + _layout.styleInverse) != 0,
-      invisible: _memory.readU8(pointer + _layout.styleInvisible) != 0,
-      strikethrough: _memory.readU8(pointer + _layout.styleStrikethrough) != 0,
-      overline: _memory.readU8(pointer + _layout.styleOverline) != 0,
-      underline: .fromValue(_memory.readI32(pointer + _layout.styleUnderline)),
+      bold: flags & (1 << 0) != 0,
+      italic: flags & (1 << 1) != 0,
+      faint: flags & (1 << 2) != 0,
+      blink: flags & (1 << 3) != 0,
+      inverse: flags & (1 << 4) != 0,
+      invisible: flags & (1 << 5) != 0,
+      strikethrough: flags & (1 << 6) != 0,
+      overline: flags & (1 << 7) != 0,
+      underline: .fromValue((flags >> 8) & 0x7),
     );
   }
 

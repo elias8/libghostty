@@ -216,7 +216,7 @@ final class FfiUtilityBindings implements UtilityBindings {
         );
         return '';
       }
-      final buffer = arena<Char>(written.value);
+      final buffer = arena<Uint8>(written.value);
       result = native.ghostty_color_scheme_report_encode(
         scheme,
         buffer,
@@ -248,7 +248,7 @@ final class FfiUtilityBindings implements UtilityBindings {
   String focusEncode(FocusEvent event) {
     return using((arena) {
       final written = arena<Size>();
-      final output = arena<Char>(8);
+      final output = arena<Uint8>(8);
       final result = native.ghostty_focus_encode(event, output, 8, written);
       checkResultCode(result.value, operation: 'ghostty_focus_encode');
       return utf8.decode(output.cast<Uint8>().asTypedList(written.value));
@@ -259,7 +259,7 @@ final class FfiUtilityBindings implements UtilityBindings {
   String modeReportEncode(int mode, ModeReportState state) {
     return using((arena) {
       final written = arena<Size>();
-      final output = arena<Char>(64);
+      final output = arena<Uint8>(64);
       final result = native.ghostty_mode_report_encode(
         mode,
         state,
@@ -291,7 +291,7 @@ final class FfiUtilityBindings implements UtilityBindings {
         checkResultCode(result.value, operation: 'ghostty_paste_encode');
         return Uint8List(0);
       }
-      final output = arena<Char>(written.value);
+      final output = arena<Uint8>(written.value);
       input.cast<Uint8>().asTypedList(encoded.length).setAll(0, encoded);
       result = native.ghostty_paste_encode(
         input,
@@ -328,7 +328,7 @@ final class FfiUtilityBindings implements UtilityBindings {
   ) {
     return using((arena) {
       final written = arena<Size>();
-      final output = arena<Char>(64);
+      final output = arena<Uint8>(64);
       final size = native.SizeReportSize.$allocate(
         arena,
         rows: rows,
@@ -338,7 +338,7 @@ final class FfiUtilityBindings implements UtilityBindings {
       );
       final result = native.ghostty_size_report_encode(
         style,
-        size.ref,
+        size,
         output,
         64,
         written,
@@ -352,7 +352,6 @@ final class FfiUtilityBindings implements UtilityBindings {
   Style styleDefault() {
     return using((arena) {
       final style = arena<native.Style>();
-      style.ref.size = sizeOf<native.Style>();
       native.ghostty_style_default(style);
       return _readStyle(style.ref);
     });
@@ -362,7 +361,6 @@ final class FfiUtilityBindings implements UtilityBindings {
   bool styleIsDefault(Style style) {
     return using((arena) {
       final nativeStyle = arena<native.Style>();
-      nativeStyle.ref.size = sizeOf<native.Style>();
       _writeColor(nativeStyle.ref.fg_color, _toRaw(style.foreground));
       _writeColor(nativeStyle.ref.bg_color, _toRaw(style.background));
       _writeColor(
@@ -371,16 +369,8 @@ final class FfiUtilityBindings implements UtilityBindings {
             ? defaultRawColor
             : _toRaw(style.underlineColor!),
       );
-      nativeStyle.ref
-        ..bold = style.bold
-        ..italic = style.italic
-        ..faint = style.faint
-        ..blink = style.blink
-        ..inverse = style.inverse
-        ..invisible = style.invisible
-        ..strikethrough = style.strikethrough
-        ..overline = style.overline
-        ..underline = style.underline.value;
+      nativeStyle.ref.flags = styleFlags(style);
+      nativeStyle.ref.reserved = 0;
       return native.ghostty_style_is_default(nativeStyle);
     });
   }
@@ -408,8 +398,11 @@ final class FfiUtilityBindings implements UtilityBindings {
     });
   }
 
+  @override
+  String version() => native.ghostty_version().cast<Utf8>().toDartString();
+
   static RawColor _readColor(native.StyleColor color) => (
-    tag: StyleColorTag.fromValue(color.tag.value),
+    tag: StyleColorTag.fromValue(color.tag),
     palette: color.value.palette,
     r: color.value.rgb.r,
     g: color.value.rgb.g,
@@ -430,15 +423,15 @@ final class FfiUtilityBindings implements UtilityBindings {
         .rgb || .palette => cellColorFromRaw(underline),
         .none => null,
       },
-      bold: style.bold,
-      italic: style.italic,
-      faint: style.faint,
-      blink: style.blink,
-      inverse: style.inverse,
-      invisible: style.invisible,
-      strikethrough: style.strikethrough,
-      overline: style.overline,
-      underline: .fromValue(style.underline),
+      bold: style.flags & (1 << 0) != 0,
+      italic: style.flags & (1 << 1) != 0,
+      faint: style.flags & (1 << 2) != 0,
+      blink: style.flags & (1 << 3) != 0,
+      inverse: style.flags & (1 << 4) != 0,
+      invisible: style.flags & (1 << 5) != 0,
+      strikethrough: style.flags & (1 << 6) != 0,
+      overline: style.flags & (1 << 7) != 0,
+      underline: .fromValue((style.flags >> 8) & 7),
     );
   }
 
@@ -461,9 +454,8 @@ final class FfiUtilityBindings implements UtilityBindings {
   };
 
   static void _writeColor(native.StyleColor target, RawColor color) {
-    target.tagAsInt = color.tag.value;
-    target.value.palette = color.palette;
-    target.value.rgb.r = color.r;
+    target.tag = color.tag.value;
+    target.value.rgb.r = color.tag == .palette ? color.palette : color.r;
     target.value.rgb.g = color.g;
     target.value.rgb.b = color.b;
   }

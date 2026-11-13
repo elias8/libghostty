@@ -48,6 +48,36 @@ void main() {
       });
     });
 
+    test('reads codepoint buffers using their capacity and output length', () {
+      final terminal = terminalBindings.terminalNew(8, 1);
+      final state = render.renderStateNew();
+      final rows = render.rowIteratorNew();
+      final cells = render.rowCellsNew();
+      addTearDown(() {
+        render.rowCellsFree(cells);
+        render.rowIteratorFree(rows);
+        render.renderStateFree(state);
+        terminalBindings.terminalFree(terminal);
+      });
+      terminalBindings.terminalVtWrite(
+        terminal,
+        Uint8List.fromList(utf8.encode('🙂\u0301')),
+      );
+      render.renderStateUpdate(state, terminal);
+      render.rowIteratorInit(rows, state);
+      expect(render.rowIteratorNext(rows), isTrue);
+      render.rowCellsInit(cells, rows);
+      render.rowCellsSelect(cells, 0);
+
+      expect(render.rowCellsGetGraphemeLen(cells), 2);
+      expect(render.rowCellsGetGraphemes(cells, 2), [0x1f642, 0x301]);
+      expect(render.rowCellsGetGraphemes(cells, 33), [0x1f642, 0x301]);
+      expect(
+        () => render.rowCellsGetGraphemes(cells, 1),
+        throwsA(isA<OutOfSpaceException>()),
+      );
+    });
+
     test('decodes borrowed row cells to the native getter values', () {
       final terminal = terminalBindings.terminalNew(12, 1);
       final selectionBindings = FfiSelectionBindings();

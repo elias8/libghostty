@@ -63,7 +63,10 @@ final class WasmKittyGraphicsBindings implements KittyGraphicsBindings {
         TerminalData.kittyGraphics.value,
         out,
       );
-      if (result == Result.noValue.value) return null;
+      if (result == Result.noValue.value ||
+          result == Result.unsupported.value) {
+        return null;
+      }
       checkCode(Result.fromValue(result), operation: 'ghostty_terminal_get');
       return .fromAddress(_memory.readPtr(out));
     } finally {
@@ -267,7 +270,7 @@ final class WasmKittyGraphicsBindings implements KittyGraphicsBindings {
   @override
   void kittyGraphicsPlacementIteratorSetLayer(
     LibGhosttyHandle iterator,
-    KittyPlacementLayer layer,
+    ImageLayer layer,
   ) {
     if (iterator.value == 0) throw const InvalidValueException();
     final frame = _scratch.acquire(const []);
@@ -277,7 +280,7 @@ final class WasmKittyGraphicsBindings implements KittyGraphicsBindings {
         wasm32PointerSize,
         alignment: wasm32PointerSize,
       );
-      _memory.writeU32(value, layer.value);
+      _memory.writeU32(value, 1 << layer.value);
       final result = Result.fromValue(
         _exports.ghostty_kitty_graphics_placement_iterator_set(
           iterator.value,
@@ -391,27 +394,27 @@ final class WasmKittyGraphicsBindings implements KittyGraphicsBindings {
 
   Uint8List _imagePixelDataView(LibGhosttyHandle image) {
     if (image.value == 0) throw const InvalidValueException();
-    _setImageMulti([.dataPtr, .dataLen]);
-    final result = Result.fromValue(
-      _exports.ghostty_kitty_graphics_image_get_multi(
-        image.value,
-        2,
-        _keys,
-        _values,
-        _written,
-      ),
-    );
-    checkCode(result, operation: 'ghostty_kitty_graphics_image_get_multi');
-    final pointer = _memory.readPtr(_multi);
-    final length = _memory.readU32(_multi + _wasmOutputSlotSize);
-    if (pointer == 0 || length == 0) return Uint8List(0);
-    return _memory.readBytes(pointer, length);
-  }
-
-  void _setImageMulti(List<KittyGraphicsImageData> keys) {
-    for (var i = 0; i < keys.length; i++) {
-      _memory.writeU32(_keys + i * 4, keys[i].value);
-      _memory.writeU32(_values + i * 4, _multi + i * _wasmOutputSlotSize);
+    final frame = _scratch.acquire(const []);
+    try {
+      final out = frame.variableAddress(
+        0,
+        _layout.stringSize,
+        alignment: wasm32PointerSize,
+      );
+      final result = Result.fromValue(
+        _exports.ghostty_kitty_graphics_image_get(
+          image.value,
+          KittyGraphicsImageData.pixels.value,
+          out,
+        ),
+      );
+      checkCode(result, operation: 'ghostty_kitty_graphics_image_get');
+      final pointer = _memory.readPtr(out + _layout.stringPtr);
+      final length = _memory.readU32(out + _layout.stringLen);
+      if (pointer == 0 || length == 0) return Uint8List(0);
+      return _memory.readBytes(pointer, length);
+    } finally {
+      frame.release();
     }
   }
 

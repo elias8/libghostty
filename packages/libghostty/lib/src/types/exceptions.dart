@@ -92,6 +92,12 @@ final class RejectedException extends LibGhosttyException {
     : super('The operation was rejected by a safety check.', code: -7);
 }
 
+/// The linked libghostty does not support the requested operation.
+final class UnsupportedException extends LibGhosttyException {
+  const UnsupportedException({super.operation})
+    : super('The operation is not supported.', code: -8);
+}
+
 /// A result code not defined by the linked libghostty ABI.
 ///
 /// [code] preserves the exact numeric value so callers can diagnose a newer

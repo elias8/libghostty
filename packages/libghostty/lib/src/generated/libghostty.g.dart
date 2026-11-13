@@ -29,13 +29,18 @@ external ffi.Pointer<ffi.Uint8> ghostty_alloc(
 
 /// Query a compile-time build configuration value.
 ///
-/// The caller must pass a pointer to the correct output type for the
+/// You must pass a pointer to the correct output type for the
 /// requested data (see BuildInfo variants for types).
+///
+/// @snippet c-vt-build-info/src/main.c build-info-query
+///
+/// Full program: @ref c-vt-build-info/src/main.c
 ///
 /// @param data The build info field to query
 /// @param out Pointer to store the result (type depends on data parameter)
-/// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if the
-/// data type is invalid
+/// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if `data` is
+/// GHOSTTY_BUILD_INFO_INVALID or `out` is NULL, or GHOSTTY_UNSUPPORTED
+/// if `data` is not known to this version of the library
 ///
 /// @ingroup build_info
 @ffi.Native<ffi.Int Function(ffi.UnsignedInt, ffi.Pointer<ffi.Void>)>(
@@ -57,8 +62,9 @@ Result ghostty_build_info(BuildInfo data, ffi.Pointer<ffi.Void> out) {
 /// @param cell The cell value
 /// @param data The type of data to extract
 /// @param out Pointer to store the extracted data (type depends on data parameter)
-/// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if the
-/// data type is invalid
+/// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if `data` is
+/// GHOSTTY_CELL_DATA_INVALID or `out` is NULL, or GHOSTTY_UNSUPPORTED
+/// if `data` is not known to this version of the library
 ///
 /// @ingroup screen
 @ffi.Native<ffi.Int Function(Cell, ffi.UnsignedInt, ffi.Pointer<ffi.Void>)>(
@@ -77,6 +83,12 @@ Result ghostty_cell_get(
 
 /// Get multiple data fields from a cell in a single call.
 ///
+/// Use this when each call into the library is expensive, for example from
+/// WebAssembly or from another language through its foreign function
+/// interface. It reads every key in one call. From C in the same process it
+/// costs the same as calling ghostty_cell_get() once per key, so use
+/// whichever reads better.
+///
 /// Each element in the keys array specifies a data kind, and the
 /// corresponding element in the values array receives the result.
 ///
@@ -91,7 +103,9 @@ Result ghostty_cell_get(
 /// documented output type)
 /// @param[out] out_written On return, receives the number of values
 /// successfully written (may be NULL)
-/// @return GHOSTTY_SUCCESS if all queries succeed
+/// @return GHOSTTY_SUCCESS if every key succeeds. Otherwise the result of the
+/// first key that failed, for example GHOSTTY_UNSUPPORTED for a key
+/// that is not known to this version of the library.
 ///
 /// @ingroup screen
 @ffi.Native<
@@ -128,8 +142,8 @@ Result ghostty_cell_get_multi(
 /// The contrast ratio is symmetric and ranges from 1.0 for identical
 /// colors to 21.0 for black and white.
 ///
-/// @param a The first RGB color (must not be NULL)
-/// @param b The second RGB color (must not be NULL)
+/// @param a The first RGB color (NULL returns 0)
+/// @param b The second RGB color (NULL returns 0)
 /// @return WCAG contrast ratio in the range 1.0 to 21.0
 ///
 /// @ingroup color
@@ -144,7 +158,7 @@ external double ghostty_color_contrast(
 /// Returns a normalized value from 0.0 for black to 1.0 for white.
 /// See https://www.w3.org/TR/WCAG20/#relativeluminancedef.
 ///
-/// @param color The RGB color (must not be NULL)
+/// @param color The RGB color (NULL returns 0)
 /// @return Relative luminance in the range 0.0 to 1.0
 ///
 /// @ingroup color
@@ -157,7 +171,7 @@ external double ghostty_color_luminance(ffi.Pointer<ColorRgb> color);
 /// 6x6x6 color cube, and the grayscale ramp.
 ///
 /// @param[out] out The output palette, an array of exactly 256
-/// ColorRgb values
+/// ColorRgb values (NULL does nothing)
 ///
 /// @ingroup color
 @ffi.Native<ffi.Void Function(ffi.Pointer<ColorRgb>)>()
@@ -181,12 +195,12 @@ external void ghostty_color_palette_default(ffi.Pointer<ColorRgb> out);
 /// values, or NULL to use 's default palette
 /// @param skip The palette indices to preserve from @p base, or NULL for
 /// an empty mask
-/// @param bg The terminal background color (must not be NULL)
-/// @param fg The terminal foreground color (must not be NULL)
+/// @param bg The terminal background color (NULL does nothing)
+/// @param fg The terminal foreground color (NULL does nothing)
 /// @param harmonious Whether light themes keep background-to-foreground
 /// orientation
 /// @param[out] out The output palette, an array of exactly 256
-/// ColorRgb values
+/// ColorRgb values (NULL does nothing)
 ///
 /// @ingroup color
 @ffi.Native<
@@ -212,15 +226,15 @@ external void ghostty_color_palette_generate(
 ///
 /// Accepts 's terminal color syntax: X11 color names, hex colors
 /// in 3-, 6-, 9-, or 12-digit form (the leading # is optional for 3- and
-/// 6-digit values), and rgb:<red>/<green>/<blue> or
-/// rgbi:<red>/<green>/<blue> specifications. Leading and trailing spaces
+/// 6-digit values), and `rgb:<red>/<green>/<blue>` or
+/// `rgbi:<red>/<green>/<blue>` specifications. Leading and trailing spaces
 /// and tabs are trimmed.
 ///
-/// @param value The color value bytes (must not be NULL)
+/// @param value The color value bytes (NULL returns GHOSTTY_INVALID_VALUE)
 /// @param len The length of @p value in bytes
-/// @param[out] out The parsed RGB color
+/// @param[out] out The parsed RGB color (NULL returns GHOSTTY_INVALID_VALUE)
 /// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if parsing
-/// fails or @p value is NULL
+/// fails or @p value or @p out is NULL
 ///
 /// @ingroup color
 @ffi.Native<
@@ -247,10 +261,12 @@ Result ghostty_color_parse(
 /// tabs around N and COLOR are ignored. COLOR accepts the same syntax as
 /// ghostty_color_parse().
 ///
-/// @param value The palette entry bytes (must not be NULL)
+/// @param value The palette entry bytes (NULL returns GHOSTTY_INVALID_VALUE)
 /// @param len The length of @p value in bytes
-/// @param[out] out_index The parsed palette index
-/// @param[out] out_rgb The parsed RGB color
+/// @param[out] out_index The parsed palette index (NULL returns
+/// GHOSTTY_INVALID_VALUE)
+/// @param[out] out_rgb The parsed RGB color (NULL returns
+/// GHOSTTY_INVALID_VALUE)
 /// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE on any
 /// failure, including index overflow
 ///
@@ -287,11 +303,11 @@ Result ghostty_color_parse_palette_entry(
 /// Leading and trailing spaces and tabs are trimmed, and matching is
 /// ASCII case-insensitive. Hex values are not accepted by this function.
 ///
-/// @param name The color name bytes (must not be NULL)
+/// @param name The color name bytes (NULL returns GHOSTTY_INVALID_VALUE)
 /// @param len The length of @p name in bytes
-/// @param[out] out The parsed RGB color
+/// @param[out] out The parsed RGB color (NULL returns GHOSTTY_INVALID_VALUE)
 /// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if no color
-/// matches or @p name is NULL
+/// matches or @p name or @p out is NULL
 ///
 /// @ingroup color
 @ffi.Native<
@@ -318,7 +334,7 @@ Result ghostty_color_parse_x11(
 /// This is not the metric used internally by
 /// ghostty_color_palette_generate(), which uses CIELAB lightness.
 ///
-/// @param color The RGB color (must not be NULL)
+/// @param color The RGB color (NULL returns 0)
 /// @return Perceived luminance in the range 0.0 to 1.0
 ///
 /// @ingroup color
@@ -331,10 +347,10 @@ external double ghostty_color_perceived_luminance(ffi.Pointer<ColorRgb> color);
 /// from a ColorRgb value. Primarily useful in WebAssembly environments
 /// where accessing struct fields directly is difficult.
 ///
-/// @param color Pointer to the RGB color value
-/// @param r Pointer to store the red component (0-255)
-/// @param g Pointer to store the green component (0-255)
-/// @param b Pointer to store the blue component (0-255)
+/// @param color Pointer to the RGB color value (NULL does nothing)
+/// @param r Pointer to store the red component (0-255), or NULL to skip it
+/// @param g Pointer to store the green component (0-255), or NULL to skip it
+/// @param b Pointer to store the blue component (0-255), or NULL to skip it
 ///
 /// @ingroup color
 @ffi.Native<
@@ -359,38 +375,41 @@ external void ghostty_color_rgb_get(
 /// The encoded bytes are identical to the terminal's internal CSI ? 996 n
 /// query response.
 ///
-/// Hosts should gate unsolicited sends on GHOSTTY_MODE_COLOR_SCHEME_REPORT
-/// (mode 2031) being set, which can be checked via the mode getters.
+/// Hosts should gate unsolicited sends on GHOSTTY_MODE_REPORT_COLOR_SCHEME
+/// (mode 2031) being set. Read it with ghostty_terminal_get() and
+/// GHOSTTY_TERMINAL_DATA_MODE.
 ///
-/// If the buffer is too small, the function returns GHOSTTY_OUT_OF_SPACE
-/// and writes the required buffer size to @p out_written. The caller can
-/// then retry with a sufficiently sized buffer.
+/// If @p buf is too small, this returns GHOSTTY_OUT_OF_SPACE and sets
+/// @p out_written to the size needed. The buffer may then hold part of the
+/// sequence, which you should discard. To get the size without encoding
+/// anything, pass NULL for @p buf and 0 for @p buf_len.
 ///
 /// @param scheme The color scheme to encode
-/// @param buf Output buffer to write the encoded sequence into (may be NULL)
-/// @param buf_len Size of the output buffer in bytes
-/// @param[out] out_written On success, the number of bytes written. On
-/// GHOSTTY_OUT_OF_SPACE, the required buffer size.
+/// @param buf Buffer to write the sequence into. May be NULL if @p buf_len
+/// is 0.
+/// @param buf_len Size of @p buf in bytes
+/// @param[out] out_written The number of bytes written, or the size needed
+/// if the result is GHOSTTY_OUT_OF_SPACE
 /// @return GHOSTTY_SUCCESS on success, GHOSTTY_OUT_OF_SPACE if the buffer
-/// is too small
+/// is too small, or GHOSTTY_INVALID_VALUE if @p out_written is NULL
 @ffi.Native<
   ffi.Int Function(
     ffi.UnsignedInt,
-    ffi.Pointer<ffi.Char>,
+    ffi.Pointer<ffi.Uint8>,
     ffi.Size,
     ffi.Pointer<ffi.Size>,
   )
 >(symbol: 'ghostty_color_scheme_report_encode')
 external int _ghostty_color_scheme_report_encode(
   int scheme,
-  ffi.Pointer<ffi.Char> buf,
+  ffi.Pointer<ffi.Uint8> buf,
   int buf_len,
   ffi.Pointer<ffi.Size> out_written,
 );
 
 Result ghostty_color_scheme_report_encode(
   ColorScheme scheme,
-  ffi.Pointer<ffi.Char> buf,
+  ffi.Pointer<ffi.Uint8> buf,
   int buf_len,
   ffi.Pointer<ffi.Size> out_written,
 ) {
@@ -424,6 +443,9 @@ external int ghostty_color_x11_name_count();
 /// exact supported spellings from rgb.txt; ghostty_color_parse_x11() also
 /// matches them case-insensitively.
 ///
+/// A library built without the color feature returns an empty table, so its
+/// first entry is the terminator and the loop below does nothing.
+///
 /// @code{.c}
 /// for (const ColorX11Entry* e = ghostty_color_x11_names();
 /// e->name != NULL;
@@ -443,35 +465,38 @@ external ffi.Pointer<ColorX11Entry> ghostty_color_x11_names();
 /// Encodes a focus gained (CSI I) or focus lost (CSI O) report into the
 /// provided buffer.
 ///
-/// If the buffer is too small, the function returns GHOSTTY_OUT_OF_SPACE
-/// and writes the required buffer size to @p out_written. The caller can
-/// then retry with a sufficiently sized buffer.
+/// If @p buf is too small, this returns GHOSTTY_OUT_OF_SPACE and sets
+/// @p out_written to the size needed. The buffer may then hold part of the
+/// sequence, which you should discard. To get the size without encoding
+/// anything, pass NULL for @p buf and 0 for @p buf_len.
 ///
 /// @param event The focus event to encode
-/// @param buf Output buffer to write the encoded sequence into (may be NULL)
-/// @param buf_len Size of the output buffer in bytes
-/// @param[out] out_written On success, the number of bytes written. On
-/// GHOSTTY_OUT_OF_SPACE, the required buffer size.
+/// @param buf Buffer to write the sequence into. May be NULL if @p buf_len
+/// is 0.
+/// @param buf_len Size of @p buf in bytes
+/// @param[out] out_written The number of bytes written, or the size needed
+/// if the result is GHOSTTY_OUT_OF_SPACE
 /// @return GHOSTTY_SUCCESS on success, GHOSTTY_OUT_OF_SPACE if the buffer
-/// is too small
+/// is too small, or GHOSTTY_INVALID_VALUE if @p event is not a known
+/// focus event or @p out_written is NULL
 @ffi.Native<
   ffi.Int Function(
     ffi.UnsignedInt,
-    ffi.Pointer<ffi.Char>,
+    ffi.Pointer<ffi.Uint8>,
     ffi.Size,
     ffi.Pointer<ffi.Size>,
   )
 >(symbol: 'ghostty_focus_encode')
 external int _ghostty_focus_encode(
   int event,
-  ffi.Pointer<ffi.Char> buf,
+  ffi.Pointer<ffi.Uint8> buf,
   int buf_len,
   ffi.Pointer<ffi.Size> out_written,
 );
 
 Result ghostty_focus_encode(
   FocusEvent event,
-  ffi.Pointer<ffi.Char> buf,
+  ffi.Pointer<ffi.Uint8> buf,
   int buf_len,
   ffi.Pointer<ffi.Size> out_written,
 ) {
@@ -489,9 +514,9 @@ Result ghostty_focus_encode(
 ///
 /// If an error occurs, the writer may already contain a partial formatted
 /// output. The operation cannot be resumed from that partial output. This
-/// function does not flush or make the caller's destination durable.
+/// function does not flush or make your destination durable.
 ///
-/// @param formatter The formatter handle (must not be NULL)
+/// @param formatter The formatter handle (NULL returns GHOSTTY_INVALID_VALUE)
 /// @param writer Destination writer whose write callback must not be NULL
 /// @return GHOSTTY_SUCCESS on success, GHOSTTY_IO_ERROR if the writer rejects
 /// output, GHOSTTY_LIMIT_EXCEEDED if output accounting overflows, or
@@ -511,18 +536,20 @@ Result ghostty_formatter_format(Formatter formatter, Writer writer) {
 ///
 /// Each call formats the current terminal state. The buffer is allocated
 /// using the provided allocator (or the default allocator if NULL).
-/// The caller is responsible for freeing the returned buffer with
+/// You are responsible for freeing the returned buffer with
 /// ghostty_free(), passing the same allocator (or NULL for the default)
 /// that was used for the allocation.
 /// Empty output returns GHOSTTY_SUCCESS with *out_ptr set to NULL and
 /// *out_len set to zero. This result can be passed to ghostty_free().
 ///
-/// @param formatter The formatter handle (must not be NULL)
+/// @param formatter The formatter handle (NULL returns GHOSTTY_INVALID_VALUE)
 /// @param allocator Pointer to allocator, or NULL to use the default allocator
-/// @param out_ptr Pointer to receive the allocated buffer
-/// @param out_len Pointer to receive the length of the output in bytes
+/// @param out_ptr Pointer to receive the allocated buffer (NULL returns
+/// GHOSTTY_INVALID_VALUE)
+/// @param out_len Pointer to receive the length of the output in bytes (NULL
+/// returns GHOSTTY_INVALID_VALUE)
 /// @return GHOSTTY_SUCCESS on success, GHOSTTY_OUT_OF_MEMORY on allocation
-/// failure
+/// failure, GHOSTTY_INVALID_VALUE if an output pointer is NULL
 ///
 /// @ingroup formatter
 @ffi.Native<
@@ -551,22 +578,36 @@ Result ghostty_formatter_format_alloc(
   );
 }
 
-/// Run the formatter and produce output into the caller-provided buffer.
+/// Run the formatter and produce output into your buffer.
 ///
 /// Each call formats the current terminal state. Pass NULL for buf to
-/// query the required buffer size without writing any output; in that case
-/// out_written receives the required size and the return value is
-/// GHOSTTY_OUT_OF_SPACE.
+/// query the required buffer size without writing any output. out_written
+/// receives the required size and the return value is GHOSTTY_OUT_OF_SPACE.
+///
+/// Empty output needs no space, so that query returns GHOSTTY_SUCCESS with a
+/// size of 0 instead. Handle both results:
+///
+/// @code{.c}
+/// size_t needed = 0;
+/// Result result = ghostty_formatter_format_buf(formatter, NULL, 0, &needed);
+/// if (result == GHOSTTY_SUCCESS) return; // Nothing to format.
+/// if (result != GHOSTTY_OUT_OF_SPACE) return; // A real error.
+///
+/// uint8_t* buf = malloc(needed);
+/// size_t written = 0;
+/// result = ghostty_formatter_format_buf(formatter, buf, needed, &written);
+/// @endcode
 ///
 /// If the buffer is too small, returns GHOSTTY_OUT_OF_SPACE and sets
-/// out_written to the required size. The caller can then retry with a
+/// out_written to the required size. You can then retry with a
 /// larger buffer.
 ///
-/// @param formatter The formatter handle (must not be NULL)
+/// @param formatter The formatter handle (NULL returns GHOSTTY_INVALID_VALUE)
 /// @param buf Pointer to the output buffer, or NULL to query size
 /// @param buf_len Length of the output buffer in bytes
 /// @param out_written Pointer to receive the number of bytes written,
-/// or the required size on failure
+/// or the required size on failure (NULL returns
+/// GHOSTTY_INVALID_VALUE)
 /// @return GHOSTTY_SUCCESS on success, or an error code on failure
 ///
 /// @ingroup formatter
@@ -607,41 +648,124 @@ Result ghostty_formatter_format_buf(
 @ffi.Native<ffi.Void Function(Formatter)>()
 external void ghostty_formatter_free(Formatter formatter);
 
+/// Read the current value of a formatter option.
+///
+/// `out` points to a variable of the type listed on the option. On success
+/// the formatter writes the option's value there.
+///
+/// @code{.c}
+/// bool trim;
+/// ghostty_formatter_get(formatter, GHOSTTY_FORMATTER_OPT_TRIM, &trim);
+/// @endcode
+///
+/// @param formatter The formatter handle (NULL returns GHOSTTY_INVALID_VALUE)
+/// @param option The option to read
+/// @param out Pointer that receives the value (NULL returns GHOSTTY_INVALID_VALUE)
+/// @return GHOSTTY_SUCCESS on success, GHOSTTY_NO_VALUE if the option is
+/// not set (only possible for GHOSTTY_FORMATTER_OPT_SELECTION),
+/// GHOSTTY_INVALID_VALUE if `formatter` or `out` is NULL, or
+/// GHOSTTY_UNSUPPORTED if `option` is not known to this version of
+/// the library
+///
+/// @ingroup formatter
+@ffi.Native<
+  ffi.Int Function(Formatter, ffi.UnsignedInt, ffi.Pointer<ffi.Void>)
+>(symbol: 'ghostty_formatter_get')
+external int _ghostty_formatter_get(
+  Formatter formatter,
+  int option,
+  ffi.Pointer<ffi.Void> out,
+);
+
+Result ghostty_formatter_get(
+  Formatter formatter,
+  FormatterOption option,
+  ffi.Pointer<ffi.Void> out,
+) {
+  return Result.fromValue(_ghostty_formatter_get(formatter, option.value, out));
+}
+
+/// Set a formatter option.
+///
+/// `value` points to the option's new value. Its type is listed on each
+/// FormatterOption. The formatter copies the value, so it only has
+/// to be valid during the call. The change applies to every format call
+/// after this one.
+///
+/// Passing NULL for `value` puts the option back to its default, the same
+/// value a new formatter starts with.
+///
+/// @code{.c}
+/// FormatterFormat emit = GHOSTTY_FORMATTER_FORMAT_HTML;
+/// ghostty_formatter_set(formatter, GHOSTTY_FORMATTER_OPT_EMIT, &emit);
+///
+/// // Later, go back to the default (plain text).
+/// ghostty_formatter_set(formatter, GHOSTTY_FORMATTER_OPT_EMIT, NULL);
+/// @endcode
+///
+/// If the call fails, the option keeps its previous value.
+///
+/// @param formatter The formatter handle (NULL returns GHOSTTY_INVALID_VALUE)
+/// @param option The option to set
+/// @param value Pointer to the new value, or NULL to reset the option to its
+/// default
+/// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if `formatter`
+/// is NULL or the value is not valid for the option (such as an
+/// unknown format, an extras bit with no meaning, or a selection
+/// with a zeroed grid reference), or GHOSTTY_UNSUPPORTED if
+/// `option` is not known to this version of the library
+///
+/// @ingroup formatter
+@ffi.Native<
+  ffi.Int Function(Formatter, ffi.UnsignedInt, ffi.Pointer<ffi.Void>)
+>(symbol: 'ghostty_formatter_set')
+external int _ghostty_formatter_set(
+  Formatter formatter,
+  int option,
+  ffi.Pointer<ffi.Void> value,
+);
+
+Result ghostty_formatter_set(
+  Formatter formatter,
+  FormatterOption option,
+  ffi.Pointer<ffi.Void> value,
+) {
+  return Result.fromValue(
+    _ghostty_formatter_set(formatter, option.value, value),
+  );
+}
+
 /// Create a formatter for a terminal's active screen.
 ///
 /// The terminal must outlive the formatter. The formatter stores a borrowed
 /// reference to the terminal and reads its current state on each format call.
 ///
+/// The new formatter starts with the default for every option, as listed on
+/// FormatterOption. Change them with ghostty_formatter_set().
+///
 /// @param allocator Pointer to allocator, or NULL to use the default allocator
-/// @param formatter Pointer to store the created formatter handle
-/// @param terminal The terminal to format (must not be NULL)
-/// @param options Formatting options
+/// @param formatter Pointer to store the created formatter handle (NULL
+/// returns GHOSTTY_INVALID_VALUE)
+/// @param terminal The terminal to format (NULL returns GHOSTTY_INVALID_VALUE)
 /// @return GHOSTTY_SUCCESS on success, or an error code on failure
 ///
 /// @ingroup formatter
 @ffi.Native<
-  ffi.Int Function(
-    ffi.Pointer<Allocator>,
-    ffi.Pointer<Formatter>,
-    Terminal,
-    FormatterTerminalOptions,
-  )
+  ffi.Int Function(ffi.Pointer<Allocator>, ffi.Pointer<Formatter>, Terminal)
 >(symbol: 'ghostty_formatter_terminal_new')
 external int _ghostty_formatter_terminal_new(
   ffi.Pointer<Allocator> allocator,
   ffi.Pointer<Formatter> formatter,
   Terminal terminal,
-  FormatterTerminalOptions options,
 );
 
 Result ghostty_formatter_terminal_new(
   ffi.Pointer<Allocator> allocator,
   ffi.Pointer<Formatter> formatter,
   Terminal terminal,
-  FormatterTerminalOptions options,
 ) {
   return Result.fromValue(
-    _ghostty_formatter_terminal_new(allocator, formatter, terminal, options),
+    _ghostty_formatter_terminal_new(allocator, formatter, terminal),
   );
 }
 
@@ -651,13 +775,10 @@ Result ghostty_formatter_terminal_new(
 /// ghostty_formatter_format_alloc(). Pass the same allocator that was
 /// used for the allocation, or NULL if the default allocator was used.
 ///
-/// On platforms where the library's internal allocator differs from the
-/// consumer's C runtime (e.g. Windows, where Zig's libc and MSVC's CRT
-/// maintain separate heaps), calling the standard C free() on memory
-/// allocated by the library causes undefined behavior. This function
-/// guarantees the correct allocator is used regardless of platform.
+/// Use this instead of the C `free()`, which can use a different heap than
+/// the library. See @ref memory-buffers for why.
 ///
-/// It is safe to pass a NULL pointer; the call is a no-op in that case.
+/// Passing a NULL `ptr` does nothing.
 ///
 /// @param allocator Pointer to the allocator that was used to allocate the
 /// memory, or NULL if the default allocator was used
@@ -677,7 +798,8 @@ external void ghostty_free(
 
 /// Get the cell from a grid reference.
 ///
-/// @param ref Pointer to the grid reference
+/// @param ref Pointer to the grid reference (NULL returns
+/// GHOSTTY_INVALID_VALUE)
 /// @param[out] out_cell On success, set to the cell at the ref's position (may be NULL)
 /// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if the ref's
 /// node is NULL
@@ -702,18 +824,41 @@ Result ghostty_grid_ref_cell(
 /// position.
 ///
 /// Writes the full grapheme cluster (the cell's primary codepoint followed by
-/// any combining codepoints) into the provided buffer. If the cell has no text,
-/// out_len is set to 0 and GHOSTTY_SUCCESS is returned.
+/// any combining codepoints) into the provided buffer. Both @p buf_len and
+/// @p out_written count codepoints, not bytes.
 ///
-/// If the buffer is too small (or NULL), the function returns
-/// GHOSTTY_OUT_OF_SPACE and writes the required number of codepoints to
-/// out_len. The caller can then retry with a sufficiently sized buffer.
+/// If @p buf is too small, this returns GHOSTTY_OUT_OF_SPACE, sets
+/// @p out_written to the number of codepoints needed, and leaves @p buf
+/// unchanged. To get the count without copying anything, pass NULL for
+/// @p buf and 0 for @p buf_len. A cell with no text returns GHOSTTY_SUCCESS
+/// with @p out_written set to 0.
 ///
-/// @param ref Pointer to the grid reference
-/// @param buf Output buffer of uint32_t codepoints (may be NULL)
-/// @param buf_len Number of uint32_t elements in the buffer
-/// @param[out] out_len On success, the number of codepoints written. On
-/// GHOSTTY_OUT_OF_SPACE, the required buffer size in codepoints.
+/// Most cells hold a single codepoint, so a small fixed buffer usually
+/// works. Fall back to a heap buffer for longer clusters:
+///
+/// @code{.c}
+/// uint32_t stack[8];
+/// uint32_t *codepoints = stack;
+/// size_t count = 0;
+/// Result result = ghostty_grid_ref_graphemes(&ref, stack, 8, &count);
+/// if (result == GHOSTTY_OUT_OF_SPACE) {
+/// codepoints = malloc(count * sizeof(uint32_t));
+/// result = ghostty_grid_ref_graphemes(&ref, codepoints, count, &count);
+/// }
+/// if (result == GHOSTTY_SUCCESS) {
+/// // codepoints[0] through codepoints[count - 1] hold the cluster
+/// }
+/// if (codepoints != stack) free(codepoints);
+/// @endcode
+///
+/// @param ref Pointer to the grid reference (NULL returns
+/// GHOSTTY_INVALID_VALUE)
+/// @param buf Buffer to write the codepoints into. May be NULL if @p buf_len
+/// is 0.
+/// @param buf_len Number of uint32_t elements @p buf can hold
+/// @param[out] out_written The number of codepoints written, or the number
+/// needed if the result is GHOSTTY_OUT_OF_SPACE (NULL returns
+/// GHOSTTY_INVALID_VALUE)
 /// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if the ref's
 /// node is NULL, GHOSTTY_OUT_OF_SPACE if the buffer is too small
 ///
@@ -730,34 +875,51 @@ external int _ghostty_grid_ref_graphemes(
   ffi.Pointer<GridRef> ref,
   ffi.Pointer<ffi.Uint32> buf,
   int buf_len,
-  ffi.Pointer<ffi.Size> out_len,
+  ffi.Pointer<ffi.Size> out_written,
 );
 
 Result ghostty_grid_ref_graphemes(
   ffi.Pointer<GridRef> ref,
   ffi.Pointer<ffi.Uint32> buf,
   int buf_len,
-  ffi.Pointer<ffi.Size> out_len,
+  ffi.Pointer<ffi.Size> out_written,
 ) {
   return Result.fromValue(
-    _ghostty_grid_ref_graphemes(ref, buf, buf_len, out_len),
+    _ghostty_grid_ref_graphemes(ref, buf, buf_len, out_written),
   );
 }
 
 /// Get the hyperlink URI for the cell at the grid reference's position.
 ///
-/// Writes the URI bytes into the provided buffer. If the cell has no
-/// hyperlink, out_len is set to 0 and GHOSTTY_SUCCESS is returned.
+/// Writes the URI bytes into the provided buffer.
 ///
-/// If the buffer is too small (or NULL), the function returns
-/// GHOSTTY_OUT_OF_SPACE and writes the required number of bytes to
-/// out_len. The caller can then retry with a sufficiently sized buffer.
+/// The URI is not NUL-terminated.
 ///
-/// @param ref Pointer to the grid reference
-/// @param buf Output buffer for the URI bytes (may be NULL)
-/// @param buf_len Size of the output buffer in bytes
-/// @param[out] out_len On success, the number of bytes written. On
-/// GHOSTTY_OUT_OF_SPACE, the required buffer size in bytes.
+/// If @p buf is too small, this returns GHOSTTY_OUT_OF_SPACE, sets
+/// @p out_written to the size needed, and leaves @p buf unchanged. To get
+/// the size without copying anything, pass NULL for @p buf and 0 for
+/// @p buf_len. A cell with no hyperlink returns GHOSTTY_SUCCESS with
+/// @p out_written set to 0.
+///
+/// URIs can be long, so asking for the size first is often simplest:
+///
+/// @code{.c}
+/// size_t len = 0;
+/// if (ghostty_grid_ref_hyperlink_uri(&ref, NULL, 0, &len) == GHOSTTY_OUT_OF_SPACE) {
+/// uint8_t *uri = malloc(len);
+/// ghostty_grid_ref_hyperlink_uri(&ref, uri, len, &len);
+/// // uri holds len bytes
+/// free(uri);
+/// }
+/// @endcode
+///
+/// @param ref Pointer to the grid reference (NULL returns
+/// GHOSTTY_INVALID_VALUE)
+/// @param buf Buffer to write the URI into. May be NULL if @p buf_len is 0.
+/// @param buf_len Size of @p buf in bytes
+/// @param[out] out_written The number of bytes written, or the size needed
+/// if the result is GHOSTTY_OUT_OF_SPACE (NULL returns
+/// GHOSTTY_INVALID_VALUE)
 /// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if the ref's
 /// node is NULL, GHOSTTY_OUT_OF_SPACE if the buffer is too small
 ///
@@ -774,23 +936,24 @@ external int _ghostty_grid_ref_hyperlink_uri(
   ffi.Pointer<GridRef> ref,
   ffi.Pointer<ffi.Uint8> buf,
   int buf_len,
-  ffi.Pointer<ffi.Size> out_len,
+  ffi.Pointer<ffi.Size> out_written,
 );
 
 Result ghostty_grid_ref_hyperlink_uri(
   ffi.Pointer<GridRef> ref,
   ffi.Pointer<ffi.Uint8> buf,
   int buf_len,
-  ffi.Pointer<ffi.Size> out_len,
+  ffi.Pointer<ffi.Size> out_written,
 ) {
   return Result.fromValue(
-    _ghostty_grid_ref_hyperlink_uri(ref, buf, buf_len, out_len),
+    _ghostty_grid_ref_hyperlink_uri(ref, buf, buf_len, out_written),
   );
 }
 
 /// Get the row from a grid reference.
 ///
-/// @param ref Pointer to the grid reference
+/// @param ref Pointer to the grid reference (NULL returns
+/// GHOSTTY_INVALID_VALUE)
 /// @param[out] out_row On success, set to the row at the ref's position (may be NULL)
 /// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if the ref's
 /// node is NULL
@@ -813,7 +976,8 @@ Result ghostty_grid_ref_row(
 
 /// Get the style of the cell at the grid reference's position.
 ///
-/// @param ref Pointer to the grid reference
+/// @param ref Pointer to the grid reference (NULL returns
+/// GHOSTTY_INVALID_VALUE)
 /// @param[out] out_style On success, set to the cell's style (may be NULL)
 /// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if the ref's
 /// node is NULL
@@ -840,30 +1004,39 @@ Result ghostty_grid_ref_style(
 /// the encoder's current options. The sequence is written to the provided buffer.
 ///
 /// Not all key events produce output. For example, unmodified modifier keys
-/// typically don't generate escape sequences. Check the out_len parameter to
-/// determine if any data was written.
+/// typically don't generate escape sequences. For those events this returns
+/// GHOSTTY_SUCCESS with @p out_written set to 0.
 ///
-/// If the output buffer is too small, this function returns GHOSTTY_OUT_OF_SPACE
-/// and out_len will contain the required buffer size. The caller can then
-/// allocate a larger buffer and call the function again.
+/// If @p buf is too small, this returns GHOSTTY_OUT_OF_SPACE and sets
+/// @p out_written to the size needed. The buffer may then hold part of the
+/// sequence, which you should discard. To get the size without encoding
+/// anything, pass NULL for @p buf and 0 for @p buf_len. An event with no
+/// output still returns GHOSTTY_SUCCESS in that case, because it needs no
+/// space.
 ///
-/// @param encoder The encoder handle, must not be NULL
-/// @param event The key event to encode, must not be NULL
-/// @param out_buf Buffer to write the encoded sequence to
-/// @param out_buf_size Size of the output buffer in bytes
-/// @param out_len Pointer to store the number of bytes written (may be NULL)
+/// @param encoder The encoder handle (NULL returns GHOSTTY_INVALID_VALUE)
+/// @param event The key event to encode (NULL returns GHOSTTY_INVALID_VALUE)
+/// @param buf Buffer to write the sequence into. May be NULL if @p buf_len
+/// is 0.
+/// @param buf_len Size of @p buf in bytes
+/// @param[out] out_written The number of bytes written, or the size needed
+/// if the result is GHOSTTY_OUT_OF_SPACE. NULL returns GHOSTTY_INVALID_VALUE.
 /// @return GHOSTTY_SUCCESS on success, GHOSTTY_OUT_OF_SPACE if buffer too small, or other error code
 ///
 /// ## Example: Calculate required buffer size
 ///
 /// @code{.c}
-/// // Query the required size with a NULL buffer (always returns OUT_OF_SPACE)
+/// // Query the required size with a NULL buffer
 /// size_t required = 0;
 /// Result result = ghostty_key_encoder_encode(encoder, event, NULL, 0, &required);
+/// if (result == GHOSTTY_SUCCESS) {
+/// // This event produces no output, so there is nothing to send
+/// return;
+/// }
 /// assert(result == GHOSTTY_OUT_OF_SPACE);
 ///
 /// // Allocate buffer of required size
-/// char *buf = malloc(required);
+/// uint8_t *buf = malloc(required);
 ///
 /// // Encode with properly sized buffer
 /// size_t written = 0;
@@ -879,7 +1052,7 @@ Result ghostty_grid_ref_style(
 ///
 /// @code{.c}
 /// // Most escape sequences are short, so a static buffer often suffices
-/// char buf[128];
+/// uint8_t buf[128];
 /// size_t written = 0;
 /// Result result = ghostty_key_encoder_encode(encoder, event, buf, sizeof(buf), &written);
 ///
@@ -888,7 +1061,7 @@ Result ghostty_grid_ref_style(
 /// write(pty_fd, buf, written);
 /// } else if (result == GHOSTTY_OUT_OF_SPACE) {
 /// // Buffer too small, written contains required size
-/// char *dynamic_buf = malloc(written);
+/// uint8_t *dynamic_buf = malloc(written);
 /// result = ghostty_key_encoder_encode(encoder, event, dynamic_buf, written, &written);
 /// assert(result == GHOSTTY_SUCCESS);
 /// write(pty_fd, dynamic_buf, written);
@@ -901,7 +1074,7 @@ Result ghostty_grid_ref_style(
   ffi.Int Function(
     KeyEncoder,
     KeyEvent,
-    ffi.Pointer<ffi.Char>,
+    ffi.Pointer<ffi.Uint8>,
     ffi.Size,
     ffi.Pointer<ffi.Size>,
   )
@@ -909,20 +1082,20 @@ Result ghostty_grid_ref_style(
 external int _ghostty_key_encoder_encode(
   KeyEncoder encoder,
   KeyEvent event,
-  ffi.Pointer<ffi.Char> out_buf,
-  int out_buf_size,
-  ffi.Pointer<ffi.Size> out_len,
+  ffi.Pointer<ffi.Uint8> buf,
+  int buf_len,
+  ffi.Pointer<ffi.Size> out_written,
 );
 
 Result ghostty_key_encoder_encode(
   KeyEncoder encoder,
   KeyEvent event,
-  ffi.Pointer<ffi.Char> out_buf,
-  int out_buf_size,
-  ffi.Pointer<ffi.Size> out_len,
+  ffi.Pointer<ffi.Uint8> buf,
+  int buf_len,
+  ffi.Pointer<ffi.Size> out_written,
 ) {
   return Result.fromValue(
-    _ghostty_key_encoder_encode(encoder, event, out_buf, out_buf_size, out_len),
+    _ghostty_key_encoder_encode(encoder, event, buf, buf_len, out_written),
   );
 }
 
@@ -940,11 +1113,12 @@ external void ghostty_key_encoder_free(KeyEncoder encoder);
 /// Create a new key encoder instance.
 ///
 /// Creates a new key encoder with default options. The encoder can be configured
-/// using ghostty_key_encoder_setopt() and must be freed using
+/// using ghostty_key_encoder_set() and must be freed using
 /// ghostty_key_encoder_free() when no longer needed.
 ///
 /// @param allocator Pointer to the allocator to use for memory management, or NULL to use the default allocator
-/// @param encoder Pointer to store the created encoder handle
+/// @param encoder Pointer to store the created encoder handle (NULL returns
+/// GHOSTTY_INVALID_VALUE)
 /// @return GHOSTTY_SUCCESS on success, or an error code on failure
 ///
 /// @ingroup key
@@ -972,53 +1146,85 @@ Result ghostty_key_encoder_new(
 ///
 /// If you are using a terminal instance, you can set the key encoding
 /// options based on the active terminal state (e.g. legacy vs Kitty mode
-/// and associated flags) with ghostty_key_encoder_setopt_from_terminal().
+/// and associated flags) with ghostty_key_encoder_set_from_terminal().
 ///
-/// A null pointer value does nothing. It does not reset the value to the
-/// default. The setopt call will do nothing.
+/// Passing NULL for `value` resets the option to its default, the same
+/// value a new encoder starts with. Each option's default is listed on
+/// KeyEncoderOption.
 ///
-/// @param encoder The encoder handle, must not be NULL
+/// @code{.c}
+/// bool enabled = true;
+/// ghostty_key_encoder_set(
+/// encoder, GHOSTTY_KEY_ENCODER_OPT_CURSOR_KEY_APPLICATION, &enabled);
+///
+/// // Later, put the option back to its default (false).
+/// ghostty_key_encoder_set(
+/// encoder, GHOSTTY_KEY_ENCODER_OPT_CURSOR_KEY_APPLICATION, NULL);
+/// @endcode
+///
+/// @param encoder The encoder handle (NULL returns GHOSTTY_INVALID_VALUE)
 /// @param option The option to set
-/// @param value Pointer to the value to set (type depends on the option)
+/// @param value Pointer to the value to set (type depends on the option), or
+/// NULL to reset the option to its default
+/// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if `encoder` is
+/// NULL or the value is out of range (such as an unknown
+/// OptionAsAlt), or GHOSTTY_UNSUPPORTED if `option` is not
+/// known to this version of the library
 ///
 /// @ingroup key
 @ffi.Native<
-  ffi.Void Function(KeyEncoder, ffi.UnsignedInt, ffi.Pointer<ffi.Void>)
->(symbol: 'ghostty_key_encoder_setopt')
-external void _ghostty_key_encoder_setopt(
+  ffi.Int Function(KeyEncoder, ffi.UnsignedInt, ffi.Pointer<ffi.Void>)
+>(symbol: 'ghostty_key_encoder_set')
+external int _ghostty_key_encoder_set(
   KeyEncoder encoder,
   int option,
   ffi.Pointer<ffi.Void> value,
 );
 
-void ghostty_key_encoder_setopt(
+Result ghostty_key_encoder_set(
   KeyEncoder encoder,
   KeyEncoderOption option,
   ffi.Pointer<ffi.Void> value,
 ) {
-  return _ghostty_key_encoder_setopt(encoder, option.value, value);
+  return Result.fromValue(
+    _ghostty_key_encoder_set(encoder, option.value, value),
+  );
 }
 
 /// Set encoder options from a terminal's current state.
 ///
 /// Reads the terminal's current modes and flags and applies them to the
 /// encoder's options. This sets cursor key application mode, keypad mode,
-/// alt escape prefix, modifyOtherKeys state, and Kitty keyboard protocol
-/// flags from the terminal state.
+/// backarrow key mode, ignore-keypad-with-numlock, alt escape prefix,
+/// modifyOtherKeys state, and Kitty keyboard protocol flags from the terminal
+/// state.
 ///
 /// Note that the `macos_option_as_alt` option cannot be determined from
 /// terminal state and is reset to `GHOSTTY_OPTION_AS_ALT_FALSE` by this
-/// call. Use ghostty_key_encoder_setopt() to set it afterward if needed.
+/// call. Use ghostty_key_encoder_set() to set it afterward if needed.
 ///
-/// @param encoder The encoder handle, must not be NULL
-/// @param terminal The terminal handle, must not be NULL
+/// @param encoder The encoder handle
+/// @param terminal The terminal handle
+/// @return GHOSTTY_SUCCESS on success, or GHOSTTY_INVALID_VALUE if `encoder`
+/// or `terminal` is NULL. On error the encoder is not changed.
 ///
 /// @ingroup key
-@ffi.Native<ffi.Void Function(KeyEncoder, Terminal)>(isLeaf: true)
-external void ghostty_key_encoder_setopt_from_terminal(
+@ffi.Native<ffi.Int Function(KeyEncoder, Terminal)>(
+  symbol: 'ghostty_key_encoder_set_from_terminal',
+)
+external int _ghostty_key_encoder_set_from_terminal(
   KeyEncoder encoder,
   Terminal terminal,
 );
+
+Result ghostty_key_encoder_set_from_terminal(
+  KeyEncoder encoder,
+  Terminal terminal,
+) {
+  return Result.fromValue(
+    _ghostty_key_encoder_set_from_terminal(encoder, terminal),
+  );
+}
 
 /// Free a key event instance.
 ///
@@ -1033,8 +1239,8 @@ external void ghostty_key_event_free(KeyEvent event);
 
 /// Get the key action (press, release, repeat).
 ///
-/// @param event The key event handle, must not be NULL
-/// @return The key action
+/// @param event The key event handle
+/// @return The key action, or GHOSTTY_KEY_ACTION_RELEASE if `event` is NULL
 ///
 /// @ingroup key
 @ffi.Native<ffi.UnsignedInt Function(KeyEvent)>(
@@ -1049,8 +1255,9 @@ KeyAction ghostty_key_event_get_action(KeyEvent event) {
 
 /// Get whether the key event is part of a composition sequence.
 ///
-/// @param event The key event handle, must not be NULL
-/// @return Whether the key event is part of a composition sequence
+/// @param event The key event handle
+/// @return Whether the key event is part of a composition sequence, or false
+/// if `event` is NULL
 ///
 /// @ingroup key
 @ffi.Native<ffi.Bool Function(KeyEvent)>(isLeaf: true)
@@ -1058,8 +1265,9 @@ external bool ghostty_key_event_get_composing(KeyEvent event);
 
 /// Get the consumed modifiers bitmask.
 ///
-/// @param event The key event handle, must not be NULL
-/// @return The consumed modifiers bitmask
+/// @param event The key event handle
+/// @return The consumed modifiers bitmask, or 0 (no modifiers) if `event` is
+/// NULL
 ///
 /// @ingroup key
 @ffi.Native<Mods Function(KeyEvent)>(isLeaf: true)
@@ -1067,8 +1275,9 @@ external int ghostty_key_event_get_consumed_mods(KeyEvent event);
 
 /// Get the physical key code.
 ///
-/// @param event The key event handle, must not be NULL
-/// @return The physical key code
+/// @param event The key event handle
+/// @return The physical key code, or GHOSTTY_KEY_UNIDENTIFIED if `event` is
+/// NULL
 ///
 /// @ingroup key
 @ffi.Native<ffi.UnsignedInt Function(KeyEvent)>(
@@ -1083,8 +1292,8 @@ Key ghostty_key_event_get_key(KeyEvent event) {
 
 /// Get the modifier keys bitmask.
 ///
-/// @param event The key event handle, must not be NULL
-/// @return The modifier keys bitmask
+/// @param event The key event handle
+/// @return The modifier keys bitmask, or 0 (no modifiers) if `event` is NULL
 ///
 /// @ingroup key
 @ffi.Native<Mods Function(KeyEvent)>(isLeaf: true)
@@ -1092,8 +1301,8 @@ external int ghostty_key_event_get_mods(KeyEvent event);
 
 /// Get the unshifted Unicode codepoint.
 ///
-/// @param event The key event handle, must not be NULL
-/// @return The unshifted Unicode codepoint
+/// @param event The key event handle
+/// @return The unshifted Unicode codepoint, or 0 if `event` is NULL
 ///
 /// @ingroup key
 @ffi.Native<ffi.Uint32 Function(KeyEvent)>(isLeaf: true)
@@ -1101,20 +1310,25 @@ external int ghostty_key_event_get_unshifted_codepoint(KeyEvent event);
 
 /// Get the UTF-8 text generated by the key event.
 ///
-/// The returned pointer is valid until the event is freed or the UTF-8 text is modified.
+/// The event does not copy its text, so the returned string points at the
+/// same bytes that were passed to ghostty_key_event_set_utf8(). It stays
+/// valid while those bytes do, until the event is freed or its text is set
+/// again.
 ///
-/// @param event The key event handle, must not be NULL
-/// @param len Pointer to store the length of the UTF-8 text in bytes (may be NULL)
-/// @return The UTF-8 text (or NULL for empty)
+/// The bytes are not null-terminated. Always use the length:
+///
+/// @code{.c}
+/// String text = ghostty_key_event_get_utf8(event);
+/// printf("%.*s\n", (int)text.len, (const char *)text.ptr);
+/// @endcode
+///
+/// @param event The key event handle
+/// @return The UTF-8 text. If the event has no text or `event` is NULL, the
+/// string has a length of zero.
 ///
 /// @ingroup key
-@ffi.Native<ffi.Pointer<ffi.Char> Function(KeyEvent, ffi.Pointer<ffi.Size>)>(
-  isLeaf: true,
-)
-external ffi.Pointer<ffi.Char> ghostty_key_event_get_utf8(
-  KeyEvent event,
-  ffi.Pointer<ffi.Size> len,
-);
+@ffi.Native<String Function(KeyEvent)>(isLeaf: true)
+external String ghostty_key_event_get_utf8(KeyEvent event);
 
 /// Create a new key event instance.
 ///
@@ -1122,7 +1336,8 @@ external ffi.Pointer<ffi.Char> ghostty_key_event_get_utf8(
 /// ghostty_key_event_free() when no longer needed.
 ///
 /// @param allocator Pointer to the allocator to use for memory management, or NULL to use the default allocator
-/// @param event Pointer to store the created key event handle
+/// @param event Pointer to store the created key event handle (NULL returns
+/// GHOSTTY_INVALID_VALUE)
 /// @return GHOSTTY_SUCCESS on success, or an error code on failure
 ///
 /// @ingroup key
@@ -1143,77 +1358,129 @@ Result ghostty_key_event_new(
 
 /// Set the key action (press, release, repeat).
 ///
-/// @param event The key event handle, must not be NULL
+/// @param event The key event handle
 /// @param action The action to set
+/// @return GHOSTTY_SUCCESS on success, or GHOSTTY_INVALID_VALUE if `event` is
+/// NULL or `action` is not a KeyAction value this version of the
+/// library knows. On error the event is not changed.
 ///
 /// @ingroup key
-@ffi.Native<ffi.Void Function(KeyEvent, ffi.UnsignedInt)>(
+@ffi.Native<ffi.Int Function(KeyEvent, ffi.UnsignedInt)>(
   symbol: 'ghostty_key_event_set_action',
   isLeaf: true,
 )
-external void _ghostty_key_event_set_action(KeyEvent event, int action);
+external int _ghostty_key_event_set_action(KeyEvent event, int action);
 
-void ghostty_key_event_set_action(KeyEvent event, KeyAction action) {
-  return _ghostty_key_event_set_action(event, action.value);
+Result ghostty_key_event_set_action(KeyEvent event, KeyAction action) {
+  return Result.fromValue(_ghostty_key_event_set_action(event, action.value));
 }
 
 /// Set whether the key event is part of a composition sequence.
 ///
-/// @param event The key event handle, must not be NULL
+/// @param event The key event handle
 /// @param composing Whether the key event is part of a composition sequence
+/// @return GHOSTTY_SUCCESS on success, or GHOSTTY_INVALID_VALUE if `event`
+/// is NULL. On error the event is not changed.
 ///
 /// @ingroup key
-@ffi.Native<ffi.Void Function(KeyEvent, ffi.Bool)>(isLeaf: true)
-external void ghostty_key_event_set_composing(KeyEvent event, bool composing);
+@ffi.Native<ffi.Int Function(KeyEvent, ffi.Bool)>(
+  symbol: 'ghostty_key_event_set_composing',
+  isLeaf: true,
+)
+external int _ghostty_key_event_set_composing(KeyEvent event, bool composing);
+
+Result ghostty_key_event_set_composing(KeyEvent event, bool composing) {
+  return Result.fromValue(_ghostty_key_event_set_composing(event, composing));
+}
 
 /// Set the consumed modifiers bitmask.
 ///
-/// @param event The key event handle, must not be NULL
+/// @param event The key event handle
 /// @param consumed_mods The consumed modifiers bitmask to set
+/// @return GHOSTTY_SUCCESS on success, or GHOSTTY_INVALID_VALUE if `event`
+/// is NULL. On error the event is not changed.
 ///
 /// @ingroup key
-@ffi.Native<ffi.Void Function(KeyEvent, Mods)>(isLeaf: true)
-external void ghostty_key_event_set_consumed_mods(
+@ffi.Native<ffi.Int Function(KeyEvent, Mods)>(
+  symbol: 'ghostty_key_event_set_consumed_mods',
+  isLeaf: true,
+)
+external int _ghostty_key_event_set_consumed_mods(
   KeyEvent event,
   int consumed_mods,
 );
 
+Result ghostty_key_event_set_consumed_mods(
+  KeyEvent event,
+  DartGhosttyMods consumed_mods,
+) {
+  return Result.fromValue(
+    _ghostty_key_event_set_consumed_mods(event, consumed_mods),
+  );
+}
+
 /// Set the physical key code.
 ///
-/// @param event The key event handle, must not be NULL
+/// @param event The key event handle
 /// @param key The physical key code to set
+/// @return GHOSTTY_SUCCESS on success, or GHOSTTY_INVALID_VALUE if `event` is
+/// NULL or `key` is not a Key value this version of the
+/// library knows. On error the event is not changed.
 ///
 /// @ingroup key
-@ffi.Native<ffi.Void Function(KeyEvent, ffi.UnsignedInt)>(
+@ffi.Native<ffi.Int Function(KeyEvent, ffi.UnsignedInt)>(
   symbol: 'ghostty_key_event_set_key',
   isLeaf: true,
 )
-external void _ghostty_key_event_set_key(KeyEvent event, int key);
+external int _ghostty_key_event_set_key(KeyEvent event, int key);
 
-void ghostty_key_event_set_key(KeyEvent event, Key key) {
-  return _ghostty_key_event_set_key(event, key.value);
+Result ghostty_key_event_set_key(KeyEvent event, Key key) {
+  return Result.fromValue(_ghostty_key_event_set_key(event, key.value));
 }
 
 /// Set the modifier keys bitmask.
 ///
-/// @param event The key event handle, must not be NULL
+/// @param event The key event handle
 /// @param mods The modifier keys bitmask to set
+/// @return GHOSTTY_SUCCESS on success, or GHOSTTY_INVALID_VALUE if `event`
+/// is NULL. On error the event is not changed.
 ///
 /// @ingroup key
-@ffi.Native<ffi.Void Function(KeyEvent, Mods)>(isLeaf: true)
-external void ghostty_key_event_set_mods(KeyEvent event, int mods);
+@ffi.Native<ffi.Int Function(KeyEvent, Mods)>(
+  symbol: 'ghostty_key_event_set_mods',
+  isLeaf: true,
+)
+external int _ghostty_key_event_set_mods(KeyEvent event, int mods);
+
+Result ghostty_key_event_set_mods(KeyEvent event, DartGhosttyMods mods) {
+  return Result.fromValue(_ghostty_key_event_set_mods(event, mods));
+}
 
 /// Set the unshifted Unicode codepoint.
 ///
-/// @param event The key event handle, must not be NULL
+/// @param event The key event handle
 /// @param codepoint The unshifted Unicode codepoint to set
+/// @return GHOSTTY_SUCCESS on success, or GHOSTTY_INVALID_VALUE if `event`
+/// is NULL. On error the event is not changed.
 ///
 /// @ingroup key
-@ffi.Native<ffi.Void Function(KeyEvent, ffi.Uint32)>(isLeaf: true)
-external void ghostty_key_event_set_unshifted_codepoint(
+@ffi.Native<ffi.Int Function(KeyEvent, ffi.Uint32)>(
+  symbol: 'ghostty_key_event_set_unshifted_codepoint',
+  isLeaf: true,
+)
+external int _ghostty_key_event_set_unshifted_codepoint(
   KeyEvent event,
   int codepoint,
 );
+
+Result ghostty_key_event_set_unshifted_codepoint(
+  KeyEvent event,
+  int codepoint,
+) {
+  return Result.fromValue(
+    _ghostty_key_event_set_unshifted_codepoint(event, codepoint),
+  );
+}
 
 /// Set the UTF-8 text generated by the key for the current keyboard layout.
 ///
@@ -1221,36 +1488,113 @@ external void ghostty_key_event_set_unshifted_codepoint(
 /// The encoder derives modifier sequences from the logical key and mods
 /// bitmask, not from this text. Do not pass C0 control characters
 /// (U+0000-U+001F, U+007F) or platform function key codes (e.g. macOS PUA
-/// U+F700-U+F8FF); pass NULL instead and let the encoder use the logical key.
+/// U+F700-U+F8FF). For those keys, pass an empty string and the encoder will
+/// use the logical key instead.
 ///
-/// The key event does NOT take ownership of the text pointer. The caller
-/// must ensure the string remains valid for the lifetime needed by the event.
+/// A string with a length of zero clears the text. The library does not read
+/// its pointer, so the pointer may be NULL.
 ///
-/// @param event The key event handle, must not be NULL
-/// @param utf8 The UTF-8 text to set (or NULL for empty)
-/// @param len Length of the UTF-8 text in bytes
+/// The key event does not copy the text. The bytes must stay valid until the
+/// event is freed or its text is set again. String literals and buffers that
+/// outlive the event are both fine.
+///
+/// @code{.c}
+/// // Set the text for a key that produced "a".
+/// const char *text = "a";
+/// String utf8 = {
+/// .ptr = (const uint8_t *)text,
+/// .len = strlen(text),
+/// };
+/// Result result = ghostty_key_event_set_utf8(event, utf8);
+///
+/// // Clear the text, for example for a function key.
+/// result = ghostty_key_event_set_utf8(event, (String){0});
+/// @endcode
+///
+/// @param event The key event handle
+/// @param utf8 The UTF-8 text to set. It does not need to be null-terminated.
+/// @return GHOSTTY_SUCCESS on success, or GHOSTTY_INVALID_VALUE if `event`
+/// is NULL. On error the event is not changed.
 ///
 /// @ingroup key
-@ffi.Native<ffi.Void Function(KeyEvent, ffi.Pointer<ffi.Char>, ffi.Size)>(
+@ffi.Native<ffi.Int Function(KeyEvent, String)>(
+  symbol: 'ghostty_key_event_set_utf8',
   isLeaf: true,
 )
-external void ghostty_key_event_set_utf8(
-  KeyEvent event,
-  ffi.Pointer<ffi.Char> utf8,
-  int len,
+external int _ghostty_key_event_set_utf8(KeyEvent event, String utf8);
+
+Result ghostty_key_event_set_utf8(KeyEvent event, String utf8) {
+  return Result.fromValue(_ghostty_key_event_set_utf8(event, utf8));
+}
+
+/// Advance playing animations and get the time of the next frame.
+///
+/// Every playing animation moves to the frame that is due at `now_ms`.
+/// An animation moves forward at most one frame per call. If calls
+/// arrive late, playback slows down rather than skipping frames.
+///
+/// Images that moved to a new frame get a new
+/// @ref GHOSTTY_KITTY_GRAPHICS_IMAGE_DATA_GENERATION, and their
+/// @ref GHOSTTY_KITTY_GRAPHICS_IMAGE_DATA_PIXELS returns the new frame's pixels.
+///
+/// Time is measured in milliseconds on a clock you choose, such as the
+/// time since your application started. The clock must only move
+/// forward, and you must keep using the same clock with the same
+/// starting point for as long as the terminal exists. The time written
+/// to `next_ms` uses the same clock.
+///
+/// This call changes the image storage. Like ghostty_terminal_vt_write(),
+/// it invalidates any @ref KittyGraphicsImage handles and image
+/// data pointers you are holding, so look images up again afterwards.
+/// The @ref KittyGraphics handle itself stays valid.
+///
+/// Call this once each time you prepare a frame to draw, not in a loop.
+/// @ref guide-images-animation explains how to
+/// schedule redraws with the returned time and includes an example.
+///
+/// @param graphics The kitty graphics handle (NULL returns GHOSTTY_INVALID_VALUE)
+/// @param now_ms The current time in milliseconds
+/// @param[out] next_ms Set to the time the next frame is due, in
+/// milliseconds on the same clock as `now_ms`. Only written when the
+/// function returns GHOSTTY_SUCCESS.
+/// @return GHOSTTY_SUCCESS if an animation is playing and `next_ms` was
+/// set, GHOSTTY_NO_VALUE if nothing is playing, GHOSTTY_UNSUPPORTED if
+/// Kitty graphics are disabled at build time, GHOSTTY_INVALID_VALUE if
+/// `next_ms` is NULL
+///
+/// @ingroup kitty_graphics
+@ffi.Native<
+  ffi.Int Function(KittyGraphics, ffi.Uint64, ffi.Pointer<ffi.Uint64>)
+>(symbol: 'ghostty_kitty_graphics_animation_tick')
+external int _ghostty_kitty_graphics_animation_tick(
+  KittyGraphics graphics,
+  int now_ms,
+  ffi.Pointer<ffi.Uint64> next_ms,
 );
+
+Result ghostty_kitty_graphics_animation_tick(
+  KittyGraphics graphics,
+  int now_ms,
+  ffi.Pointer<ffi.Uint64> next_ms,
+) {
+  return Result.fromValue(
+    _ghostty_kitty_graphics_animation_tick(graphics, now_ms, next_ms),
+  );
+}
 
 /// Get data from a kitty graphics storage instance.
 ///
 /// The output pointer must be of the appropriate type for the requested
 /// data kind.
 ///
-/// Returns GHOSTTY_NO_VALUE when Kitty graphics are disabled at build time.
+/// Returns GHOSTTY_UNSUPPORTED when Kitty graphics are disabled at build time.
 ///
-/// @param graphics The kitty graphics handle
+/// @param graphics The kitty graphics handle (NULL returns GHOSTTY_INVALID_VALUE)
 /// @param data The type of data to extract
 /// @param[out] out Pointer to store the extracted data
-/// @return GHOSTTY_SUCCESS on success
+/// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if `out` is
+/// NULL, or GHOSTTY_UNSUPPORTED if `data` is not known to this version
+/// of the library or Kitty graphics are disabled at build time
 ///
 /// @ingroup kitty_graphics
 @ffi.Native<
@@ -1277,7 +1621,7 @@ Result ghostty_kitty_graphics_get(
 /// Returns NULL if no image with the given ID exists or if Kitty graphics
 /// are disabled at build time.
 ///
-/// @param graphics The kitty graphics handle
+/// @param graphics The kitty graphics handle (NULL returns NULL)
 /// @param image_id The image ID to look up
 /// @return An opaque image handle, or NULL if not found
 ///
@@ -1296,7 +1640,9 @@ external KittyGraphicsImage ghostty_kitty_graphics_image(
 /// @param image The image handle (NULL returns GHOSTTY_INVALID_VALUE)
 /// @param data The data kind to query
 /// @param[out] out Pointer to receive the queried value
-/// @return GHOSTTY_SUCCESS on success
+/// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if `out` is
+/// NULL, or GHOSTTY_UNSUPPORTED if `data` is not known to this version
+/// of the library or Kitty graphics are disabled at build time
 ///
 /// @ingroup kitty_graphics
 @ffi.Native<
@@ -1320,9 +1666,11 @@ Result ghostty_kitty_graphics_image_get(
 
 /// Get multiple data fields from a Kitty graphics image in a single call.
 ///
-/// This is an optimization over calling ghostty_kitty_graphics_image_get()
-/// repeatedly, particularly useful in environments with high per-call
-/// overhead such as FFI or Cgo.
+/// Use this when each call into the library is expensive, for example from
+/// WebAssembly or from another language through its foreign function
+/// interface. It reads every key in one call. From C in the same process it
+/// costs the same as calling ghostty_kitty_graphics_image_get() once per key,
+/// so use whichever reads better.
 ///
 /// Each element in the keys array specifies a data kind, and the
 /// corresponding element in the values array receives the result.
@@ -1340,7 +1688,9 @@ Result ghostty_kitty_graphics_image_get(
 /// documented output type)
 /// @param[out] out_written On return, receives the number of values
 /// successfully written (may be NULL)
-/// @return GHOSTTY_SUCCESS if all queries succeed
+/// @return GHOSTTY_SUCCESS if every key succeeds. Otherwise the result of the
+/// first key that failed, for example GHOSTTY_UNSUPPORTED for a key
+/// that is not known to this version of the library.
 ///
 /// @ingroup kitty_graphics
 @ffi.Native<
@@ -1386,8 +1736,10 @@ Result ghostty_kitty_graphics_image_get_multi(
 /// @param iterator The iterator handle (NULL returns GHOSTTY_INVALID_VALUE)
 /// @param data The data kind to query
 /// @param[out] out Pointer to receive the queried value
-/// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if the
-/// iterator is NULL or not positioned on a placement
+/// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if the iterator is
+/// NULL or not positioned on a placement or `out` is NULL, or
+/// GHOSTTY_UNSUPPORTED if `data` is not known to this version of the
+/// library
 ///
 /// @ingroup kitty_graphics
 @ffi.Native<
@@ -1415,9 +1767,11 @@ Result ghostty_kitty_graphics_placement_get(
 
 /// Get multiple data fields from the current placement in a single call.
 ///
-/// This is an optimization over calling ghostty_kitty_graphics_placement_get()
-/// repeatedly, particularly useful in environments with high per-call
-/// overhead such as FFI or Cgo.
+/// Use this when each call into the library is expensive, for example from
+/// WebAssembly or from another language through its foreign function
+/// interface. It reads every key in one call. From C in the same process it
+/// costs the same as calling ghostty_kitty_graphics_placement_get() once per
+/// key, so use whichever reads better.
 ///
 /// Each element in the keys array specifies a data kind, and the
 /// corresponding element in the values array receives the result.
@@ -1435,7 +1789,9 @@ Result ghostty_kitty_graphics_placement_get(
 /// documented output type)
 /// @param[out] out_written On return, receives the number of values
 /// successfully written (may be NULL)
-/// @return GHOSTTY_SUCCESS if all queries succeed
+/// @return GHOSTTY_SUCCESS if every key succeeds. Otherwise the result of the
+/// first key that failed, for example GHOSTTY_UNSUPPORTED for a key
+/// that is not known to this version of the library.
 ///
 /// @ingroup kitty_graphics
 @ffi.Native<
@@ -1485,9 +1841,9 @@ Result ghostty_kitty_graphics_placement_get_multi(
 /// @param terminal The terminal handle
 /// @param[out] out_cols On success, receives the number of columns
 /// @param[out] out_rows On success, receives the number of rows
-/// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if any handle
-/// is NULL or the iterator is not positioned, GHOSTTY_NO_VALUE when
-/// Kitty graphics are disabled
+/// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if any handle or output pointer
+/// is NULL or the iterator is not positioned, GHOSTTY_UNSUPPORTED
+/// when Kitty graphics are disabled at build time
 ///
 /// @ingroup kitty_graphics
 @ffi.Native<
@@ -1544,7 +1900,7 @@ external void ghostty_kitty_graphics_placement_iterator_free(
 /// @param allocator Pointer to allocator, or NULL to use the default allocator
 /// @param[out] out_iterator On success, receives the created iterator handle
 /// @return GHOSTTY_SUCCESS on success, GHOSTTY_OUT_OF_MEMORY on allocation
-/// failure
+/// failure, GHOSTTY_INVALID_VALUE if @p out_iterator is NULL
 ///
 /// @ingroup kitty_graphics
 @ffi.Native<
@@ -1569,18 +1925,19 @@ Result ghostty_kitty_graphics_placement_iterator_new(
 
 /// Set an option on a placement iterator.
 ///
-/// Use GHOSTTY_KITTY_GRAPHICS_PLACEMENT_ITERATOR_OPTION_LAYER with a
-/// KittyPlacementLayer value to filter placements by z-layer.
-/// The filter is applied during iteration: ghostty_kitty_graphics_placement_next()
-/// will skip placements that do not match the configured layer.
-///
-/// The default layer is GHOSTTY_KITTY_PLACEMENT_LAYER_ALL (no filtering).
+/// Use GHOSTTY_KITTY_GRAPHICS_PLACEMENT_ITERATOR_OPT_LAYER to visit only
+/// the placements in some layers. ghostty_kitty_graphics_placement_next()
+/// then skips every placement outside those layers. By default, the
+/// iterator visits every placement.
 ///
 /// @param iterator The iterator handle (NULL returns GHOSTTY_INVALID_VALUE)
 /// @param option The option to set
-/// @param value Pointer to the value (type depends on option; NULL returns
-/// GHOSTTY_INVALID_VALUE)
-/// @return GHOSTTY_SUCCESS on success
+/// @param value Pointer to the value. Its type depends on the option. NULL
+/// resets the option to its default.
+/// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if the value is
+/// out of range, or GHOSTTY_UNSUPPORTED if `option` is not known to
+/// this version of the library or Kitty graphics are disabled at
+/// build time
 ///
 /// @ingroup kitty_graphics
 @ffi.Native<
@@ -1636,9 +1993,9 @@ external bool ghostty_kitty_graphics_placement_next(
 /// @param terminal The terminal handle
 /// @param[out] out_width On success, receives the width in pixels
 /// @param[out] out_height On success, receives the height in pixels
-/// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if any handle
-/// is NULL or the iterator is not positioned, GHOSTTY_NO_VALUE when
-/// Kitty graphics are disabled
+/// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if any handle or output pointer
+/// is NULL or the iterator is not positioned, GHOSTTY_UNSUPPORTED
+/// when Kitty graphics are disabled at build time
 ///
 /// @ingroup kitty_graphics
 @ffi.Native<
@@ -1682,14 +2039,15 @@ Result ghostty_kitty_graphics_placement_pixel_size(
 /// cell/pixel geometry to calculate the bounding rectangle. Virtual
 /// placements (unicode placeholders) return GHOSTTY_NO_VALUE.
 ///
-/// @param terminal The terminal handle
-/// @param image The image handle for this placement's image
 /// @param iterator The placement iterator positioned on a placement
+/// @param image The image handle for this placement's image
+/// @param terminal The terminal handle
 /// @param[out] out_selection On success, receives the bounding rectangle
 /// as a selection with rectangle=true
-/// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if any handle
+/// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if any handle or output pointer
 /// is NULL or the iterator is not positioned, GHOSTTY_NO_VALUE for
-/// virtual placements or when Kitty graphics are disabled
+/// virtual placements, GHOSTTY_UNSUPPORTED when Kitty graphics are
+/// disabled at build time
 ///
 /// @ingroup kitty_graphics
 @ffi.Native<
@@ -1723,21 +2081,30 @@ Result ghostty_kitty_graphics_placement_rect(
   );
 }
 
-/// Get all rendering geometry for a placement in a single call.
+/// Get all of the geometry of the current placement in one call.
 ///
-/// Combines pixel size, grid size, viewport position, and source
-/// rectangle into one struct. Initialize with
-/// GHOSTTY_INIT_SIZED(KittyGraphicsPlacementRenderInfo).
+/// This fills in a KittyGraphicsPlacementRenderInfo with the pixel
+/// size, grid size, viewport position and source rectangle. Set its
+/// `size` with GHOSTTY_INIT_SIZED first.
 ///
-/// When viewport_visible is false, the placement is fully off-screen
-/// or is a virtual placement; viewport_col and viewport_row may
-/// contain meaningless values in that case.
+/// This is for inspecting the storage. To draw, use the render state's
+/// image list instead. It gives the same values for every image on
+/// screen, including virtual placements and placements relative to them.
+/// If you draw from both, images are drawn twice. See
+/// @ref guide-images-drawing.
 ///
-/// @param iterator The iterator positioned on a placement
-/// @param image The image handle for this placement's image
-/// @param terminal The terminal handle
-/// @param[out] out_info Pointer to receive the rendering geometry
-/// @return GHOSTTY_SUCCESS on success
+/// The call succeeds even when the placement isn't in the viewport.
+/// Check `viewport_visible` before using `viewport_col` and
+/// `viewport_row`.
+///
+/// @param iterator The placement iterator, moved to a placement
+/// @param image The image of this placement
+/// @param terminal The terminal the storage belongs to
+/// @param[out] out_info Receives the geometry
+/// @return GHOSTTY_SUCCESS on success. GHOSTTY_INVALID_VALUE if any handle or output pointer or `out_info` is NULL, the iterator is not on a
+/// placement, or `out_info->size` is too small.
+/// GHOSTTY_UNSUPPORTED if Kitty graphics are disabled at build
+/// time.
 ///
 /// @ingroup kitty_graphics
 @ffi.Native<
@@ -1784,8 +2151,7 @@ Result ghostty_kitty_graphics_placement_render_info(
 /// @param[out] out_y Source rect y origin in pixels
 /// @param[out] out_width Source rect width in pixels
 /// @param[out] out_height Source rect height in pixels
-/// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if any
-/// handle is NULL or the iterator is not positioned
+/// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if any handle or output pointer is NULL or the iterator is not positioned
 ///
 /// @ingroup kitty_graphics
 @ffi.Native<
@@ -1827,37 +2193,33 @@ Result ghostty_kitty_graphics_placement_source_rect(
   );
 }
 
-/// Get the viewport-relative grid position of the current placement.
+/// Get the top-left cell of the current placement, relative to the
+/// viewport.
 ///
-/// Converts the placement's internal pin to viewport-relative column and
-/// row coordinates. The returned coordinates represent the top-left
-/// corner of the placement in the viewport's grid coordinate space.
+/// This is for inspecting the storage. To draw, use the render state's
+/// image list instead. It positions every image on screen, including
+/// virtual placements and placements relative to them, and covers
+/// overscan rows. If you draw from both, images are drawn twice. See
+/// @ref guide-images-drawing.
 ///
-/// The row value can be negative when the placement's origin has
-/// scrolled above the top of the viewport. For example, a 4-row
-/// image that has scrolled up by 2 rows returns row=-2, meaning
-/// its top 2 rows are above the visible area but its bottom 2 rows
-/// are still on screen. Embedders should use these coordinates
-/// directly when computing the destination rectangle for rendering;
-/// the embedder is responsible for clipping the portion of the image
-/// that falls outside the viewport.
+/// The row is negative when the top of the placement scrolled above the
+/// viewport. For example, an image 4 rows tall that scrolled up by 2
+/// rows has a row of -2. Its top 2 rows are above the viewport and its
+/// bottom 2 rows are still visible.
 ///
-/// Returns GHOSTTY_SUCCESS for any placement that is at least
-/// partially visible in the viewport. Returns GHOSTTY_NO_VALUE when
-/// the placement is completely outside the viewport (its bottom edge
-/// is above the viewport or its top edge is at or below the last
-/// viewport row), or when the placement is a virtual (unicode
-/// placeholder) placement.
-///
-/// @param iterator The placement iterator positioned on a placement
-/// @param image The image handle for this placement's image
-/// @param terminal The terminal handle
-/// @param[out] out_col On success, receives the viewport-relative column
-/// @param[out] out_row On success, receives the viewport-relative row
-/// (may be negative for partially visible placements)
-/// @return GHOSTTY_SUCCESS on success, GHOSTTY_NO_VALUE if fully
-/// off-screen or virtual, GHOSTTY_INVALID_VALUE if any handle
-/// is NULL or the iterator is not positioned
+/// @param iterator The placement iterator, moved to a placement
+/// @param image The image of this placement
+/// @param terminal The terminal the storage belongs to
+/// @param[out] out_col On success, receives the column
+/// @param[out] out_row On success, receives the row, which can be
+/// negative
+/// @return GHOSTTY_SUCCESS if any part of the placement is in the
+/// viewport. GHOSTTY_NO_VALUE if it is entirely outside the
+/// viewport or if it is a virtual placement or relative to one.
+/// GHOSTTY_UNSUPPORTED if Kitty graphics are disabled at build
+/// time.
+/// GHOSTTY_INVALID_VALUE if any handle or output pointer is NULL or the iterator is
+/// not on a placement.
 ///
 /// @ingroup kitty_graphics
 @ffi.Native<
@@ -1902,23 +2264,29 @@ Result ghostty_kitty_graphics_placement_viewport_pos(
 /// - DEC private mode: CSI ? Ps1 ; Ps2 $ y
 /// - ANSI mode:        CSI Ps1 ; Ps2 $ y
 ///
-/// If the buffer is too small, the function returns GHOSTTY_OUT_OF_SPACE
-/// and writes the required buffer size to @p out_written. The caller can
-/// then retry with a sufficiently sized buffer.
+/// If @p buf is too small, this returns GHOSTTY_OUT_OF_SPACE and sets
+/// @p out_written to the size needed. The buffer may then hold part of the
+/// sequence, which you should discard. To get the size without encoding
+/// anything, pass NULL for @p buf and 0 for @p buf_len.
+///
+/// @snippet c-vt-modes/src/main.c modes-decrpm
+///
+/// Full program: @ref c-vt-modes/src/main.c
 ///
 /// @param mode The mode identifying the mode to report on
 /// @param state The report state for this mode
-/// @param buf Output buffer to write the encoded sequence into (may be NULL)
-/// @param buf_len Size of the output buffer in bytes
-/// @param[out] out_written On success, the number of bytes written. On
-/// GHOSTTY_OUT_OF_SPACE, the required buffer size.
+/// @param buf Buffer to write the sequence into. May be NULL if @p buf_len
+/// is 0.
+/// @param buf_len Size of @p buf in bytes
+/// @param[out] out_written The number of bytes written, or the size needed
+/// if the result is GHOSTTY_OUT_OF_SPACE
 /// @return GHOSTTY_SUCCESS on success, GHOSTTY_OUT_OF_SPACE if the buffer
-/// is too small
+/// is too small, or GHOSTTY_INVALID_VALUE if @p out_written is NULL
 @ffi.Native<
   ffi.Int Function(
     Mode,
     ffi.UnsignedInt,
-    ffi.Pointer<ffi.Char>,
+    ffi.Pointer<ffi.Uint8>,
     ffi.Size,
     ffi.Pointer<ffi.Size>,
   )
@@ -1926,7 +2294,7 @@ Result ghostty_kitty_graphics_placement_viewport_pos(
 external int _ghostty_mode_report_encode(
   int mode,
   int state,
-  ffi.Pointer<ffi.Char> buf,
+  ffi.Pointer<ffi.Uint8> buf,
   int buf_len,
   ffi.Pointer<ffi.Size> out_written,
 );
@@ -1934,7 +2302,7 @@ external int _ghostty_mode_report_encode(
 Result ghostty_mode_report_encode(
   DartGhosttyMode mode,
   ModeReportState state,
-  ffi.Pointer<ffi.Char> buf,
+  ffi.Pointer<ffi.Uint8> buf,
   int buf_len,
   ffi.Pointer<ffi.Size> out_written,
 ) {
@@ -1946,16 +2314,34 @@ Result ghostty_mode_report_encode(
 /// Encode a mouse event into a terminal escape sequence.
 ///
 /// Not all mouse events produce output. In such cases this returns
-/// GHOSTTY_SUCCESS with out_len set to 0.
+/// GHOSTTY_SUCCESS with @p out_written set to 0.
 ///
-/// If the output buffer is too small, this returns GHOSTTY_OUT_OF_SPACE
-/// and out_len contains the required size.
+/// If @p buf is too small, this returns GHOSTTY_OUT_OF_SPACE and sets
+/// @p out_written to the size needed. The buffer may then hold part of the
+/// sequence, which you should discard. To get the size without encoding
+/// anything, pass NULL for @p buf and 0 for @p buf_len. An event with no
+/// output still returns GHOSTTY_SUCCESS in that case, because it needs no
+/// space.
 ///
-/// @param encoder The encoder handle, must not be NULL
-/// @param event The mouse event to encode, must not be NULL
-/// @param out_buf Buffer to write encoded bytes to, or NULL to query required size
-/// @param out_buf_size Size of out_buf in bytes
-/// @param out_len Pointer to store bytes written (or required bytes on failure)
+/// A 128-byte buffer is enough for typical events:
+///
+/// @code{.c}
+/// uint8_t buf[128];
+/// size_t written = 0;
+/// if (ghostty_mouse_encoder_encode(encoder, event, buf, sizeof(buf),
+/// &written) == GHOSTTY_SUCCESS &&
+/// written > 0) {
+/// write(pty_fd, buf, written);
+/// }
+/// @endcode
+///
+/// @param encoder The encoder handle (NULL returns GHOSTTY_INVALID_VALUE)
+/// @param event The mouse event to encode (NULL returns GHOSTTY_INVALID_VALUE)
+/// @param buf Buffer to write the sequence into. May be NULL if @p buf_len
+/// is 0.
+/// @param buf_len Size of @p buf in bytes
+/// @param[out] out_written The number of bytes written, or the size needed
+/// if the result is GHOSTTY_OUT_OF_SPACE. NULL returns GHOSTTY_INVALID_VALUE.
 /// @return GHOSTTY_SUCCESS on success, GHOSTTY_OUT_OF_SPACE if buffer is too small,
 /// or another error code
 ///
@@ -1964,7 +2350,7 @@ Result ghostty_mode_report_encode(
   ffi.Int Function(
     MouseEncoder,
     MouseEvent,
-    ffi.Pointer<ffi.Char>,
+    ffi.Pointer<ffi.Uint8>,
     ffi.Size,
     ffi.Pointer<ffi.Size>,
   )
@@ -1972,26 +2358,20 @@ Result ghostty_mode_report_encode(
 external int _ghostty_mouse_encoder_encode(
   MouseEncoder encoder,
   MouseEvent event,
-  ffi.Pointer<ffi.Char> out_buf,
-  int out_buf_size,
-  ffi.Pointer<ffi.Size> out_len,
+  ffi.Pointer<ffi.Uint8> buf,
+  int buf_len,
+  ffi.Pointer<ffi.Size> out_written,
 );
 
 Result ghostty_mouse_encoder_encode(
   MouseEncoder encoder,
   MouseEvent event,
-  ffi.Pointer<ffi.Char> out_buf,
-  int out_buf_size,
-  ffi.Pointer<ffi.Size> out_len,
+  ffi.Pointer<ffi.Uint8> buf,
+  int buf_len,
+  ffi.Pointer<ffi.Size> out_written,
 ) {
   return Result.fromValue(
-    _ghostty_mouse_encoder_encode(
-      encoder,
-      event,
-      out_buf,
-      out_buf_size,
-      out_len,
-    ),
+    _ghostty_mouse_encoder_encode(encoder, event, buf, buf_len, out_written),
   );
 }
 
@@ -2006,7 +2386,8 @@ external void ghostty_mouse_encoder_free(MouseEncoder encoder);
 /// Create a new mouse encoder instance.
 ///
 /// @param allocator Pointer to allocator, or NULL to use the default allocator
-/// @param encoder Pointer to store the created encoder handle
+/// @param encoder Pointer to store the created encoder handle (NULL returns
+/// GHOSTTY_INVALID_VALUE)
 /// @return GHOSTTY_SUCCESS on success, or an error code on failure
 ///
 /// @ingroup mouse
@@ -2029,62 +2410,109 @@ Result ghostty_mouse_encoder_new(
 ///
 /// This clears motion deduplication state (last tracked cell).
 ///
-/// @param encoder The encoder handle (may be NULL)
+/// @param encoder The encoder handle
+/// @return GHOSTTY_SUCCESS on success, or GHOSTTY_INVALID_VALUE if `encoder`
+/// is NULL.
 ///
 /// @ingroup mouse
-@ffi.Native<ffi.Void Function(MouseEncoder)>()
-external void ghostty_mouse_encoder_reset(MouseEncoder encoder);
+@ffi.Native<ffi.Int Function(MouseEncoder)>(
+  symbol: 'ghostty_mouse_encoder_reset',
+)
+external int _ghostty_mouse_encoder_reset(MouseEncoder encoder);
+
+Result ghostty_mouse_encoder_reset(MouseEncoder encoder) {
+  return Result.fromValue(_ghostty_mouse_encoder_reset(encoder));
+}
 
 /// Set an option on the mouse encoder.
 ///
-/// A null pointer value does nothing. It does not reset to defaults.
+/// Passing NULL for `value` resets the option to its default, the same
+/// value a new encoder starts with. Each option's default is listed on
+/// MouseEncoderOption.
 ///
-/// @param encoder The encoder handle, must not be NULL
+/// @code{.c}
+/// MouseFormat format = GHOSTTY_MOUSE_FORMAT_SGR;
+/// Result result = ghostty_mouse_encoder_set(
+/// encoder, GHOSTTY_MOUSE_ENCODER_OPT_FORMAT, &format);
+/// @endcode
+///
+/// @param encoder The encoder handle (NULL returns GHOSTTY_INVALID_VALUE)
 /// @param option The option to set
-/// @param value Pointer to option value (type depends on option)
+/// @param value Pointer to option value (type depends on option), or NULL to
+/// reset the option to its default
+/// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if `encoder` is
+/// NULL or the value is not valid (an unknown tracking mode or
+/// format, or a size that is too small or has a zero cell
+/// dimension), or GHOSTTY_UNSUPPORTED if `option` is not known to
+/// this version of the library
 ///
 /// @ingroup mouse
 @ffi.Native<
-  ffi.Void Function(MouseEncoder, ffi.UnsignedInt, ffi.Pointer<ffi.Void>)
->(symbol: 'ghostty_mouse_encoder_setopt')
-external void _ghostty_mouse_encoder_setopt(
+  ffi.Int Function(MouseEncoder, ffi.UnsignedInt, ffi.Pointer<ffi.Void>)
+>(symbol: 'ghostty_mouse_encoder_set')
+external int _ghostty_mouse_encoder_set(
   MouseEncoder encoder,
   int option,
   ffi.Pointer<ffi.Void> value,
 );
 
-void ghostty_mouse_encoder_setopt(
+Result ghostty_mouse_encoder_set(
   MouseEncoder encoder,
   MouseEncoderOption option,
   ffi.Pointer<ffi.Void> value,
 ) {
-  return _ghostty_mouse_encoder_setopt(encoder, option.value, value);
+  return Result.fromValue(
+    _ghostty_mouse_encoder_set(encoder, option.value, value),
+  );
 }
 
 /// Set encoder options from a terminal's current state.
 ///
 /// This sets tracking mode and output format from terminal state.
+/// It also clears the last-cell state, as ghostty_mouse_encoder_reset() does,
+/// so the next motion event isn't dropped as a repeat of the last cell.
 /// It does not modify size or any-button state.
 ///
-/// @param encoder The encoder handle, must not be NULL
-/// @param terminal The terminal handle, must not be NULL
+/// @param encoder The encoder handle
+/// @param terminal The terminal handle
+/// @return GHOSTTY_SUCCESS on success, or GHOSTTY_INVALID_VALUE if `encoder`
+/// or `terminal` is NULL. On error the encoder is not changed.
 ///
 /// @ingroup mouse
-@ffi.Native<ffi.Void Function(MouseEncoder, Terminal)>()
-external void ghostty_mouse_encoder_setopt_from_terminal(
+@ffi.Native<ffi.Int Function(MouseEncoder, Terminal)>(
+  symbol: 'ghostty_mouse_encoder_set_from_terminal',
+)
+external int _ghostty_mouse_encoder_set_from_terminal(
   MouseEncoder encoder,
   Terminal terminal,
 );
+
+Result ghostty_mouse_encoder_set_from_terminal(
+  MouseEncoder encoder,
+  Terminal terminal,
+) {
+  return Result.fromValue(
+    _ghostty_mouse_encoder_set_from_terminal(encoder, terminal),
+  );
+}
 
 /// Clear the event button.
 ///
 /// This sets the event button to "none".
 ///
-/// @param event The event handle, must not be NULL
+/// @param event The event handle
+/// @return GHOSTTY_SUCCESS on success, or GHOSTTY_INVALID_VALUE if `event`
+/// is NULL. On error the event is not changed.
 ///
 /// @ingroup mouse
-@ffi.Native<ffi.Void Function(MouseEvent)>()
-external void ghostty_mouse_event_clear_button(MouseEvent event);
+@ffi.Native<ffi.Int Function(MouseEvent)>(
+  symbol: 'ghostty_mouse_event_clear_button',
+)
+external int _ghostty_mouse_event_clear_button(MouseEvent event);
+
+Result ghostty_mouse_event_clear_button(MouseEvent event) {
+  return Result.fromValue(_ghostty_mouse_event_clear_button(event));
+}
 
 /// Free a mouse event instance.
 ///
@@ -2096,8 +2524,8 @@ external void ghostty_mouse_event_free(MouseEvent event);
 
 /// Get the event action.
 ///
-/// @param event The event handle, must not be NULL
-/// @return The event action
+/// @param event The event handle
+/// @return The event action, or GHOSTTY_MOUSE_ACTION_PRESS if `event` is NULL
 ///
 /// @ingroup mouse
 @ffi.Native<ffi.UnsignedInt Function(MouseEvent)>(
@@ -2111,21 +2539,52 @@ MouseAction ghostty_mouse_event_get_action(MouseEvent event) {
 
 /// Get the event button.
 ///
-/// @param event The event handle, must not be NULL
-/// @param out_button Output pointer for the button value (may be NULL)
-/// @return true if a button is set, false if no button is set
+/// A new event has no button, and ghostty_mouse_event_clear_button() removes
+/// the button from an event. Having no button is normal, for example when
+/// the mouse moves with no button held. It is not an error, so check for
+/// GHOSTTY_NO_VALUE separately:
+///
+/// @code{.c}
+/// MouseButton button;
+/// switch (ghostty_mouse_event_get_button(event, &button)) {
+/// case GHOSTTY_SUCCESS:
+/// // `button` holds the event's button.
+/// break;
+/// case GHOSTTY_NO_VALUE:
+/// // The event has no button. `button` was not written.
+/// break;
+/// default:
+/// // `event` or the output pointer was NULL.
+/// break;
+/// }
+/// @endcode
+///
+/// @param event The event handle
+/// @param out_button Where to write the button. NULL returns GHOSTTY_INVALID_VALUE.
+/// @return GHOSTTY_SUCCESS if the event has a button, GHOSTTY_NO_VALUE if it
+/// has none, or GHOSTTY_INVALID_VALUE if `event` or `out_button` is
+/// NULL. `out_button` is written only on GHOSTTY_SUCCESS.
 ///
 /// @ingroup mouse
-@ffi.Native<ffi.Bool Function(MouseEvent, ffi.Pointer<ffi.UnsignedInt>)>()
-external bool ghostty_mouse_event_get_button(
+@ffi.Native<ffi.Int Function(MouseEvent, ffi.Pointer<ffi.UnsignedInt>)>(
+  symbol: 'ghostty_mouse_event_get_button',
+)
+external int _ghostty_mouse_event_get_button(
   MouseEvent event,
   ffi.Pointer<ffi.UnsignedInt> out_button,
 );
 
+Result ghostty_mouse_event_get_button(
+  MouseEvent event,
+  ffi.Pointer<ffi.UnsignedInt> out_button,
+) {
+  return Result.fromValue(_ghostty_mouse_event_get_button(event, out_button));
+}
+
 /// Get keyboard modifiers held during the event.
 ///
-/// @param event The event handle, must not be NULL
-/// @return Modifier bitmask
+/// @param event The event handle
+/// @return Modifier bitmask, or 0 (no modifiers) if `event` is NULL
 ///
 /// @ingroup mouse
 @ffi.Native<Mods Function(MouseEvent)>()
@@ -2133,8 +2592,8 @@ external int ghostty_mouse_event_get_mods(MouseEvent event);
 
 /// Get the event position in surface-space pixels.
 ///
-/// @param event The event handle, must not be NULL
-/// @return The current event position
+/// @param event The event handle
+/// @return The current event position, or (0, 0) if `event` is NULL
 ///
 /// @ingroup mouse
 @ffi.Native<MousePosition Function(MouseEvent)>()
@@ -2143,7 +2602,8 @@ external MousePosition ghostty_mouse_event_get_position(MouseEvent event);
 /// Create a new mouse event instance.
 ///
 /// @param allocator Pointer to allocator, or NULL to use the default allocator
-/// @param event Pointer to store the created event handle
+/// @param event Pointer to store the created event handle (NULL returns
+/// GHOSTTY_INVALID_VALUE)
 /// @return GHOSTTY_SUCCESS on success, or an error code on failure
 ///
 /// @ingroup mouse
@@ -2164,17 +2624,20 @@ Result ghostty_mouse_event_new(
 
 /// Set the event action.
 ///
-/// @param event The event handle, must not be NULL
+/// @param event The event handle
 /// @param action The action to set
+/// @return GHOSTTY_SUCCESS on success, or GHOSTTY_INVALID_VALUE if `event` is
+/// NULL or `action` is not a MouseAction value this version of the
+/// library knows. On error the event is not changed.
 ///
 /// @ingroup mouse
-@ffi.Native<ffi.Void Function(MouseEvent, ffi.UnsignedInt)>(
+@ffi.Native<ffi.Int Function(MouseEvent, ffi.UnsignedInt)>(
   symbol: 'ghostty_mouse_event_set_action',
 )
-external void _ghostty_mouse_event_set_action(MouseEvent event, int action);
+external int _ghostty_mouse_event_set_action(MouseEvent event, int action);
 
-void ghostty_mouse_event_set_action(MouseEvent event, MouseAction action) {
-  return _ghostty_mouse_event_set_action(event, action.value);
+Result ghostty_mouse_event_set_action(MouseEvent event, MouseAction action) {
+  return Result.fromValue(_ghostty_mouse_event_set_action(event, action.value));
 }
 
 /// Set the event button.
@@ -2183,39 +2646,61 @@ void ghostty_mouse_event_set_action(MouseEvent event, MouseAction action) {
 /// To represent "no button" (for motion events), use
 /// ghostty_mouse_event_clear_button().
 ///
-/// @param event The event handle, must not be NULL
+/// @param event The event handle
 /// @param button The button to set
+/// @return GHOSTTY_SUCCESS on success, or GHOSTTY_INVALID_VALUE if `event` is
+/// NULL or `button` is not a MouseButton value this version of the
+/// library knows. On error the event is not changed.
 ///
 /// @ingroup mouse
-@ffi.Native<ffi.Void Function(MouseEvent, ffi.UnsignedInt)>(
+@ffi.Native<ffi.Int Function(MouseEvent, ffi.UnsignedInt)>(
   symbol: 'ghostty_mouse_event_set_button',
 )
-external void _ghostty_mouse_event_set_button(MouseEvent event, int button);
+external int _ghostty_mouse_event_set_button(MouseEvent event, int button);
 
-void ghostty_mouse_event_set_button(MouseEvent event, MouseButton button) {
-  return _ghostty_mouse_event_set_button(event, button.value);
+Result ghostty_mouse_event_set_button(MouseEvent event, MouseButton button) {
+  return Result.fromValue(_ghostty_mouse_event_set_button(event, button.value));
 }
 
 /// Set keyboard modifiers held during the event.
 ///
-/// @param event The event handle, must not be NULL
+/// @param event The event handle
 /// @param mods Modifier bitmask
+/// @return GHOSTTY_SUCCESS on success, or GHOSTTY_INVALID_VALUE if `event`
+/// is NULL. On error the event is not changed.
 ///
 /// @ingroup mouse
-@ffi.Native<ffi.Void Function(MouseEvent, Mods)>()
-external void ghostty_mouse_event_set_mods(MouseEvent event, int mods);
+@ffi.Native<ffi.Int Function(MouseEvent, Mods)>(
+  symbol: 'ghostty_mouse_event_set_mods',
+)
+external int _ghostty_mouse_event_set_mods(MouseEvent event, int mods);
+
+Result ghostty_mouse_event_set_mods(MouseEvent event, DartGhosttyMods mods) {
+  return Result.fromValue(_ghostty_mouse_event_set_mods(event, mods));
+}
 
 /// Set the event position in surface-space pixels.
 ///
-/// @param event The event handle, must not be NULL
+/// @param event The event handle
 /// @param position The position to set
+/// @return GHOSTTY_SUCCESS on success, or GHOSTTY_INVALID_VALUE if `event`
+/// is NULL. On error the event is not changed.
 ///
 /// @ingroup mouse
-@ffi.Native<ffi.Void Function(MouseEvent, MousePosition)>()
-external void ghostty_mouse_event_set_position(
+@ffi.Native<ffi.Int Function(MouseEvent, MousePosition)>(
+  symbol: 'ghostty_mouse_event_set_position',
+)
+external int _ghostty_mouse_event_set_position(
   MouseEvent event,
   MousePosition position,
 );
+
+Result ghostty_mouse_event_set_position(
+  MouseEvent event,
+  MousePosition position,
+) {
+  return Result.fromValue(_ghostty_mouse_event_set_position(event, position));
+}
 
 /// Extract data from an OSC command.
 ///
@@ -2224,27 +2709,47 @@ external void ghostty_mouse_event_set_position(
 /// requested data kind. Valid command types, output types, and memory
 /// safety information are documented in the `OscCommandData` enum.
 ///
-/// @param command The OSC command handle to query (may be NULL)
+/// Only GHOSTTY_SUCCESS writes to `out`. Every other result leaves it
+/// unchanged.
+///
+/// @code{.c}
+/// String title;
+/// if (ghostty_osc_command_data(command,
+/// GHOSTTY_OSC_DATA_CHANGE_WINDOW_TITLE_STR,
+/// &title) == GHOSTTY_SUCCESS) {
+/// printf("title: %.*s\n", (int)title.len, (const char *)title.ptr);
+/// }
+/// @endcode
+///
+/// @param command The OSC command handle to query (NULL returns
+/// GHOSTTY_INVALID_VALUE)
 /// @param data The type of data to extract
 /// @param out Pointer to store the extracted data (type depends on data parameter)
-/// @return true if data extraction was successful, false otherwise
+/// @return
+/// - GHOSTTY_SUCCESS if the data was written to `out`.
+/// - GHOSTTY_NO_VALUE if the command has no data of this kind, for
+/// example asking a window title command for unknown content.
+/// - GHOSTTY_INVALID_VALUE if `command` or `out` is NULL, or `data` is
+/// GHOSTTY_OSC_DATA_INVALID.
+/// - GHOSTTY_UNSUPPORTED if `data` is not known to this version of the
+/// library.
 ///
 /// @ingroup osc
 @ffi.Native<
-  ffi.Bool Function(OscCommand, ffi.UnsignedInt, ffi.Pointer<ffi.Void>)
+  ffi.Int Function(OscCommand, ffi.UnsignedInt, ffi.Pointer<ffi.Void>)
 >(symbol: 'ghostty_osc_command_data', isLeaf: true)
-external bool _ghostty_osc_command_data(
+external int _ghostty_osc_command_data(
   OscCommand command,
   int data,
   ffi.Pointer<ffi.Void> out,
 );
 
-bool ghostty_osc_command_data(
+Result ghostty_osc_command_data(
   OscCommand command,
   OscCommandData data,
   ffi.Pointer<ffi.Void> out,
 ) {
-  return _ghostty_osc_command_data(command, data.value, out);
+  return Result.fromValue(_ghostty_osc_command_data(command, data.value, out));
 }
 
 /// Get the type of an OSC command.
@@ -2284,13 +2789,26 @@ OscCommandType ghostty_osc_command_type(OscCommand command) {
 /// If the program cancelled the sequence with CAN (0x18) or SUB (0x1A),
 /// pass that byte as the terminator. The sequence is then discarded and
 /// this returns NULL, whatever command it contained. This matches xterm.
-/// The "Ending a Sequence" section of the overview has an example.
+///
+/// @code{.c}
+/// // The program sent "ESC ] 2 ; hello" to set the window title, then
+/// // sent CAN instead of a terminator.
+/// const char* input = "2;hello";
+/// for (size_t i = 0; input[i] != '\0'; i++) {
+/// ghostty_osc_next(parser, (uint8_t)input[i]);
+/// }
+///
+/// OscCommand command = ghostty_osc_end(parser, 0x18);
+/// // command is NULL, so the window title does not change.
+///
+/// ghostty_osc_reset(parser);
+/// @endcode
 ///
 /// The returned command handle is valid until the next call to any
 /// `ghostty_osc_*` function with the same parser instance with the exception
 /// of command introspection functions such as `ghostty_osc_command_type`.
 ///
-/// @param parser The parser handle, must not be null.
+/// @param parser The parser handle (NULL returns NULL)
 /// @param terminator The byte that ended the OSC sequence: 0x07 for BEL,
 /// 0x5C for ST, or 0x18 (CAN) or 0x1A (SUB) if it was cancelled
 /// @return Handle to the parsed OSC command, or NULL if the sequence is not
@@ -2314,11 +2832,12 @@ external void ghostty_osc_free(OscParser parser);
 /// Create a new OSC parser instance.
 ///
 /// Creates a new OSC (Operating System Command) parser using the provided
-/// allocator. The parser must be freed using ghostty_vt_osc_free() when
+/// allocator. The parser must be freed using ghostty_osc_free() when
 /// no longer needed.
 ///
 /// @param allocator Pointer to the allocator to use for memory management, or NULL to use the default allocator
-/// @param parser Pointer to store the created parser handle
+/// @param parser Pointer to store the created parser handle (NULL returns
+/// GHOSTTY_INVALID_VALUE)
 /// @return GHOSTTY_SUCCESS on success, or an error code on failure
 ///
 /// @ingroup osc
@@ -2347,7 +2866,7 @@ Result ghostty_osc_new(
 /// When finished pumping the parser with bytes, call ghostty_osc_end
 /// to get the final result.
 ///
-/// @param parser The parser handle, must not be null.
+/// @param parser The parser handle (NULL does nothing)
 /// @param byte The next byte to parse
 ///
 /// @ingroup osc
@@ -2360,7 +2879,7 @@ external void ghostty_osc_next(OscParser parser, int byte);
 /// and returning the parser to its initial state. This is useful for
 /// reusing a parser instance or recovering from parse errors.
 ///
-/// @param parser The parser handle to reset, must not be null.
+/// @param parser The parser handle to reset (NULL does nothing)
 ///
 /// @ingroup osc
 @ffi.Native<ffi.Void Function(OscParser)>(isLeaf: true)
@@ -2379,8 +2898,9 @@ external void ghostty_osc_reset(OscParser parser);
 /// @param parser The parser handle
 /// @param option The option to set
 /// @param value Pointer to the new value, or NULL to restore the default
-/// @return GHOSTTY_SUCCESS on success, or GHOSTTY_INVALID_VALUE if the parser
-/// is NULL
+/// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if the parser is
+/// NULL, or GHOSTTY_UNSUPPORTED if `option` is not known to this
+/// version of the library
 ///
 /// @ingroup osc
 @ffi.Native<
@@ -2412,9 +2932,29 @@ Result ghostty_osc_set(
 /// encoded result (potentially with bracketed paste prefix/suffix) is
 /// written to the output buffer.
 ///
-/// If the output buffer is too small, the function returns
-/// GHOSTTY_OUT_OF_SPACE and sets the required size in @p out_written.
-/// The caller can then retry with a sufficiently sized buffer.
+/// If @p buf is too small, this returns GHOSTTY_OUT_OF_SPACE, sets
+/// @p out_written to the size needed, and leaves @p buf unchanged. To get
+/// the size first, pass NULL for @p buf and 0 for @p buf_len. An empty
+/// result needs no space, so empty input with @p bracketed false returns
+/// GHOSTTY_SUCCESS with @p out_written set to 0.
+///
+/// The function modifies @p data even when it returns GHOSTTY_OUT_OF_SPACE.
+/// Encoding the modified data again gives the same result, so you can retry
+/// with the same @p data and a larger buffer:
+///
+/// @code{.c}
+/// size_t needed = 0;
+/// Result result = ghostty_paste_encode(data, data_len, bracketed,
+/// NULL, 0, &needed);
+/// if (result == GHOSTTY_OUT_OF_SPACE) {
+/// uint8_t *buf = malloc(needed);
+/// size_t written = 0;
+/// result = ghostty_paste_encode(data, data_len, bracketed, buf, needed,
+/// &written);
+/// if (result == GHOSTTY_SUCCESS) write(pty_fd, buf, written);
+/// free(buf);
+/// }
+/// @endcode
 ///
 /// This is the encoder ghostty_terminal_paste() uses for a text paste;
 /// use it directly when there is no terminal to paste into.
@@ -2422,18 +2962,19 @@ Result ghostty_osc_set(
 /// @param data The paste data to encode (modified in place, may be NULL)
 /// @param data_len The length of the input data in bytes
 /// @param bracketed Whether bracketed paste mode is active
-/// @param buf Output buffer to write the encoded result into (may be NULL)
-/// @param buf_len Size of the output buffer in bytes
-/// @param[out] out_written On success, the number of bytes written. On
-/// GHOSTTY_OUT_OF_SPACE, the required buffer size.
+/// @param buf Buffer to write the encoded result into. May be NULL if
+/// @p buf_len is 0.
+/// @param buf_len Size of @p buf in bytes
+/// @param[out] out_written The number of bytes written, or the size needed
+/// if the result is GHOSTTY_OUT_OF_SPACE
 /// @return GHOSTTY_SUCCESS on success, GHOSTTY_OUT_OF_SPACE if the buffer
-/// is too small
+/// is too small, or GHOSTTY_INVALID_VALUE if @p out_written is NULL
 @ffi.Native<
   ffi.Int Function(
     ffi.Pointer<ffi.Char>,
     ffi.Size,
     ffi.Bool,
-    ffi.Pointer<ffi.Char>,
+    ffi.Pointer<ffi.Uint8>,
     ffi.Size,
     ffi.Pointer<ffi.Size>,
   )
@@ -2442,7 +2983,7 @@ external int _ghostty_paste_encode(
   ffi.Pointer<ffi.Char> data,
   int data_len,
   bool bracketed,
-  ffi.Pointer<ffi.Char> buf,
+  ffi.Pointer<ffi.Uint8> buf,
   int buf_len,
   ffi.Pointer<ffi.Size> out_written,
 );
@@ -2451,7 +2992,7 @@ Result ghostty_paste_encode(
   ffi.Pointer<ffi.Char> data,
   int data_len,
   bool bracketed,
-  ffi.Pointer<ffi.Char> buf,
+  ffi.Pointer<ffi.Uint8> buf,
   int buf_len,
   ffi.Pointer<ffi.Size> out_written,
 ) {
@@ -2463,16 +3004,18 @@ Result ghostty_paste_encode(
 /// Check if paste data is safe to paste into the terminal.
 ///
 /// Data is considered unsafe if it contains:
-/// - Newlines (`\n`) which can inject commands
+/// - Line terminators (`\n` or `\r`) which can inject commands. A
+/// carriage return is what the Enter key sends, so it is as dangerous
+/// as a newline on an unbracketed paste.
 /// - The bracketed paste end sequence (`\x1b[201~`) which can be used
 /// to exit bracketed paste mode and inject commands
 ///
 /// This check is conservative and considers data unsafe regardless of
 /// current terminal state. ghostty_terminal_paste() applies the
-/// terminal-state-aware rule itself (newlines are safe inside a
+/// terminal-state-aware rule itself (line terminators are safe inside a
 /// bracketed paste); use this to apply the stricter rule on top.
 ///
-/// @param data The paste data to check (must not be NULL)
+/// @param data The paste data to check (NULL is the same as empty data)
 /// @param len The length of the data in bytes
 /// @return true if the data is safe to paste, false otherwise
 @ffi.Native<ffi.Bool Function(ffi.Pointer<ffi.Char>, ffi.Size)>()
@@ -2492,7 +3035,7 @@ external bool ghostty_paste_is_safe(ffi.Pointer<ffi.Char> data, int len);
 ///
 /// Work that doesn't require terminal access may be deferred to the end phase
 /// to keep this call (and therefore lock hold time) as short as possible.
-/// Callers must treat the render state as incomplete until
+/// You must treat the render state as incomplete until
 /// ghostty_render_state_end_update is called.
 ///
 /// This consumes terminal/screen dirty state in the same way as the internal
@@ -2577,9 +3120,11 @@ external void ghostty_render_state_free(RenderState state);
 /// @param state The render state handle (NULL returns GHOSTTY_INVALID_VALUE)
 /// @param data The data kind to query
 /// @param[out] out Pointer to receive the queried value
-/// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if `state` or
-/// `out` is NULL, `data` is not a recognized enum value, or a sized
-/// output struct is smaller than `sizeof(size_t)`
+/// @return GHOSTTY_SUCCESS on success, GHOSTTY_NO_VALUE if `data` has no
+/// value right now, GHOSTTY_INVALID_VALUE if `state` or `out` is NULL
+/// or a sized output struct is smaller than its base layout, or
+/// GHOSTTY_UNSUPPORTED if `data` is not known to this version of the
+/// library
 ///
 /// @ingroup render
 @ffi.Native<
@@ -2601,6 +3146,12 @@ Result ghostty_render_state_get(
 
 /// Get multiple data fields from a render state in a single call.
 ///
+/// Use this when each call into the library is expensive, for example from
+/// WebAssembly or from another language through its foreign function
+/// interface. It reads every key in one call. From C in the same process it
+/// costs the same as calling ghostty_render_state_get() once per key, so use
+/// whichever reads better.
+///
 /// Each element in the keys array specifies a data kind, and the
 /// corresponding element in the values array receives the result.
 ///
@@ -2615,7 +3166,9 @@ Result ghostty_render_state_get(
 /// documented output type)
 /// @param[out] out_written On return, receives the number of values
 /// successfully written (may be NULL)
-/// @return GHOSTTY_SUCCESS if all queries succeed
+/// @return GHOSTTY_SUCCESS if every key succeeds. Otherwise the result of the
+/// first key that failed, for example GHOSTTY_UNSUPPORTED for a key
+/// that is not known to this version of the library.
 ///
 /// @ingroup render
 @ffi.Native<
@@ -2647,10 +3200,180 @@ Result ghostty_render_state_get_multi(
   );
 }
 
+/// Read one value from the current placement of an image iterator.
+///
+/// The `out` pointer must point to a value of the type listed for `data`
+/// in RenderStateImageData. To read several values at once, use
+/// ghostty_render_state_image_get_multi().
+///
+/// @param iterator The iterator handle, moved to a placement with
+/// ghostty_render_state_image_iterator_next()
+/// @param data The value to read
+/// @param[out] out Pointer that receives the value
+/// @return GHOSTTY_SUCCESS on success. GHOSTTY_NO_VALUE if `data` only applies
+/// to another protocol. GHOSTTY_INVALID_VALUE if the iterator is NULL
+/// or is not on a placement. GHOSTTY_UNSUPPORTED if `data` is not known
+/// to this version of the library.
+///
+/// @ingroup render
+@ffi.Native<
+  ffi.Int Function(
+    RenderStateImageIterator,
+    ffi.UnsignedInt,
+    ffi.Pointer<ffi.Void>,
+  )
+>(symbol: 'ghostty_render_state_image_get')
+external int _ghostty_render_state_image_get(
+  RenderStateImageIterator iterator,
+  int data,
+  ffi.Pointer<ffi.Void> out,
+);
+
+Result ghostty_render_state_image_get(
+  RenderStateImageIterator iterator,
+  RenderStateImageData data,
+  ffi.Pointer<ffi.Void> out,
+) {
+  return Result.fromValue(
+    _ghostty_render_state_image_get(iterator, data.value, out),
+  );
+}
+
+/// Read several values from the current placement of an image iterator in
+/// one call.
+///
+/// Use this when each call into the library is expensive, for example from
+/// WebAssembly or from another language through its foreign function
+/// interface. It reads every key in one call. From C in the same process it
+/// costs the same as calling ghostty_render_state_image_get() once per key,
+/// so use whichever reads better.
+///
+/// `values[i]` receives the value for `keys[i]`. The keys are read in
+/// order, and reading stops at the first error.
+///
+/// @param iterator The iterator handle, moved to a placement with
+/// ghostty_render_state_image_iterator_next()
+/// @param count The number of keys and values
+/// @param keys The values to read
+/// @param values Output pointers, one for each key
+/// @param[out] out_written If not NULL, receives the number of values
+/// written before any error
+/// @return GHOSTTY_SUCCESS if every key succeeds. Otherwise the result of the
+/// first key that failed, for example GHOSTTY_UNSUPPORTED for a key
+/// that is not known to this version of the library.
+///
+/// @ingroup render
+@ffi.Native<
+  ffi.Int Function(
+    RenderStateImageIterator,
+    ffi.Size,
+    ffi.Pointer<ffi.UnsignedInt>,
+    ffi.Pointer<ffi.Pointer<ffi.Void>>,
+    ffi.Pointer<ffi.Size>,
+  )
+>(symbol: 'ghostty_render_state_image_get_multi')
+external int _ghostty_render_state_image_get_multi(
+  RenderStateImageIterator iterator,
+  int count,
+  ffi.Pointer<ffi.UnsignedInt> keys,
+  ffi.Pointer<ffi.Pointer<ffi.Void>> values,
+  ffi.Pointer<ffi.Size> out_written,
+);
+
+Result ghostty_render_state_image_get_multi(
+  RenderStateImageIterator iterator,
+  int count,
+  ffi.Pointer<ffi.UnsignedInt> keys,
+  ffi.Pointer<ffi.Pointer<ffi.Void>> values,
+  ffi.Pointer<ffi.Size> out_written,
+) {
+  return Result.fromValue(
+    _ghostty_render_state_image_get_multi(
+      iterator,
+      count,
+      keys,
+      values,
+      out_written,
+    ),
+  );
+}
+
+/// Free an image iterator.
+///
+/// @param iterator The iterator handle to free (may be NULL)
+///
+/// @ingroup render
+@ffi.Native<ffi.Void Function(RenderStateImageIterator)>()
+external void ghostty_render_state_image_iterator_free(
+  RenderStateImageIterator iterator,
+);
+
+/// Create a new image iterator.
+///
+/// The iterator starts out empty. Fill it from a render state with
+/// ghostty_render_state_get() and GHOSTTY_RENDER_STATE_DATA_IMAGE_ITERATOR.
+/// You can keep one iterator for the lifetime of your renderer and fill it
+/// again after every update. See @ref guide-images-drawing for a complete
+/// example.
+///
+/// @param allocator Pointer to allocator, or NULL to use the default allocator
+/// @param[out] out_iterator On success, receives the created iterator handle
+/// @return GHOSTTY_SUCCESS on success, GHOSTTY_OUT_OF_MEMORY on allocation
+/// failure, GHOSTTY_INVALID_VALUE if @p out_iterator is NULL
+///
+/// @ingroup render
+@ffi.Native<
+  ffi.Int Function(
+    ffi.Pointer<Allocator>,
+    ffi.Pointer<RenderStateImageIterator>,
+  )
+>(symbol: 'ghostty_render_state_image_iterator_new')
+external int _ghostty_render_state_image_iterator_new(
+  ffi.Pointer<Allocator> allocator,
+  ffi.Pointer<RenderStateImageIterator> out_iterator,
+);
+
+Result ghostty_render_state_image_iterator_new(
+  ffi.Pointer<Allocator> allocator,
+  ffi.Pointer<RenderStateImageIterator> out_iterator,
+) {
+  return Result.fromValue(
+    _ghostty_render_state_image_iterator_new(allocator, out_iterator),
+  );
+}
+
+/// Move an image iterator to the next image placement.
+///
+/// Call this before reading the first placement, and keep calling it
+/// until it returns false.
+///
+/// The order of placements is not the order to draw them in. Sort them
+/// by layer (GHOSTTY_RENDER_STATE_IMAGE_DATA_LAYER) and then by z-index
+/// (GHOSTTY_RENDER_STATE_IMAGE_DATA_Z) first.
+///
+/// Only placements with something to draw are returned. For example,
+/// placements of an image the terminal hasn't fully received yet are
+/// skipped.
+///
+/// The iterator reads from the render state that filled it. After the
+/// next update of that render state, fill the iterator again before
+/// using it.
+///
+/// @param iterator The iterator handle (NULL returns false)
+/// @return true if the iterator moved to a placement, false if there are
+/// no more placements
+///
+/// @ingroup render
+@ffi.Native<ffi.Bool Function(RenderStateImageIterator)>()
+external bool ghostty_render_state_image_iterator_next(
+  RenderStateImageIterator iterator,
+);
+
 /// Create a new render state instance.
 ///
 /// @param allocator Pointer to allocator, or NULL to use the default allocator
-/// @param state Pointer to store the created render state handle
+/// @param state Pointer to store the created render state handle (NULL returns
+/// GHOSTTY_INVALID_VALUE)
 /// @return GHOSTTY_SUCCESS on success, GHOSTTY_OUT_OF_MEMORY on allocation
 /// failure
 ///
@@ -2689,8 +3412,10 @@ external void ghostty_render_state_row_cells_free(RenderStateRowCells cells);
 /// @param cells The row cells handle to query (NULL returns GHOSTTY_INVALID_VALUE)
 /// @param data The data kind to query
 /// @param[out] out Pointer to receive the queried value
-/// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if
-/// `cells` is NULL or the iterator is not positioned on a cell
+/// @return GHOSTTY_SUCCESS on success, GHOSTTY_NO_VALUE if the cell has no
+/// value for `data`, GHOSTTY_INVALID_VALUE if `cells` is NULL or the
+/// iterator is not positioned on a cell, or GHOSTTY_UNSUPPORTED if
+/// `data` is not known to this version of the library
 ///
 /// @ingroup render
 @ffi.Native<
@@ -2714,6 +3439,12 @@ Result ghostty_render_state_row_cells_get(
 
 /// Get multiple data fields from the current cell in a single call.
 ///
+/// Use this when each call into the library is expensive, for example from
+/// WebAssembly or from another language through its foreign function
+/// interface. It reads every key in one call. From C in the same process it
+/// costs the same as calling ghostty_render_state_row_cells_get() once per
+/// key, so use whichever reads better.
+///
 /// Each element in the keys array specifies a data kind, and the
 /// corresponding element in the values array receives the result.
 ///
@@ -2728,7 +3459,9 @@ Result ghostty_render_state_row_cells_get(
 /// documented output type)
 /// @param[out] out_written On return, receives the number of values
 /// successfully written (may be NULL)
-/// @return GHOSTTY_SUCCESS if all queries succeed
+/// @return GHOSTTY_SUCCESS if every key succeeds. Otherwise the result of the
+/// first key that failed, for example GHOSTTY_UNSUPPORTED for a key
+/// that is not known to this version of the library.
 ///
 /// @ingroup render
 @ffi.Native<
@@ -2778,7 +3511,7 @@ Result ghostty_render_state_row_cells_get_multi(
 /// @param allocator Pointer to allocator, or NULL to use the default allocator
 /// @param[out] out_cells On success, receives the created row cells handle
 /// @return GHOSTTY_SUCCESS on success, GHOSTTY_OUT_OF_MEMORY on allocation
-/// failure
+/// failure, GHOSTTY_INVALID_VALUE if @p out_cells is NULL
 ///
 /// @ingroup render
 @ffi.Native<
@@ -2847,8 +3580,10 @@ Result ghostty_render_state_row_cells_select(RenderStateRowCells cells, int x) {
 /// @param iterator The iterator handle to query (NULL returns GHOSTTY_INVALID_VALUE)
 /// @param data The data kind to query
 /// @param[out] out Pointer to receive the queried value
-/// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if
-/// `iterator` is NULL or the iterator is not positioned on a row
+/// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if `iterator` or
+/// `out` is NULL or the iterator is not positioned on a row, or
+/// GHOSTTY_UNSUPPORTED if `data` is not known to this version of the
+/// library
 ///
 /// @ingroup render
 @ffi.Native<
@@ -2876,6 +3611,12 @@ Result ghostty_render_state_row_get(
 
 /// Get multiple data fields from the current row in a single call.
 ///
+/// Use this when each call into the library is expensive, for example from
+/// WebAssembly or from another language through its foreign function
+/// interface. It reads every key in one call. From C in the same process it
+/// costs the same as calling ghostty_render_state_row_get() once per key, so
+/// use whichever reads better.
+///
 /// Each element in the keys array specifies a data kind, and the
 /// corresponding element in the values array receives the result.
 ///
@@ -2890,7 +3631,9 @@ Result ghostty_render_state_row_get(
 /// documented output type)
 /// @param[out] out_written On return, receives the number of values
 /// successfully written (may be NULL)
-/// @return GHOSTTY_SUCCESS if all queries succeed
+/// @return GHOSTTY_SUCCESS if every key succeeds. Otherwise the result of the
+/// first key that failed, for example GHOSTTY_UNSUPPORTED for a key
+/// that is not known to this version of the library.
 ///
 /// @ingroup render
 @ffi.Native<
@@ -2947,7 +3690,7 @@ external void ghostty_render_state_row_iterator_free(
 /// @param allocator Pointer to allocator, or NULL to use the default allocator
 /// @param[out] out_iterator On success, receives the created iterator handle
 /// @return GHOSTTY_SUCCESS on success, GHOSTTY_OUT_OF_MEMORY on allocation
-/// failure
+/// failure, GHOSTTY_INVALID_VALUE if @p out_iterator is NULL
 ///
 /// @ingroup render
 @ffi.Native<
@@ -2972,7 +3715,7 @@ Result ghostty_render_state_row_iterator_new(
 /// Rows are visited in order from top to bottom with no gaps. Without
 /// overscan, the first row is the top row of the viewport. With overscan,
 /// the first row is the highest captured row above the viewport (see
-/// GHOSTTY_RENDER_STATE_OPTION_OVERSCAN). Returns true if the iterator
+/// GHOSTTY_RENDER_STATE_OPT_OVERSCAN). Returns true if the iterator
 /// moved successfully and row data is available to read at the new
 /// position.
 ///
@@ -3025,10 +3768,12 @@ external bool ghostty_render_state_row_iterator_next_dirty(
 ///
 /// @param iterator The iterator handle to update (NULL returns GHOSTTY_INVALID_VALUE)
 /// @param option The option to set
-/// @param[in] value Pointer to the value to set (NULL returns
-/// GHOSTTY_INVALID_VALUE)
-/// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if
-/// `iterator` is NULL or the iterator is not positioned on a row
+/// @param[in] value Pointer to the value to set. Row options have no
+/// default to restore, so NULL returns GHOSTTY_INVALID_VALUE.
+/// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if `iterator` or
+/// `value` is NULL or the iterator is not positioned on a row, or
+/// GHOSTTY_UNSUPPORTED if `option` is not known to this version of the
+/// library
 ///
 /// @ingroup render
 @ffi.Native<
@@ -3059,12 +3804,27 @@ Result ghostty_render_state_row_set(
 /// The `value` pointer must point to a value of the type corresponding to the
 /// requested option kind (see RenderStateOption).
 ///
+/// Passing NULL for `value` restores the option's default. Options that
+/// have no default, such as GHOSTTY_RENDER_STATE_OPT_DIRTY, return
+/// GHOSTTY_INVALID_VALUE for NULL instead.
+///
+/// @code{.c}
+/// RenderStateOverscan overscan = { .above = 4, .below = 4 };
+/// ghostty_render_state_set(state, GHOSTTY_RENDER_STATE_OPT_OVERSCAN,
+/// &overscan);
+///
+/// // Later, go back to capturing only the viewport.
+/// ghostty_render_state_set(state, GHOSTTY_RENDER_STATE_OPT_OVERSCAN, NULL);
+/// @endcode
+///
 /// @param state The render state handle (NULL returns GHOSTTY_INVALID_VALUE)
 /// @param option The option to set
-/// @param[in] value Pointer to the value to set (NULL returns
-/// GHOSTTY_INVALID_VALUE)
-/// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if `state` or
-/// `value` is NULL
+/// @param[in] value Pointer to the value to set, or NULL to restore the
+/// option's default
+/// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if `state` is
+/// NULL, `value` is out of range, or `value` is NULL for an option
+/// with no default, or GHOSTTY_UNSUPPORTED if `option` is not known
+/// to this version of the library
 ///
 /// @ingroup render
 @ffi.Native<
@@ -3123,8 +3883,9 @@ Result ghostty_render_state_update(RenderState state, Terminal terminal) {
 /// @param row The row value
 /// @param data The type of data to extract
 /// @param out Pointer to store the extracted data (type depends on data parameter)
-/// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if the
-/// data type is invalid
+/// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if `data` is
+/// GHOSTTY_ROW_DATA_INVALID or `out` is NULL, or GHOSTTY_UNSUPPORTED
+/// if `data` is not known to this version of the library
 ///
 /// @ingroup screen
 @ffi.Native<ffi.Int Function(Row, ffi.UnsignedInt, ffi.Pointer<ffi.Void>)>(
@@ -3143,6 +3904,12 @@ Result ghostty_row_get(
 
 /// Get multiple data fields from a row in a single call.
 ///
+/// Use this when each call into the library is expensive, for example from
+/// WebAssembly or from another language through its foreign function
+/// interface. It reads every key in one call. From C in the same process it
+/// costs the same as calling ghostty_row_get() once per key, so use whichever
+/// reads better.
+///
 /// Each element in the keys array specifies a data kind, and the
 /// corresponding element in the values array receives the result.
 ///
@@ -3157,7 +3924,9 @@ Result ghostty_row_get(
 /// documented output type)
 /// @param[out] out_written On return, receives the number of values
 /// successfully written (may be NULL)
-/// @return GHOSTTY_SUCCESS if all queries succeed
+/// @return GHOSTTY_SUCCESS if every key succeeds. Otherwise the result of the
+/// first key that failed, for example GHOSTTY_UNSUPPORTED for a key
+/// that is not known to this version of the library.
 ///
 /// @ingroup screen
 @ffi.Native<
@@ -3199,7 +3968,7 @@ Result ghostty_row_get_multi(
 /// learns about terminal changes, so keep feeding periodically while
 /// the search is in use, even after it reports complete.
 ///
-/// This reads the terminal, so the caller must serialize it with all
+/// This reads the terminal, so you must serialize it with all
 /// other access to the same terminal. Each call does a bounded amount
 /// of work so that any caller-held terminal lock is held only briefly.
 ///
@@ -3218,7 +3987,7 @@ Result ghostty_search_feed(Search search) {
 /// Free a search.
 ///
 /// If the bound terminal is still alive, this releases tracked state
-/// the search holds within it, so the caller must serialize this call
+/// the search holds within it, so you must serialize this call
 /// with all other access to the same terminal. If the terminal was
 /// already freed, the search has been detached and this releases only
 /// search-owned memory. Passing NULL is allowed and is a no-op.
@@ -3240,12 +4009,13 @@ external void ghostty_search_free(Search search);
 /// @param search Search handle (NULL returns GHOSTTY_INVALID_VALUE)
 /// @param data Data field to read
 /// @param value Output pointer whose type depends on data
-/// @return GHOSTTY_SUCCESS on success, GHOSTTY_NO_VALUE if the
-/// requested data has no value, GHOSTTY_OUT_OF_SPACE if a
-/// provided SelectionBuffer is too small (required
-/// capacity in its len), GHOSTTY_OUT_OF_MEMORY if collecting
-/// viewport matches fails, or GHOSTTY_INVALID_VALUE if search,
-/// data, or value is invalid
+/// @return GHOSTTY_SUCCESS on success, GHOSTTY_NO_VALUE if the requested data
+/// has no value, GHOSTTY_OUT_OF_SPACE if a provided
+/// SelectionBuffer is too small (required capacity in its len),
+/// GHOSTTY_OUT_OF_MEMORY if collecting viewport matches fails,
+/// GHOSTTY_INVALID_VALUE if `search` or `value` is invalid, or
+/// GHOSTTY_UNSUPPORTED if `data` is not known to this version of the
+/// library
 ///
 /// @ingroup search
 @ffi.Native<ffi.Int Function(Search, ffi.UnsignedInt, ffi.Pointer<ffi.Void>)>(
@@ -3267,8 +4037,13 @@ Result ghostty_search_get(
 
 /// Read multiple data fields from a search in a single call.
 ///
-/// This is an optimization over calling ghostty_search_get() multiple
-/// times. Each entry in values must point to storage of the type
+/// Use this when each call into the library is expensive, for example from
+/// WebAssembly or from another language through its foreign function
+/// interface. It reads every key in one call. From C in the same process it
+/// costs the same as calling ghostty_search_get() once per key, so use
+/// whichever reads better.
+///
+/// Each entry in values must point to storage of the type
 /// documented by the corresponding SearchData key.
 ///
 /// If any individual read fails, the function returns that error and
@@ -3281,12 +4056,13 @@ Result ghostty_search_get(
 ///
 /// @param search Search handle (NULL returns GHOSTTY_INVALID_VALUE)
 /// @param count Number of data fields to read
-/// @param keys Data fields to read (must not be NULL)
-/// @param values Output pointers corresponding to keys (must not be NULL)
+/// @param keys Data fields to read (NULL returns GHOSTTY_INVALID_VALUE)
+/// @param values Output pointers corresponding to keys (NULL returns GHOSTTY_INVALID_VALUE)
 /// @param out_written Optional number of fields read, or failing index
 /// on error
-/// @return GHOSTTY_SUCCESS on success, or the first failing read's
-/// result
+/// @return GHOSTTY_SUCCESS if every key succeeds. Otherwise the result of the
+/// first key that failed, for example GHOSTTY_UNSUPPORTED for a key
+/// that is not known to this version of the library.
 ///
 /// @ingroup search
 @ffi.Native<
@@ -3329,7 +4105,7 @@ Result ghostty_search_get_multi(
 ///
 /// Creation is cheap and does not read terminal contents, but it
 /// registers the search with the terminal so the two can be freed in
-/// any order. The caller must serialize this call with all other
+/// any order. You must serialize this call with all other
 /// access to the same terminal.
 ///
 /// @param allocator Allocator, or NULL for the default allocator
@@ -3366,7 +4142,7 @@ Result ghostty_search_new(
 /// scrollback can take a while, so interactive embedders should drive
 /// ghostty_search_tick() and ghostty_search_feed() themselves.
 ///
-/// This reads the terminal for the entire call, so the caller must
+/// This reads the terminal for the entire call, so you must
 /// serialize it with all other access to the same terminal.
 ///
 /// @param search Search handle (NULL returns GHOSTTY_INVALID_VALUE)
@@ -3381,23 +4157,84 @@ Result ghostty_search_run(Search search) {
   return Result.fromValue(_ghostty_search_run(search));
 }
 
+/// Select the next match, moving toward older content.
+///
+/// "Next" goes from the bottom of the screen upward into history, the
+/// direction a search from the prompt usually wants. After the oldest
+/// match, selection wraps around to the newest one.
+///
+/// You can call this at any time, even if the terminal changed since the
+/// last feed, because it first brings the search up to date with the
+/// terminal. The viewport then scrolls to the selected match as set by
+/// GHOSTTY_SEARCH_OPT_SELECT_SCROLL. This reads the terminal, so
+/// you must serialize it with all other access to the same terminal.
+///
+/// A find bar typically calls this when the user presses Enter, then reads
+/// the selected match to highlight it:
+///
+/// @code{.c}
+/// if (ghostty_search_select_next(search) == GHOSTTY_SUCCESS) {
+/// Selection match = {0};
+/// ghostty_search_get(search, GHOSTTY_SEARCH_DATA_SELECTED_MATCH, &match);
+/// // Highlight `match` and show its position in the find bar.
+/// }
+/// @endcode
+///
+/// @param search Search handle (NULL returns GHOSTTY_INVALID_VALUE)
+/// @return GHOSTTY_SUCCESS if a match is now selected, GHOSTTY_NO_VALUE if
+/// there are no matches, GHOSTTY_OUT_OF_MEMORY if allocation fails,
+/// or GHOSTTY_INVALID_VALUE if `search` is NULL or the terminal was
+/// freed
+///
+/// @ingroup search
+@ffi.Native<ffi.Int Function(Search)>(symbol: 'ghostty_search_select_next')
+external int _ghostty_search_select_next(Search search);
+
+Result ghostty_search_select_next(Search search) {
+  return Result.fromValue(_ghostty_search_select_next(search));
+}
+
+/// Select the previous match, moving toward newer content.
+///
+/// This is the opposite direction of ghostty_search_select_next(). After
+/// the newest match, selection wraps around to the oldest one. Everything
+/// else, including scrolling and thread safety, works the same as
+/// ghostty_search_select_next().
+///
+/// @param search Search handle (NULL returns GHOSTTY_INVALID_VALUE)
+/// @return GHOSTTY_SUCCESS if a match is now selected, GHOSTTY_NO_VALUE if
+/// there are no matches, GHOSTTY_OUT_OF_MEMORY if allocation fails,
+/// or GHOSTTY_INVALID_VALUE if `search` is NULL or the terminal was
+/// freed
+///
+/// @ingroup search
+@ffi.Native<ffi.Int Function(Search)>(symbol: 'ghostty_search_select_prev')
+external int _ghostty_search_select_prev(Search search);
+
+Result ghostty_search_select_prev(Search search) {
+  return Result.fromValue(_ghostty_search_select_prev(search));
+}
+
 /// Write an option to a search.
 ///
 /// The value type, and what a NULL value means, depends on the option
-/// and is documented by SearchOption. The needle and select
-/// options touch the terminal, so the caller must serialize those
-/// calls with all other access to the same terminal.
-/// GHOSTTY_SEARCH_OPT_SELECT_SCROLL only modifies search-owned state.
+/// and is documented by SearchOption. GHOSTTY_SEARCH_OPT_NEEDLE
+/// touches the terminal, so you must serialize it with all other
+/// access to the same terminal. GHOSTTY_SEARCH_OPT_SELECT_SCROLL only
+/// modifies search-owned state.
+///
+/// To move between matches, use ghostty_search_select_next() and
+/// ghostty_search_select_prev().
 ///
 /// @param search Search handle (NULL returns GHOSTTY_INVALID_VALUE)
 /// @param option Option to write
 /// @param value Pointer to the input value for the option. The meaning
 /// of NULL is documented per option.
-/// @return GHOSTTY_SUCCESS on success, GHOSTTY_NO_VALUE if a select
-/// option found no matches, GHOSTTY_OUT_OF_MEMORY if
-/// allocation fails, or GHOSTTY_INVALID_VALUE if search,
-/// option, or value is invalid or the option needs a terminal
-/// that was already freed
+/// @return GHOSTTY_SUCCESS on success, GHOSTTY_OUT_OF_MEMORY if allocation
+/// fails, GHOSTTY_INVALID_VALUE if `search` or `value` is invalid or the
+/// option needs a terminal that was already freed, or
+/// GHOSTTY_UNSUPPORTED if `option` is not known to this version of the
+/// library
 ///
 /// @ingroup search
 @ffi.Native<ffi.Int Function(Search, ffi.UnsignedInt, ffi.Pointer<ffi.Void>)>(
@@ -3471,6 +4308,15 @@ Result ghostty_search_tick(
 /// GHOSTTY_SELECTION_GESTURE_EVENT_OPT_GEOMETRY are required. Position,
 /// rectangle, and word-boundary codepoints are optional and use initialized
 /// defaults when unset or cleared.
+///
+/// An autoscroll tick scrolls the viewport exactly one row in the direction
+/// GHOSTTY_SELECTION_GESTURE_DATA_AUTOSCROLL reports, then continues the drag at
+/// the viewport coordinate. The gesture has no timer of its own. While that
+/// direction is up or down, send ticks from a timer you run. The interval is up
+/// to you, and ticking faster scrolls faster. A tick returns GHOSTTY_NO_VALUE
+/// and scrolls nothing if there's no direction to scroll in. If the cell of the
+/// original press is no longer on the active screen, it also resets the gesture
+/// and leaves any existing terminal selection alone, so stop your timer.
 ///
 /// For GHOSTTY_SELECTION_GESTURE_EVENT_TYPE_DEEP_PRESS, only
 /// GHOSTTY_SELECTION_GESTURE_EVENT_OPT_WORD_BOUNDARY_CODEPOINTS is valid. It is
@@ -3567,8 +4413,9 @@ Result ghostty_selection_gesture_event_new(
 /// @param option Event option to set or clear
 /// @param value Pointer to the input value for option, or NULL to clear
 /// @return GHOSTTY_SUCCESS on success, GHOSTTY_OUT_OF_MEMORY if copying
-/// event-owned data fails, or GHOSTTY_INVALID_VALUE if event, option, or
-/// value is invalid
+/// event-owned data fails, GHOSTTY_INVALID_VALUE if `event` or `value`
+/// is invalid, or GHOSTTY_UNSUPPORTED if `option` is not known to this
+/// version of the library
 ///
 /// @ingroup selection
 @ffi.Native<
@@ -3630,8 +4477,9 @@ external void ghostty_selection_gesture_free(
 /// @param data Data field to read
 /// @param value Output pointer whose type depends on data
 /// @return GHOSTTY_SUCCESS on success, GHOSTTY_NO_VALUE if the requested data
-/// has no value, or GHOSTTY_INVALID_VALUE if gesture, terminal, data, or
-/// value is invalid
+/// has no value, GHOSTTY_INVALID_VALUE if `gesture`, `terminal`, or
+/// `out` is invalid, or GHOSTTY_UNSUPPORTED if `data` is not known to
+/// this version of the library
 ///
 /// @ingroup selection
 @ffi.Native<
@@ -3662,8 +4510,13 @@ Result ghostty_selection_gesture_get(
 
 /// Read multiple data fields from a selection gesture in a single call.
 ///
-/// This is an optimization over calling ghostty_selection_gesture_get() multiple
-/// times. Each entry in values must point to storage of the type documented by
+/// Use this when each call into the library is expensive, for example from
+/// WebAssembly or from another language through its foreign function
+/// interface. It reads every key in one call. From C in the same process it
+/// costs the same as calling ghostty_selection_gesture_get() once per key, so
+/// use whichever reads better.
+///
+/// Each entry in values must point to storage of the type documented by
 /// the corresponding SelectionGestureData key.
 ///
 /// If any individual read fails, the function returns that error and writes the
@@ -3673,12 +4526,12 @@ Result ghostty_selection_gesture_get(
 /// @param gesture Selection gesture handle (NULL returns GHOSTTY_INVALID_VALUE)
 /// @param terminal Terminal used to validate terminal-backed gesture state
 /// @param count Number of data fields to read
-/// @param keys Data fields to read (must not be NULL)
-/// @param values Output pointers corresponding to keys (must not be NULL)
+/// @param keys Data fields to read (NULL returns GHOSTTY_INVALID_VALUE)
+/// @param values Output pointers corresponding to keys (NULL returns GHOSTTY_INVALID_VALUE)
 /// @param out_written Optional number of fields read, or failing index on error
-/// @return GHOSTTY_SUCCESS on success, GHOSTTY_NO_VALUE if a requested data
-/// field has no value, or GHOSTTY_INVALID_VALUE if gesture, terminal,
-/// keys, values, or a value pointer is invalid
+/// @return GHOSTTY_SUCCESS if every key succeeds. Otherwise the result of the
+/// first key that failed, for example GHOSTTY_UNSUPPORTED for a key
+/// that is not known to this version of the library.
 ///
 /// @ingroup selection
 @ffi.Native<
@@ -3771,17 +4624,17 @@ external void ghostty_selection_gesture_reset(
 /// this is. Primarily useful in WebAssembly environments where accessing
 /// struct fields directly is difficult.
 ///
-/// @param attr The SGR attribute
-/// @return The attribute tag
+/// @param attr Pointer to the SGR attribute (may be NULL)
+/// @return The attribute tag, or GHOSTTY_SGR_ATTR_UNSET if `attr` is NULL
 ///
 /// @ingroup sgr
-@ffi.Native<ffi.UnsignedInt Function(SgrAttribute)>(
+@ffi.Native<ffi.UnsignedInt Function(ffi.Pointer<SgrAttribute>)>(
   symbol: 'ghostty_sgr_attribute_tag',
   isLeaf: true,
 )
-external int _ghostty_sgr_attribute_tag(SgrAttribute attr);
+external int _ghostty_sgr_attribute_tag(ffi.Pointer<SgrAttribute> attr);
 
-SgrAttributeTag ghostty_sgr_attribute_tag(SgrAttribute attr) {
+SgrAttributeTag ghostty_sgr_attribute_tag(ffi.Pointer<SgrAttribute> attr) {
   return SgrAttributeTag.fromValue(_ghostty_sgr_attribute_tag(attr));
 }
 
@@ -3791,7 +4644,7 @@ SgrAttributeTag ghostty_sgr_attribute_tag(SgrAttribute attr) {
 /// the tag to determine which field of the union is valid. Primarily useful in
 /// WebAssembly environments where accessing struct fields directly is difficult.
 ///
-/// @param attr Pointer to the SGR attribute
+/// @param attr Pointer to the SGR attribute (NULL returns NULL)
 /// @return Pointer to the attribute value union
 ///
 /// @ingroup sgr
@@ -3822,7 +4675,8 @@ external void ghostty_sgr_free(SgrParser parser);
 ///
 /// @param allocator Pointer to the allocator to use for memory management, or
 /// NULL to use the default allocator
-/// @param parser Pointer to store the created parser handle
+/// @param parser Pointer to store the created parser handle (NULL returns
+/// GHOSTTY_INVALID_VALUE)
 /// @return GHOSTTY_SUCCESS on success, or an error code on failure
 ///
 /// @ingroup sgr
@@ -3847,8 +4701,8 @@ Result ghostty_sgr_new(
 /// Call this function repeatedly until it returns false to process
 /// all attributes in the sequence.
 ///
-/// @param parser The parser handle, must not be NULL
-/// @param attr Pointer to store the next attribute
+/// @param parser The parser handle (NULL returns false)
+/// @param attr Pointer to store the next attribute (NULL returns false)
 /// @return true if an attribute was returned, false if no more attributes
 ///
 /// @ingroup sgr
@@ -3864,7 +4718,7 @@ external bool ghostty_sgr_next(
 /// After calling this, ghostty_sgr_next() will start from the beginning
 /// of the parameter list again.
 ///
-/// @param parser The parser handle to reset, must not be NULL
+/// @param parser The parser handle to reset (NULL does nothing)
 ///
 /// @ingroup sgr
 @ffi.Native<ffi.Void Function(SgrParser)>(isLeaf: true)
@@ -3885,13 +4739,14 @@ external void ghostty_sgr_reset(SgrParser parser);
 /// If separators is NULL, all parameters are assumed to be semicolon-separated.
 ///
 /// This function makes an internal copy of the parameter and separator data,
-/// so the caller can safely free or modify the input arrays after this call.
+/// so you can safely free or modify the input arrays after this call.
 ///
 /// After calling this function, the parser is automatically reset and ready
 /// to iterate from the beginning.
 ///
-/// @param parser The parser handle, must not be NULL
-/// @param params Array of SGR parameter values
+/// @param parser The parser handle (NULL returns GHOSTTY_INVALID_VALUE)
+/// @param params Array of SGR parameter values (NULL returns
+/// GHOSTTY_INVALID_VALUE)
 /// @param separators Optional array of separator characters (';' or ':'), or
 /// NULL
 /// @param len Number of parameters (and separators if provided)
@@ -3967,39 +4822,42 @@ external int ghostty_sgr_unknown_partial(
 /// Encodes a size report in the format specified by @p style into the
 /// provided buffer.
 ///
-/// If the buffer is too small, the function returns GHOSTTY_OUT_OF_SPACE
-/// and writes the required buffer size to @p out_written. The caller can
-/// then retry with a sufficiently sized buffer.
+/// If @p buf is too small, this returns GHOSTTY_OUT_OF_SPACE and sets
+/// @p out_written to the size needed. The buffer may then hold part of the
+/// sequence, which you should discard. To get the size without encoding
+/// anything, pass NULL for @p buf and 0 for @p buf_len.
 ///
 /// @param style The size report format to encode
 /// @param size Terminal size information
-/// @param buf Output buffer to write the encoded sequence into (may be NULL)
-/// @param buf_len Size of the output buffer in bytes
-/// @param[out] out_written On success, the number of bytes written. On
-/// GHOSTTY_OUT_OF_SPACE, the required buffer size.
+/// @param buf Buffer to write the sequence into. May be NULL if @p buf_len
+/// is 0.
+/// @param buf_len Size of @p buf in bytes
+/// @param[out] out_written The number of bytes written, or the size needed
+/// if the result is GHOSTTY_OUT_OF_SPACE
 /// @return GHOSTTY_SUCCESS on success, GHOSTTY_OUT_OF_SPACE if the buffer
-/// is too small
+/// is too small, or GHOSTTY_INVALID_VALUE if @p size or
+/// @p out_written is NULL
 @ffi.Native<
   ffi.Int Function(
     ffi.UnsignedInt,
-    SizeReportSize,
-    ffi.Pointer<ffi.Char>,
+    ffi.Pointer<SizeReportSize>,
+    ffi.Pointer<ffi.Uint8>,
     ffi.Size,
     ffi.Pointer<ffi.Size>,
   )
 >(symbol: 'ghostty_size_report_encode')
 external int _ghostty_size_report_encode(
   int style,
-  SizeReportSize size,
-  ffi.Pointer<ffi.Char> buf,
+  ffi.Pointer<SizeReportSize> size,
+  ffi.Pointer<ffi.Uint8> buf,
   int buf_len,
   ffi.Pointer<ffi.Size> out_written,
 );
 
 Result ghostty_size_report_encode(
   SizeReportStyle style,
-  SizeReportSize size,
-  ffi.Pointer<ffi.Char> buf,
+  ffi.Pointer<SizeReportSize> size,
+  ffi.Pointer<ffi.Uint8> buf,
   int buf_len,
   ffi.Pointer<ffi.Size> out_written,
 ) {
@@ -4007,6 +4865,29 @@ Result ghostty_size_report_encode(
     _ghostty_size_report_encode(style.value, size, buf, buf_len, out_written),
   );
 }
+
+/// Initialize a sized struct at runtime.
+///
+/// This does the same thing as GHOSTTY_INIT_SIZED(). It sets every byte of
+/// the struct to zero and then stores `size` in the struct's `size` field.
+/// It is meant for language bindings that cannot use a C macro. Pass the
+/// size of the struct as your binding lays it out, which is `sizeof` of the
+/// struct in the header the binding was built from. See @ref sized-structs.
+///
+/// @code{.c}
+/// RenderStateCursor cursor;
+/// ghostty_sized_init(&cursor, sizeof(cursor));
+/// @endcode
+///
+/// If `ptr` is NULL, or `size` is too small to hold the `size` field
+/// itself, this function does nothing.
+///
+/// @param ptr The struct to initialize, or NULL
+/// @param size The size of the struct in bytes
+///
+/// @ingroup core_types
+@ffi.Native<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Size)>()
+external void ghostty_sized_init(ffi.Pointer<ffi.Void> ptr, int size);
 
 /// Decode and validate one complete snapshot.
 ///
@@ -4028,8 +4909,8 @@ Result ghostty_size_report_encode(
 /// lifecycle error detected before the operation consumes input does not
 /// poison it.
 ///
-/// @param decoder Decoder handle (must not be NULL)
-/// @param[out] terminal Pointer to receive the terminal (must not be NULL)
+/// @param decoder Decoder handle (NULL returns GHOSTTY_INVALID_VALUE)
+/// @param[out] terminal Pointer to receive the terminal (NULL returns GHOSTTY_INVALID_VALUE)
 /// @return GHOSTTY_SUCCESS on success, or an error code on failure
 ///
 /// @ingroup snapshot
@@ -4050,7 +4931,7 @@ Result ghostty_snapshot_decoder_decode(
 
 /// Free a snapshot decoder.
 ///
-/// This does not release the caller's ownership of a terminal returned by
+/// This does not release your ownership of a terminal returned by
 /// ready or decode. Abandoning an incremental decode leaves that terminal
 /// usable with whatever history had already been restored.
 ///
@@ -4065,11 +4946,12 @@ external void ghostty_snapshot_decoder_free(SnapshotDecoder decoder);
 /// The output pointer must have the type documented by data. A phase-dependent
 /// value that is not currently available returns GHOSTTY_NO_VALUE.
 ///
-/// @param decoder Decoder handle (must not be NULL)
+/// @param decoder Decoder handle (NULL returns GHOSTTY_INVALID_VALUE)
 /// @param data Data kind to query
-/// @param[out] out Pointer to receive the value (must not be NULL)
+/// @param[out] out Pointer to receive the value (NULL returns GHOSTTY_INVALID_VALUE)
 /// @return GHOSTTY_SUCCESS on success, GHOSTTY_NO_VALUE if the requested data
-/// is unavailable, or another error code on failure
+/// is unavailable, GHOSTTY_UNSUPPORTED if `data` is not known to this
+/// version of the library, or another error code on failure
 ///
 /// @ingroup snapshot
 @ffi.Native<
@@ -4093,18 +4975,26 @@ Result ghostty_snapshot_decoder_get(
 
 /// Get multiple snapshot decoder data fields in a single call.
 ///
+/// Use this when each call into the library is expensive, for example from
+/// WebAssembly or from another language through its foreign function
+/// interface. It reads every key in one call. From C in the same process it
+/// costs the same as calling ghostty_snapshot_decoder_get() once per key, so
+/// use whichever reads better.
+///
 /// Each keys element selects a data kind and the corresponding values element
 /// points to storage of the documented output type. Processing stops at the
 /// first error. On success out_written is set to count; on error it is set to
 /// the number of values written before the failing key. Invalid array arguments
 /// report zero values written.
 ///
-/// @param decoder Decoder handle (must not be NULL)
+/// @param decoder Decoder handle (NULL returns GHOSTTY_INVALID_VALUE)
 /// @param count Number of key/value pairs
 /// @param keys Array of data kinds to query
 /// @param values Array of output pointers corresponding to keys
 /// @param[out] out_written Number of successfully written values (may be NULL)
-/// @return GHOSTTY_SUCCESS if every query succeeds, or the first error
+/// @return GHOSTTY_SUCCESS if every key succeeds. Otherwise the result of the
+/// first key that failed, for example GHOSTTY_UNSUPPORTED for a key
+/// that is not known to this version of the library.
 ///
 /// @ingroup snapshot
 @ffi.Native<
@@ -4157,7 +5047,7 @@ Result ghostty_snapshot_decoder_get_multi(
 ///
 /// @param allocator Allocator for decoder and decoded terminal state, or NULL
 /// for the default allocator
-/// @param decoder Pointer to receive the decoder handle (must not be NULL)
+/// @param decoder Pointer to receive the decoder handle (NULL returns GHOSTTY_INVALID_VALUE)
 /// @param reader Snapshot source reader
 /// @return GHOSTTY_SUCCESS on success, or an error code on failure
 ///
@@ -4189,7 +5079,7 @@ Result ghostty_snapshot_decoder_new(
 ///
 /// @param allocator Allocator for decoder and decoded terminal state, or NULL
 /// for the default allocator
-/// @param decoder Pointer to receive the decoder handle (must not be NULL)
+/// @param decoder Pointer to receive the decoder handle (NULL returns GHOSTTY_INVALID_VALUE)
 /// @param ptr Snapshot source bytes
 /// @param len Number of source bytes
 /// @return GHOSTTY_SUCCESS on success, or an error code on failure
@@ -4221,17 +5111,61 @@ Result ghostty_snapshot_decoder_new_buf(
   );
 }
 
-/// Decode one history page into the terminal returned by READY.
+/// Decode one history page, or the pixels of one Kitty graphics image, into
+/// the terminal returned by READY.
 ///
-/// Each GHOSTTY_SUCCESS consumes and validates one PAGE record. Query the
-/// GHOSTTY_SNAPSHOT_DECODER_DATA_PROGRESS_* values before calling next again.
+/// Each GHOSTTY_SUCCESS consumes and validates one record: a history page
+/// together with the Kitty graphics placements pinned to it, or the pixels
+/// of one image or animation frame. Pixels may arrive at any point, even
+/// between history pages. Query GHOSTTY_SNAPSHOT_DECODER_DATA_PROGRESS_KIND
+/// and the progress values for that kind before calling next again.
 /// GHOSTTY_NO_VALUE means FINISH was validated; repeated calls after FINISH
 /// also return GHOSTTY_NO_VALUE.
 ///
+/// @code{.c}
+/// // How many image bytes the primary screen is waiting for, to show
+/// // progress while they arrive.
+/// uint64_t pending = 0;
+/// ghostty_snapshot_decoder_get(
+/// decoder, GHOSTTY_SNAPSHOT_DECODER_DATA_KITTY_PENDING_BYTES_PRIMARY,
+/// &pending);
+/// uint64_t received = 0;
+///
+/// Result result;
+/// while ((result = ghostty_snapshot_decoder_next(decoder)) == GHOSTTY_SUCCESS) {
+/// SnapshotDecoderProgressKind kind;
+/// ghostty_snapshot_decoder_get(
+/// decoder, GHOSTTY_SNAPSHOT_DECODER_DATA_PROGRESS_KIND, &kind);
+///
+/// if (kind == GHOSTTY_SNAPSHOT_DECODER_PROGRESS_KIND_PAGE) {
+/// // Scrollback grew by this many rows.
+/// size_t rows = 0;
+/// ghostty_snapshot_decoder_get(
+/// decoder, GHOSTTY_SNAPSHOT_DECODER_DATA_PROGRESS_ROWS, &rows);
+/// continue;
+/// }
+///
+/// // An image's pixels arrived.
+/// TerminalScreen screen;
+/// size_t bytes = 0;
+/// ghostty_snapshot_decoder_get(
+/// decoder, GHOSTTY_SNAPSHOT_DECODER_DATA_PROGRESS_SCREEN, &screen);
+/// ghostty_snapshot_decoder_get(
+/// decoder, GHOSTTY_SNAPSHOT_DECODER_DATA_PROGRESS_IMAGE_BYTES, &bytes);
+/// if (screen == GHOSTTY_TERMINAL_SCREEN_PRIMARY) received += bytes;
+/// }
+///
+/// // GHOSTTY_NO_VALUE means the snapshot is complete. Dropped pixels report
+/// // zero bytes, so received can end up below pending.
+/// @endcode
+///
 /// The terminal may be rendered, resized, and fed live PTY input between calls.
 /// If a history page can no longer be applied safely, it is still consumed and
-/// validated and progress reports zero rows. The decoder applies history
-/// to the caller-owned terminal produced by its READY operation.
+/// validated and progress reports zero rows. Image pixels work the same way:
+/// if live input deleted the image, or sent a new image with the same ID, the
+/// pixels are consumed and validated and progress reports zero bytes. The
+/// decoder applies history and pixels to your terminal produced
+/// by its READY operation.
 ///
 /// If GHOSTTY_SNAPSHOT_DECODER_OPT_COMPRESS_HISTORY is true, the page is
 /// compressed before this function returns, unless it is visible in the
@@ -4241,9 +5175,9 @@ Result ghostty_snapshot_decoder_new_buf(
 /// remains caller-owned and usable with its already-restored history, but only
 /// ghostty_snapshot_decoder_free() may subsequently be called on the decoder.
 ///
-/// @param decoder Decoder handle (must not be NULL)
-/// @return GHOSTTY_SUCCESS for one page, GHOSTTY_NO_VALUE after FINISH, or an
-/// error code on failure
+/// @param decoder Decoder handle (NULL returns GHOSTTY_INVALID_VALUE)
+/// @return GHOSTTY_SUCCESS for one page or image, GHOSTTY_NO_VALUE after
+/// FINISH, or an error code on failure
 ///
 /// @ingroup snapshot
 @ffi.Native<ffi.Int Function(SnapshotDecoder)>(
@@ -4273,7 +5207,7 @@ Result ghostty_snapshot_decoder_next(SnapshotDecoder decoder) {
 /// GHOSTTY_TERMINAL_OPT_CONTINUATION_MAX_BYTES to zero after export and before
 /// writing any post-snapshot bytes, because later input may change it.
 ///
-/// The caller must keep the returned terminal alive until FINISH validates or
+/// You must keep the returned terminal alive until FINISH validates or
 /// the decoder is freed. The decoder borrows this terminal handle while it
 /// restores history; ghostty_snapshot_decoder_next() uses it automatically.
 ///
@@ -4283,8 +5217,8 @@ Result ghostty_snapshot_decoder_next(SnapshotDecoder decoder) {
 /// must be freed. An invalid argument or lifecycle error detected before the
 /// operation consumes input does not poison it.
 ///
-/// @param decoder Decoder handle (must not be NULL)
-/// @param[out] terminal Pointer to receive the terminal (must not be NULL)
+/// @param decoder Decoder handle (NULL returns GHOSTTY_INVALID_VALUE)
+/// @param[out] terminal Pointer to receive the terminal (NULL returns GHOSTTY_INVALID_VALUE)
 /// @return GHOSTTY_SUCCESS on success, or an error code on failure
 ///
 /// @ingroup snapshot
@@ -4305,14 +5239,30 @@ Result ghostty_snapshot_decoder_ready(
 
 /// Set a snapshot decoder option.
 ///
-/// The value pointer must have the type documented by option. Options may only
-/// be changed before decoding starts.
+/// The value pointer must have the type documented by option. Passing NULL
+/// for `value` restores the option's default, which each
+/// SnapshotDecoderOption value documents. Options can only be
+/// changed before decoding starts.
 ///
-/// @param decoder Decoder handle (must not be NULL)
+/// @code{.c}
+/// bool retain = true;
+/// ghostty_snapshot_decoder_set(
+/// decoder, GHOSTTY_SNAPSHOT_DECODER_OPT_RETAIN_CONTINUATION, &retain);
+///
+/// // Changed our mind: go back to the default (false).
+/// ghostty_snapshot_decoder_set(
+/// decoder, GHOSTTY_SNAPSHOT_DECODER_OPT_RETAIN_CONTINUATION, NULL);
+/// @endcode
+///
+/// @param decoder Decoder handle (NULL returns GHOSTTY_INVALID_VALUE)
 /// @param option Option to change
-/// @param value Pointer to the option value (must not be NULL)
+/// @param value Pointer to the option value, or NULL to restore the default
 /// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if decoding has
-/// started or an argument is invalid, or another error code on failure
+/// started or an argument is invalid, GHOSTTY_UNSUPPORTED if `option`
+/// is not known to this version of the library, or another error code
+/// on failure. An unknown `option` always returns
+/// GHOSTTY_UNSUPPORTED, even after decoding has started, so it is
+/// safe to use for checking whether the library knows an option.
 ///
 /// @ingroup snapshot
 @ffi.Native<
@@ -4337,7 +5287,7 @@ Result ghostty_snapshot_decoder_set(
 /// Encode a complete terminal snapshot to a writer.
 ///
 /// The terminal's persistent VT stream supplies the continuation bytes needed
-/// to reconstruct unfinished parser state. The caller must prevent concurrent
+/// to reconstruct unfinished parser state. You must prevent concurrent
 /// writes or other terminal mutation for the duration of this call. The writer
 /// callback must not call terminal APIs with the same terminal handle.
 /// A terminal can be encoded with tracking disabled when its VT parser and
@@ -4348,9 +5298,9 @@ Result ghostty_snapshot_decoder_set(
 /// Encoding begins at the writer's current position. If an error occurs, the
 /// writer may contain a partial snapshot without a valid FINISH marker.
 /// Calls to the writer are synchronous; this function does not flush or make
-/// the caller's destination durable.
+/// your destination durable.
 ///
-/// @param terminal Terminal to encode (must not be NULL)
+/// @param terminal Terminal to encode (NULL returns GHOSTTY_INVALID_VALUE)
 /// @param writer Destination writer whose write callback must not be NULL
 /// @return GHOSTTY_SUCCESS on success, GHOSTTY_IO_ERROR if the writer rejects
 /// output, GHOSTTY_LIMIT_EXCEEDED if output accounting overflows, or
@@ -4369,7 +5319,7 @@ Result ghostty_snapshot_encode(Terminal terminal, Writer writer) {
 /// Encode a complete terminal snapshot to an allocated buffer.
 ///
 /// The returned buffer is allocated with allocator, or the default allocator
-/// when allocator is NULL. The caller must release it with ghostty_free(),
+/// when allocator is NULL. You must release it with ghostty_free(),
 /// passing the same allocator used here.
 ///
 /// A terminal can be encoded with tracking disabled when its VT parser and
@@ -4377,10 +5327,10 @@ Result ghostty_snapshot_encode(Terminal terminal, Writer writer) {
 /// have been enabled before the input that produced that state was written;
 /// otherwise this returns GHOSTTY_INVALID_VALUE.
 ///
-/// @param terminal Terminal to encode (must not be NULL)
+/// @param terminal Terminal to encode (NULL returns GHOSTTY_INVALID_VALUE)
 /// @param allocator Allocator for the output, or NULL for the default allocator
-/// @param[out] out_ptr Allocated snapshot bytes (must not be NULL)
-/// @param[out] out_len Number of allocated snapshot bytes (must not be NULL)
+/// @param[out] out_ptr Allocated snapshot bytes (NULL returns GHOSTTY_INVALID_VALUE)
+/// @param[out] out_len Number of allocated snapshot bytes (NULL returns GHOSTTY_INVALID_VALUE)
 /// @return GHOSTTY_SUCCESS on success, or an error code on failure
 ///
 /// @ingroup snapshot
@@ -4423,11 +5373,11 @@ Result ghostty_snapshot_encode_alloc(
 /// have been enabled before the input that produced that state was written;
 /// otherwise this returns GHOSTTY_INVALID_VALUE.
 ///
-/// @param terminal Terminal to encode (must not be NULL)
+/// @param terminal Terminal to encode (NULL returns GHOSTTY_INVALID_VALUE)
 /// @param buf Destination buffer, or NULL when buf_len is zero
 /// @param buf_len Destination buffer capacity in bytes
 /// @param[out] out_written Bytes written, or required capacity on
-/// GHOSTTY_OUT_OF_SPACE (must not be NULL)
+/// GHOSTTY_OUT_OF_SPACE (NULL returns GHOSTTY_INVALID_VALUE)
 /// @return GHOSTTY_SUCCESS on success, or an error code on failure
 ///
 /// @ingroup snapshot
@@ -4460,8 +5410,9 @@ Result ghostty_snapshot_encode_buf(
 /// Get the default style.
 ///
 /// Initializes the style to the default values (no colors, no flags).
+/// The default style is all zero bytes.
 ///
-/// @param style Pointer to the style to initialize
+/// @param style Pointer to the style to initialize (NULL does nothing)
 ///
 /// @ingroup style
 @ffi.Native<ffi.Void Function(ffi.Pointer<Style>)>()
@@ -4469,9 +5420,10 @@ external void ghostty_style_default(ffi.Pointer<Style> style);
 
 /// Check if a style is the default style.
 ///
-/// Returns true if all colors are unset and all flags are off.
+/// Returns true if all colors are unset and all flags are off. Reserved
+/// bits are ignored.
 ///
-/// @param style Pointer to the style to check
+/// @param style Pointer to the style to check (NULL returns false)
 /// @return true if the style is the default style
 ///
 /// @ingroup style
@@ -4532,8 +5484,8 @@ void ghostty_sys_log_stderr(
 /// @param option The option to set
 /// @param value  Pointer to the value (type depends on the option),
 /// or NULL to clear it
-/// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if the
-/// option is not recognized
+/// @return GHOSTTY_SUCCESS on success, or GHOSTTY_UNSUPPORTED if the
+/// option is not known to this build (see Result)
 @ffi.Native<ffi.Int Function(ffi.UnsignedInt, ffi.Pointer<ffi.Void>)>(
   symbol: 'ghostty_sys_set',
 )
@@ -4558,7 +5510,7 @@ Result ghostty_sys_set(SysOption option, ffi.Pointer<ffi.Void> value) {
 /// Accessing compressed history restores it transparently.
 ///
 /// This function is not thread-safe with other operations on the same
-/// terminal. The caller must serialize it with writes, rendering, searches,
+/// terminal. You must serialize it with writes, rendering, searches,
 /// and other terminal access.
 ///
 /// @param terminal The terminal handle (NULL returns GHOSTTY_INVALID_VALUE)
@@ -4623,7 +5575,7 @@ Result ghostty_terminal_compression_activity(
 /// Return an allocated copy of the terminal's replay-safe VT continuation.
 ///
 /// The returned bytes are allocated with allocator, or the default allocator
-/// when allocator is NULL. The caller must release them with ghostty_free(),
+/// when allocator is NULL. You must release them with ghostty_free(),
 /// passing the same allocator and returned length. An empty continuation is a
 /// successful result with *out_ptr set to NULL and *out_len set to zero,
 /// which can also be passed to ghostty_free().
@@ -4631,13 +5583,13 @@ Result ghostty_terminal_compression_activity(
 /// GHOSTTY_TERMINAL_OPT_CONTINUATION_MAX_BYTES to a nonzero value before the
 /// input that produced the continuation was written.
 ///
-/// The caller must serialize this operation with all other access to the same
+/// You must serialize this operation with all other access to the same
 /// terminal.
 ///
-/// @param terminal Terminal to read from (must not be NULL)
+/// @param terminal Terminal to read from (NULL returns GHOSTTY_INVALID_VALUE)
 /// @param allocator Allocator for the output, or NULL for the default allocator
-/// @param[out] out_ptr Allocated continuation bytes (must not be NULL)
-/// @param[out] out_len Number of continuation bytes (must not be NULL)
+/// @param[out] out_ptr Allocated continuation bytes (NULL returns GHOSTTY_INVALID_VALUE)
+/// @param[out] out_len Number of continuation bytes (NULL returns GHOSTTY_INVALID_VALUE)
 /// @return GHOSTTY_SUCCESS on success, GHOSTTY_OUT_OF_MEMORY on allocation
 /// failure, or GHOSTTY_INVALID_VALUE if an argument is invalid,
 /// tracking is disabled, or the current continuation is unavailable
@@ -4671,26 +5623,30 @@ Result ghostty_terminal_continuation_alloc(
 
 /// Copy the terminal's replay-safe VT continuation into a caller buffer.
 ///
-/// Pass NULL for buf with buf_len zero to query the required size. A size query
-/// returns GHOSTTY_OUT_OF_SPACE and stores the required size in out_written,
-/// including zero when the stream is at ground. If a non-NULL buffer is too
-/// small, the function has the same result and reports the full required size.
+/// If @p buf is too small, this returns GHOSTTY_OUT_OF_SPACE and sets
+/// @p out_written to the size needed. To get the size first, pass NULL for
+/// @p buf and 0 for @p buf_len. When no escape sequence or UTF-8 character
+/// is left unfinished, the continuation is empty and needs no space, so this
+/// returns GHOSTTY_SUCCESS with @p out_written set to 0, even for a size
+/// query.
+///
 /// Continuation tracking must have been enabled by setting
 /// GHOSTTY_TERMINAL_OPT_CONTINUATION_MAX_BYTES to a nonzero value before the
 /// input that produced the continuation was written.
 ///
-/// The caller must serialize this operation with all other access to the same
+/// You must serialize this operation with all other access to the same
 /// terminal.
 ///
-/// @param terminal Terminal to read from (must not be NULL)
-/// @param buf Destination buffer, or NULL when buf_len is zero
-/// @param buf_len Destination buffer capacity in bytes
-/// @param[out] out_written Bytes written, or required size on
-/// GHOSTTY_OUT_OF_SPACE (must not be NULL)
-/// @return GHOSTTY_SUCCESS on success, GHOSTTY_OUT_OF_SPACE for a size query or
-/// insufficient buffer, or GHOSTTY_INVALID_VALUE if an argument is
-/// invalid, tracking is disabled, or the current continuation is
-/// unavailable
+/// @param terminal Terminal to read from (NULL returns GHOSTTY_INVALID_VALUE)
+/// @param buf Buffer to write the continuation into. May be NULL if
+/// @p buf_len is 0.
+/// @param buf_len Size of @p buf in bytes
+/// @param[out] out_written The number of bytes written, or the size needed
+/// if the result is GHOSTTY_OUT_OF_SPACE. NULL returns GHOSTTY_INVALID_VALUE.
+/// @return GHOSTTY_SUCCESS on success, GHOSTTY_OUT_OF_SPACE if the
+/// continuation does not fit in @p buf, or GHOSTTY_INVALID_VALUE if an
+/// argument is invalid, tracking is disabled, or the current
+/// continuation is unavailable
 ///
 /// @ingroup terminal
 @ffi.Native<
@@ -4731,10 +5687,10 @@ Result ghostty_terminal_continuation_buf(
 /// GHOSTTY_TERMINAL_OPT_CONTINUATION_MAX_BYTES to a nonzero value before the
 /// input that produced the continuation was written.
 ///
-/// The caller must serialize this operation with both VT write functions and
+/// You must serialize this operation with both VT write functions and
 /// all other access to the same terminal.
 ///
-/// @param terminal Terminal to read from (must not be NULL)
+/// @param terminal Terminal to read from (NULL returns GHOSTTY_INVALID_VALUE)
 /// @param writer Destination writer whose write callback must not be NULL
 /// @return GHOSTTY_SUCCESS on success, GHOSTTY_IO_ERROR if the callback rejects
 /// a write, GHOSTTY_LIMIT_EXCEEDED if output accounting overflows, or
@@ -4777,8 +5733,10 @@ external void ghostty_terminal_free(Terminal terminal);
 /// @param terminal The terminal handle (may be NULL)
 /// @param data The type of data to extract
 /// @param out Pointer to store the extracted data (type depends on data parameter)
-/// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if the terminal
-/// is NULL or the data type is invalid
+/// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if the terminal is
+/// NULL or `data` is GHOSTTY_TERMINAL_DATA_INVALID, or
+/// GHOSTTY_UNSUPPORTED if `data` is not known to this version of the
+/// library
 ///
 /// @ingroup terminal
 @ffi.Native<ffi.Int Function(Terminal, ffi.UnsignedInt, ffi.Pointer<ffi.Void>)>(
@@ -4800,9 +5758,11 @@ Result ghostty_terminal_get(
 
 /// Get multiple data fields from a terminal in a single call.
 ///
-/// This is an optimization over calling ghostty_terminal_get()
-/// repeatedly, particularly useful in environments with high per-call
-/// overhead such as FFI or Cgo.
+/// Use this when each call into the library is expensive, for example from
+/// WebAssembly or from another language through its foreign function
+/// interface. It reads every key in one call. From C in the same process it
+/// costs the same as calling ghostty_terminal_get() once per key, so use
+/// whichever reads better.
 ///
 /// Each element in the keys array specifies a data kind, and the
 /// corresponding element in the values array receives the result.
@@ -4820,7 +5780,9 @@ Result ghostty_terminal_get(
 /// documented output type)
 /// @param[out] out_written On return, receives the number of values
 /// successfully written (may be NULL)
-/// @return GHOSTTY_SUCCESS if all queries succeed
+/// @return GHOSTTY_SUCCESS if every key succeeds. Otherwise the result of the
+/// first key that failed, for example GHOSTTY_UNSUPPORTED for a key
+/// that is not known to this version of the library.
 ///
 /// @ingroup terminal
 @ffi.Native<
@@ -4944,7 +5906,8 @@ Result ghostty_terminal_grid_ref_track(
 /// prior to using the terminal.
 ///
 /// @param allocator Pointer to allocator, or NULL to use the default allocator
-/// @param terminal Pointer to store the created terminal handle
+/// @param terminal Pointer to store the created terminal handle (NULL returns
+/// GHOSTTY_INVALID_VALUE)
 /// @param cols Terminal width in cells (must be greater than zero)
 /// @param rows Terminal height in cells (must be greater than zero)
 /// @return GHOSTTY_SUCCESS on success, or an error code on failure
@@ -4979,9 +5942,9 @@ Result ghostty_terminal_new(
 /// Paste into the terminal according to its current state: a Kitty
 /// clipboard protocol paste event if mode 5522 is enabled and a
 /// clipboard_read callback is installed, otherwise the text framed per
-/// mode 2004. See the group documentation for the full behavior. Output
+/// mode 2004. See @ref guide-input-paste for the full behavior. Output
 /// streams through the write_pty callback in chunks. The viewport is not
-/// scrolled; that is up to the embedder, as for key input.
+/// scrolled; that is up to you, as for key input.
 ///
 /// A paste event records a session grant for its one-time password only
 /// once the event is written; a failed call never leaves a grant for an
@@ -4989,36 +5952,36 @@ Result ghostty_terminal_new(
 ///
 /// @param terminal The terminal handle
 /// @param paste The paste request, borrowed for the duration of the call
-/// @param[out] out_written On success, whether anything was written to
+/// @param[out] out_pasted On success, whether anything was written to
 /// the pty (the encoded text or a paste event). False means
 /// there was nothing to paste: no non-empty text
 /// representation. May be NULL.
-/// @return GHOSTTY_SUCCESS on success (see @p out_written);
+/// @return GHOSTTY_SUCCESS on success (see @p out_pasted).
 /// GHOSTTY_REJECTED if the text could inject commands and
-/// Paste::allow_unsafe is false (nothing was written);
-/// GHOSTTY_INVALID_VALUE for a NULL terminal or paste, MIME
-/// types without a reader, or when no write_pty callback is
-/// installed; GHOSTTY_OUT_OF_MEMORY; GHOSTTY_IO_ERROR if the
-/// reader failed or there is no secure entropy source to mint a
-/// paste event password (wasm32-freestanding without
-/// GHOSTTY_SYS_OPT_RANDOM_SECURE set). Errors write nothing.
+/// Paste::allow_unsafe is false.
+/// GHOSTTY_INVALID_VALUE for a NULL terminal or paste, an unknown
+/// Paste::source, MIME types without a reader, or when no
+/// write_pty callback is installed.
+/// GHOSTTY_OUT_OF_MEMORY if an allocation fails.
+/// GHOSTTY_IO_ERROR if the reader failed or there is no secure
+/// entropy source to create a paste event password
+/// (wasm32-freestanding without GHOSTTY_SYS_OPT_RANDOM_SECURE set).
+/// Errors write nothing.
 @ffi.Native<
   ffi.Int Function(Terminal, ffi.Pointer<Paste>, ffi.Pointer<ffi.Bool>)
 >(symbol: 'ghostty_terminal_paste')
 external int _ghostty_terminal_paste(
   Terminal terminal,
   ffi.Pointer<Paste> paste,
-  ffi.Pointer<ffi.Bool> out_written,
+  ffi.Pointer<ffi.Bool> out_pasted,
 );
 
 Result ghostty_terminal_paste(
   Terminal terminal,
   ffi.Pointer<Paste> paste,
-  ffi.Pointer<ffi.Bool> out_written,
+  ffi.Pointer<ffi.Bool> out_pasted,
 ) {
-  return Result.fromValue(
-    _ghostty_terminal_paste(terminal, paste, out_written),
-  );
+  return Result.fromValue(_ghostty_terminal_paste(terminal, paste, out_pasted));
 }
 
 /// Convert a grid reference back to a point in the given coordinate system.
@@ -5038,7 +6001,8 @@ Result ghostty_terminal_paste(
 /// GHOSTTY_NO_VALUE.
 ///
 /// @param terminal The terminal handle (NULL returns GHOSTTY_INVALID_VALUE)
-/// @param ref Pointer to the grid reference to convert
+/// @param ref Pointer to the grid reference to convert (NULL returns
+/// GHOSTTY_INVALID_VALUE)
 /// @param tag The target coordinate system
 /// @param[out] out On success, set to the coordinate in the requested system (may be NULL)
 /// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if the terminal
@@ -5142,25 +6106,48 @@ Result ghostty_terminal_resize(
 /// Scroll the terminal viewport.
 ///
 /// Scrolls the terminal's viewport according to the given behavior.
-/// When using GHOSTTY_SCROLL_VIEWPORT_DELTA, set the delta field in
+/// When using GHOSTTY_TERMINAL_SCROLL_VIEWPORT_DELTA, set the delta field in
 /// the value union to specify the number of rows to scroll (negative
-/// for up, positive for down). When using GHOSTTY_SCROLL_VIEWPORT_ROW,
+/// for up, positive for down). When using GHOSTTY_TERMINAL_SCROLL_VIEWPORT_ROW,
 /// set the row field to the absolute row offset from the top of the
 /// scrollable area (the same row space as the offset field of
 /// TerminalScrollbar). When using
-/// GHOSTTY_SCROLL_VIEWPORT_DELTA_PROMPT, set delta_prompt to the signed
-/// number of prompts to move. See GHOSTTY_SCROLL_VIEWPORT_DELTA_PROMPT for
-/// the navigation behavior. For other behaviors, the value is ignored.
+/// GHOSTTY_TERMINAL_SCROLL_VIEWPORT_DELTA_PROMPT, set delta_prompt to the
+/// signed number of prompts to move. See
+/// GHOSTTY_TERMINAL_SCROLL_VIEWPORT_DELTA_PROMPT for the navigation behavior. For other behaviors, the value is ignored.
 ///
-/// @param terminal The terminal handle (may be NULL, in which case this is a no-op)
+/// @code{.c}
+/// TerminalScrollViewport behavior = {
+/// .tag = GHOSTTY_TERMINAL_SCROLL_VIEWPORT_DELTA,
+/// .value = { .delta = -5 },
+/// };
+/// ghostty_terminal_scroll_viewport(terminal, behavior); // up 5 rows
+/// @endcode
+///
+/// @param terminal The terminal handle (NULL returns GHOSTTY_INVALID_VALUE)
 /// @param behavior The scroll behavior as a tagged union
+/// @return GHOSTTY_SUCCESS on success, or GHOSTTY_INVALID_VALUE if
+/// `terminal` is NULL or `behavior.tag` is not a
+/// TerminalScrollViewportTag value known to this version of
+/// the library. The viewport does not move on failure.
 ///
 /// @ingroup terminal
-@ffi.Native<ffi.Void Function(Terminal, TerminalScrollViewport)>()
-external void ghostty_terminal_scroll_viewport(
+@ffi.Native<ffi.Int Function(Terminal, TerminalScrollViewport)>(
+  symbol: 'ghostty_terminal_scroll_viewport',
+)
+external int _ghostty_terminal_scroll_viewport(
   Terminal terminal,
   TerminalScrollViewport behavior,
 );
+
+Result ghostty_terminal_scroll_viewport(
+  Terminal terminal,
+  TerminalScrollViewport behavior,
+) {
+  return Result.fromValue(
+    _ghostty_terminal_scroll_viewport(terminal, behavior),
+  );
+}
 
 /// Derive a selection snapshot covering all selectable terminal content.
 ///
@@ -5233,26 +6220,37 @@ Result ghostty_terminal_select_line(
 /// The returned selection is not installed as the terminal's current
 /// selection. It is a snapshot with the same lifetime rules as Selection.
 ///
+/// @code{.c}
+/// GridRef ref = {0};
+/// ghostty_terminal_grid_ref(terminal, point, &ref);
+///
+/// Selection selection = {0};
+/// if (ghostty_terminal_select_output(terminal, &ref, &selection) == GHOSTTY_SUCCESS) {
+/// ghostty_terminal_set(terminal, GHOSTTY_TERMINAL_OPT_SELECTION, &selection);
+/// }
+/// @endcode
+///
 /// @param terminal The terminal handle (NULL returns GHOSTTY_INVALID_VALUE)
-/// @param ref Grid reference within command output to select
+/// @param ref Grid reference within command output to select (NULL returns
+/// GHOSTTY_INVALID_VALUE)
 /// @param[out] out_selection On success, receives the derived selection
 /// @return GHOSTTY_SUCCESS on success, GHOSTTY_NO_VALUE if the valid ref is
 /// not selectable command output, or GHOSTTY_INVALID_VALUE if the
 /// terminal, ref, or output pointer is invalid.
 ///
 /// @ingroup selection
-@ffi.Native<ffi.Int Function(Terminal, GridRef, ffi.Pointer<Selection>)>(
-  symbol: 'ghostty_terminal_select_output',
-)
+@ffi.Native<
+  ffi.Int Function(Terminal, ffi.Pointer<GridRef>, ffi.Pointer<Selection>)
+>(symbol: 'ghostty_terminal_select_output')
 external int _ghostty_terminal_select_output(
   Terminal terminal,
-  GridRef ref,
+  ffi.Pointer<GridRef> ref,
   ffi.Pointer<Selection> out_selection,
 );
 
 Result ghostty_terminal_select_output(
   Terminal terminal,
-  GridRef ref,
+  ffi.Pointer<GridRef> ref,
   ffi.Pointer<Selection> out_selection,
 ) {
   return Result.fromValue(
@@ -5312,6 +6310,8 @@ Result ghostty_terminal_select_word(
 ///
 /// @snippet c-vt-selection/src/main.c selection-word-between
 ///
+/// Full program: @ref c-vt-selection/src/main.c
+///
 /// The returned selection is not installed as the terminal's current
 /// selection. It is a snapshot with the same lifetime rules as Selection.
 ///
@@ -5349,7 +6349,7 @@ Result ghostty_terminal_select_word_between(
 
 /// Adjust a selection snapshot using terminal selection semantics.
 ///
-/// This mutates the caller-provided Selection in place. The logical end
+/// This mutates your Selection in place. The logical end
 /// endpoint is always moved, regardless of whether the selection is forward or
 /// reversed visually. The input selection remains a snapshot: after adjustment,
 /// call ghostty_terminal_set() with GHOSTTY_TERMINAL_OPT_SELECTION to install it
@@ -5489,128 +6489,6 @@ Result ghostty_terminal_selection_equal(
   );
 }
 
-/// Format a terminal selection into an allocated buffer.
-///
-/// This is a one-shot convenience API for formatting either the terminal's
-/// active selection or a caller-provided Selection without explicitly
-/// creating a Formatter.
-///
-/// The returned buffer is allocated using allocator, or the default allocator
-/// if NULL is passed. The caller owns the returned buffer and must free it with
-/// ghostty_free(), passing the same allocator and returned length.
-/// Empty output returns GHOSTTY_SUCCESS with *out_ptr set to NULL and
-/// *out_len set to zero. This result can be passed to ghostty_free().
-///
-/// The returned bytes are not NUL-terminated. This supports plain text, VT, and
-/// HTML uniformly as byte output.
-///
-/// If options.selection is NULL and the terminal has no active selection, the
-/// function returns GHOSTTY_NO_VALUE and leaves out_ptr as NULL and out_len as 0.
-///
-/// @param terminal The terminal to read from (must not be NULL)
-/// @param allocator Allocator used for the returned buffer, or NULL for the default allocator
-/// @param options Selection formatting options
-/// @param out_ptr Receives the allocated output buffer (must not be NULL)
-/// @param out_len Receives the output length in bytes (must not be NULL)
-/// @return GHOSTTY_SUCCESS on success, or an error code on failure
-///
-/// @ingroup selection
-@ffi.Native<
-  ffi.Int Function(
-    Terminal,
-    ffi.Pointer<Allocator>,
-    TerminalSelectionFormatOptions,
-    ffi.Pointer<ffi.Pointer<ffi.Uint8>>,
-    ffi.Pointer<ffi.Size>,
-  )
->(symbol: 'ghostty_terminal_selection_format_alloc')
-external int _ghostty_terminal_selection_format_alloc(
-  Terminal terminal,
-  ffi.Pointer<Allocator> allocator,
-  TerminalSelectionFormatOptions options,
-  ffi.Pointer<ffi.Pointer<ffi.Uint8>> out_ptr,
-  ffi.Pointer<ffi.Size> out_len,
-);
-
-Result ghostty_terminal_selection_format_alloc(
-  Terminal terminal,
-  ffi.Pointer<Allocator> allocator,
-  TerminalSelectionFormatOptions options,
-  ffi.Pointer<ffi.Pointer<ffi.Uint8>> out_ptr,
-  ffi.Pointer<ffi.Size> out_len,
-) {
-  return Result.fromValue(
-    _ghostty_terminal_selection_format_alloc(
-      terminal,
-      allocator,
-      options,
-      out_ptr,
-      out_len,
-    ),
-  );
-}
-
-/// Format a terminal selection into a caller-provided buffer.
-///
-/// This is a one-shot convenience API for formatting either the terminal's
-/// active selection or a caller-provided Selection without explicitly
-/// creating a Formatter.
-///
-/// Pass NULL for buf to query the required output size. In that case,
-/// out_written receives the required size and the function returns
-/// GHOSTTY_OUT_OF_SPACE.
-///
-/// If buf is too small, the function returns GHOSTTY_OUT_OF_SPACE and writes
-/// the required size to out_written. The caller can then retry with a larger
-/// buffer.
-///
-/// If options.selection is NULL and the terminal has no active selection, the
-/// function returns GHOSTTY_NO_VALUE.
-///
-/// @param terminal The terminal to read from (must not be NULL)
-/// @param options Selection formatting options
-/// @param buf Output buffer, or NULL to query required size
-/// @param buf_len Length of buf in bytes
-/// @param out_written Number of bytes written, or required size on
-/// GHOSTTY_OUT_OF_SPACE (must not be NULL)
-/// @return GHOSTTY_SUCCESS on success, or an error code on failure
-///
-/// @ingroup selection
-@ffi.Native<
-  ffi.Int Function(
-    Terminal,
-    TerminalSelectionFormatOptions,
-    ffi.Pointer<ffi.Uint8>,
-    ffi.Size,
-    ffi.Pointer<ffi.Size>,
-  )
->(symbol: 'ghostty_terminal_selection_format_buf', isLeaf: true)
-external int _ghostty_terminal_selection_format_buf(
-  Terminal terminal,
-  TerminalSelectionFormatOptions options,
-  ffi.Pointer<ffi.Uint8> buf,
-  int buf_len,
-  ffi.Pointer<ffi.Size> out_written,
-);
-
-Result ghostty_terminal_selection_format_buf(
-  Terminal terminal,
-  TerminalSelectionFormatOptions options,
-  ffi.Pointer<ffi.Uint8> buf,
-  int buf_len,
-  ffi.Pointer<ffi.Size> out_written,
-) {
-  return Result.fromValue(
-    _ghostty_terminal_selection_format_buf(
-      terminal,
-      options,
-      buf,
-      buf_len,
-      out_written,
-    ),
-  );
-}
-
 /// Get the current endpoint ordering of a selection snapshot.
 ///
 /// The selection's start and end grid refs must both be valid untracked
@@ -5712,18 +6590,40 @@ Result ghostty_terminal_selection_ordered(
 /// write_pty callback and userdata pointer. The value is passed
 /// directly for pointer types (callbacks, userdata) or as a pointer
 /// to the value for non-pointer types (e.g. String*).
-/// The behavior of a NULL value is specific to each option and is
-/// documented by the corresponding TerminalOption value.
+///
+/// Passing NULL for `value` restores the option's default, the same value
+/// a new terminal starts with. Each TerminalOption value documents
+/// its default. Callbacks and the userdata pointer default to NULL, so
+/// passing NULL removes them. GHOSTTY_TERMINAL_OPT_MODE and
+/// GHOSTTY_TERMINAL_OPT_MODE_DEFAULT have no default to restore, so they
+/// return GHOSTTY_INVALID_VALUE for NULL.
+///
+/// @code{.c}
+/// bool enabled = true;
+/// ghostty_terminal_set(terminal, GHOSTTY_TERMINAL_OPT_GLYPH_PROTOCOL,
+/// &enabled);
+///
+/// // Later, turn it back off by restoring the default.
+/// ghostty_terminal_set(terminal, GHOSTTY_TERMINAL_OPT_GLYPH_PROTOCOL, NULL);
+/// @endcode
 ///
 /// Callbacks are invoked synchronously during VT writes. Callbacks must not
 /// call ghostty_terminal_vt_write() or
-/// ghostty_terminal_vt_write_until_ground() on the same terminal
-/// (no reentrancy).
+/// ghostty_terminal_vt_write_until() on the same terminal. The terminal is
+/// not reentrant, and nothing checks for this or reports an error. The
+/// bytes go into the parser in the middle of the sequence that called you,
+/// so they can be lost or make that sequence run a second time. See
+/// @ref guide-effects-rules.
 ///
-/// @param terminal The terminal handle (may be NULL, in which case this is a no-op)
+/// @param terminal The terminal handle (NULL returns GHOSTTY_INVALID_VALUE)
 /// @param option The option to set
 /// @param value Pointer to the value to set (type depends on the option),
-/// or NULL to clear the option
+/// or NULL to restore the option's default
+/// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if `terminal`
+/// is NULL or the value is invalid for the option,
+/// GHOSTTY_OUT_OF_MEMORY if copying the value fails, or
+/// GHOSTTY_UNSUPPORTED if `option` is not known to this version of
+/// the library
 ///
 /// @ingroup terminal
 @ffi.Native<ffi.Int Function(Terminal, ffi.UnsignedInt, ffi.Pointer<ffi.Void>)>(
@@ -5757,8 +6657,8 @@ Result ghostty_terminal_set(
 /// source; so the primary goal is to keep the terminal state consistent and
 /// not allow malformed input to corrupt or crash.
 ///
-/// @param terminal The terminal handle
-/// @param data Pointer to the data to write
+/// @param terminal The terminal handle (NULL does nothing)
+/// @param data Pointer to the data to write (NULL does nothing)
 /// @param len Length of the data in bytes
 ///
 /// @ingroup terminal
@@ -5769,28 +6669,46 @@ external void ghostty_terminal_vt_write(
   int len,
 );
 
-/// Write VT-encoded data, but only the shortest prefix needed to reach ground.
+/// Write VT-encoded data to the terminal, stopping right after the first
+/// byte that reaches one of the requested boundaries.
 ///
-/// Ground is when the stream isn't in the middle of any type of sequence:
-/// UTF-8, ESC, CSI, OSC, etc. It is the stateless point of the stream.
+/// This works like ghostty_terminal_vt_write(), but it can pause at points
+/// you care about. It tells you exactly where a control string starts or
+/// ends, using the same parse that updates the terminal. For example, a
+/// program that sits between a shell and a terminal can use it to:
 ///
-/// This is useful to know because it is a point at which you can
-/// safely insert out-of-band VT sequences. For example, while reading
-/// from a pty if you want to make your own changes, you can wait until
-/// the pty input reaches ground, then write yours.
+/// - Find the exact bytes of each APC, DCS or OSC string, such as a Kitty
+/// graphics command, a tmux control mode message or a clipboard write,
+/// so it can forward, rewrite or drop that string.
+/// - Wait until the stream is at ground before inserting its own
+/// sequences, so it never splits a sequence from the program.
 ///
-/// If the stream is already at ground then this consumes nothing and returns
-/// GHOSTTY_SUCCESS. On success, out_consumed is the number of bytes consumed
-/// before reaching ground, including the byte that reaches it.
-/// GHOSTTY_NO_VALUE means the full slice was consumed without reaching ground.
+/// Pass the boundaries to stop at as TerminalBoundary flags. The
+/// call consumes input up to and including the first byte that reaches one
+/// of them, and reports that point in `out`. The terminal only processes
+/// the consumed bytes, and callbacks only run for those bytes. Pass the
+/// remaining bytes in your next call.
 ///
-/// @param terminal The terminal handle (must not be NULL)
+/// Every byte you pass is eventually consumed in order, so the terminal
+/// ends up in the same state as if you had called
+/// ghostty_terminal_vt_write() with all of it.
+///
+/// See @ref guide-custom-sequences-write-until for how to find string
+/// content, the cases that need care, and waiting for ground.
+///
+/// @param terminal The terminal handle (NULL returns GHOSTTY_INVALID_VALUE)
 /// @param data Pointer to the data to write, or NULL when len is zero
 /// @param len Length of the data in bytes
-/// @param[out] out_consumed Number of bytes consumed (must not be NULL)
-/// @return GHOSTTY_SUCCESS if ground was reached, GHOSTTY_NO_VALUE if all input
-/// was consumed without reaching ground, or GHOSTTY_INVALID_VALUE if
-/// an argument is invalid
+/// @param boundaries TerminalBoundary flags to stop at. Must be
+/// nonzero and contain only defined flags.
+/// @param[out] out Where the call stopped. NULL returns GHOSTTY_INVALID_VALUE. Its `size`
+/// must be set with GHOSTTY_INIT_SIZED().
+/// @return GHOSTTY_SUCCESS if a boundary was reached.
+/// GHOSTTY_NO_VALUE if all input was consumed without reaching a
+/// boundary. In that case `out->consumed` is `len` and
+/// `out->reached` is 0.
+/// GHOSTTY_INVALID_VALUE if an argument is invalid. No input is
+/// consumed.
 ///
 /// @ingroup terminal
 @ffi.Native<
@@ -5798,24 +6716,27 @@ external void ghostty_terminal_vt_write(
     Terminal,
     ffi.Pointer<ffi.Uint8>,
     ffi.Size,
-    ffi.Pointer<ffi.Size>,
+    ffi.Uint32,
+    ffi.Pointer<TerminalWriteStop>,
   )
->(symbol: 'ghostty_terminal_vt_write_until_ground')
-external int _ghostty_terminal_vt_write_until_ground(
+>(symbol: 'ghostty_terminal_vt_write_until')
+external int _ghostty_terminal_vt_write_until(
   Terminal terminal,
   ffi.Pointer<ffi.Uint8> data,
   int len,
-  ffi.Pointer<ffi.Size> out_consumed,
+  int boundaries,
+  ffi.Pointer<TerminalWriteStop> out,
 );
 
-Result ghostty_terminal_vt_write_until_ground(
+Result ghostty_terminal_vt_write_until(
   Terminal terminal,
   ffi.Pointer<ffi.Uint8> data,
   int len,
-  ffi.Pointer<ffi.Size> out_consumed,
+  int boundaries,
+  ffi.Pointer<TerminalWriteStop> out,
 ) {
   return Result.fromValue(
-    _ghostty_terminal_vt_write_until_ground(terminal, data, len, out_consumed),
+    _ghostty_terminal_vt_write_until(terminal, data, len, boundaries, out),
   );
 }
 
@@ -5976,6 +6897,25 @@ Result ghostty_tracked_grid_ref_snapshot(
 /// describe the current linked build and are not a cross-version stability
 /// promise.
 ///
+/// Every key enum also has a `keys` object. A key enum is the enum that a
+/// `_get`, `_set` or `_get_multi` function takes to pick a value, such as
+/// TerminalData or GhosttyTerminalOption. Each key lists its
+/// `direction` and the `type` that its `void *` value points at:
+///
+/// - An `"out"` key is read. Pass a pointer to storage of `type`, and the
+/// library writes the value there.
+/// - An `"in"` key is set. Pass a pointer to a value of `type`, and the
+/// library reads it. ghostty_formatter_get() also takes these keys, and
+/// writes a value of the same `type`.
+/// - A `type` of `opaque` is an untyped pointer, such as userdata. Pass the
+/// pointer itself.
+/// - A `type` that names a `callback` descriptor sets a callback. Pass the
+/// function pointer itself, not a pointer to it.
+///
+/// Callback descriptors, such as TerminalBellFn, describe a function
+/// pointer typedef. `params` lists the parameter types in order and `return`
+/// gives the return type. Both use the same type references as struct fields.
+///
 /// The formal format is defined by the
 /// <a href="types.schema.json">libghostty-vt ABI manifest JSON Schema</a>.
 ///
@@ -5992,14 +6932,26 @@ Result ghostty_tracked_grid_ref_snapshot(
 /// "RenderStateData": {
 /// "kind": "enum", "size": 4, "align": 4,
 /// "underlying": "i32", "prefix": "GHOSTTY_RENDER_STATE_DATA_",
-/// "values": { "INVALID": 0, "DIRTY": 3, "MAX_VALUE": 2147483647 }
+/// "values": { "INVALID": 0, "DIRTY": 3, "MAX_VALUE": 2147483647 },
+/// "keys": {
+/// "DIRTY": { "direction": "out", "type": "RenderStateDirty" }
+/// }
+/// },
+/// "TerminalBellFn": {
+/// "kind": "callback", "size": 4, "align": 4,
+/// "params": [
+/// { "type": "Terminal" },
+/// { "type": "pointer", "elem": "opaque", "const": false,
+/// "nullable": true }
+/// ],
+/// "return": { "type": "void" }
 /// },
 /// "StyleColor": {
-/// "kind": "struct", "size": 16, "align": 8,
+/// "kind": "struct", "size": 4, "align": 1,
 /// "fields": {
-/// "tag": { "offset": 0, "size": 4,
+/// "tag": { "offset": 0, "size": 1,
 /// "type": "StyleColorTag" },
-/// "value": { "offset": 8, "size": 8,
+/// "value": { "offset": 1, "size": 3,
 /// "type": "StyleColorValue", "tag": "tag",
 /// "arms": { "NONE": null, "PALETTE": "palette",
 /// "RGB": "rgb" } }
@@ -6012,6 +6964,8 @@ Result ghostty_tracked_grid_ref_snapshot(
 /// The returned pointer is valid for the lifetime of the process.
 ///
 /// @return Pointer to the null-terminated JSON string.
+///
+/// @ingroup core_types
 @ffi.Native<ffi.Pointer<ffi.Char> Function()>()
 external ffi.Pointer<ffi.Char> ghostty_type_json();
 
@@ -6127,31 +7081,47 @@ external int ghostty_unicode_grapheme_width(
   ffi.Pointer<ffi.Uint8> width,
 );
 
-/// Custom memory allocator.
+/// Get the full version of the library as a string.
 ///
-/// For functions that take an allocator pointer, a NULL pointer indicates
-/// that the default allocator should be used. The default allocator will
-/// be libc malloc/free if we're linking to libc. If libc isn't linked,
-/// a custom allocator is used (currently Zig's SMP allocator). On native
-/// freestanding targets, the default allocator always fails instead.
+/// This is the version of the library your program loaded, which can
+/// differ from the GHOSTTY_VT_VERSION of the headers it was compiled
+/// against. See @ref version "Version" for when that matters.
+///
+/// A release returns its version, such as "1.0.0". A development build
+/// also has a pre-release and build suffix, such as "1.1.0-dev+abc1234".
+///
+/// This returns the same text as GHOSTTY_BUILD_INFO_VERSION_STRING, but
+/// as a null-terminated string that you can pass straight to `printf` or
+/// to other languages. To get the version as numbers, use
+/// ghostty_build_info() with GHOSTTY_BUILD_INFO_VERSION_MAJOR and the
+/// values that follow it.
+///
+/// @code
+/// printf("Using libghostty-vt %s\n", ghostty_version());
+/// @endcode
+///
+/// @return The version string. It is never NULL, is owned by the
+/// library, and stays valid for as long as the library is
+/// loaded. Do not free it.
+///
+/// @ingroup build_info
+@ffi.Native<ffi.Pointer<ffi.Char> Function()>()
+external ffi.Pointer<ffi.Char> ghostty_version();
+
+/// A custom allocator: a vtable and the context it operates on.
+///
+/// Pass a pointer to one of these to any function that takes an allocator,
+/// or pass NULL to use the default allocator described in @ref memory-default.
+/// The library does not copy the allocator. It must stay valid for as long
+/// as anything allocated with it is in use.
 ///
 /// @ingroup allocator
-///
-/// Usage example:
-/// @code
-/// Allocator allocator = {
-/// .vtable = &my_allocator_vtable,
-/// .ctx = my_allocator_state
-/// };
-/// @endcode
 final class Allocator extends ffi.Struct {
-  /// Opaque context pointer passed to all vtable functions.
-  /// This allows the allocator implementation to maintain state
-  /// or reference external resources needed for memory management.
+  /// Your allocator's state, passed unchanged to every vtable function.
+  /// May be NULL if your allocator has no state.
   external ffi.Pointer<ffi.Void> ctx;
 
-  /// Pointer to the allocator's vtable containing function pointers
-  /// for memory operations (alloc, resize, remap, free).
+  /// The functions that implement this allocator. Must not be NULL.
   external ffi.Pointer<AllocatorVtable> vtable;
 
   static ffi.Pointer<Allocator> $allocate(
@@ -6163,220 +7133,235 @@ final class Allocator extends ffi.Struct {
     ..ref.vtable = vtable;
 }
 
-/// Function table for custom memory allocator operations.
+/// Allocate a block of memory.
 ///
-/// This vtable defines the interface for a custom memory allocator. All
-/// function pointers must be valid and non-NULL.
+/// This is the `alloc` function of a AllocatorVtable. It's required.
+///
+/// @param ctx The allocator's context pointer
+/// @param len Number of bytes to allocate
+/// @param alignment The block's address must be a multiple of
+/// `1 << alignment` bytes. See @ref memory-alignment.
+/// @param ret_addr Address of the requesting code, or 0. Safe to ignore.
+/// @return The new block, or NULL if it could not be allocated
 ///
 /// @ingroup allocator
+typedef AllocatorAllocFn =
+    ffi.Pointer<ffi.NativeFunction<AllocatorAllocFnFunction>>;
+typedef AllocatorAllocFnFunction =
+    ffi.Pointer<ffi.Void> Function(
+      ffi.Pointer<ffi.Void> ctx,
+      ffi.Size len,
+      ffi.Uint8 alignment,
+      ffi.UintPtr ret_addr,
+    );
+typedef DartGhosttyAllocatorAllocFnFunction =
+    ffi.Pointer<ffi.Void> Function(
+      ffi.Pointer<ffi.Void> ctx,
+      int len,
+      int alignment,
+      int ret_addr,
+    );
+
+/// Free a block.
 ///
-/// If you're not going to use a custom allocator, you can ignore all of
-/// this. All functions that take an allocator pointer allow NULL to use a
-/// default allocator. Native freestanding builds must provide an allocator
-/// for operations that allocate memory.
+/// This is the `free` function of a AllocatorVtable. It's required.
+/// After it returns, the library never uses `memory` again.
 ///
-/// The interface is based on the Zig allocator interface. I'll say up front
-/// that it is easy to look at this interface and think "wow, this is really
-/// overcomplicated". The reason for this complexity is well thought out by
-/// the Zig folks, and it enables a diverse set of allocation strategies
-/// as shown by the Zig ecosystem. As a consolation, please note that many
-/// of the arguments are only needed for advanced use cases and can be
-/// safely ignored in simple implementations. For example, if you look at
-/// the Zig implementation of the libc allocator in `lib/std/heap.zig`
-/// (search for CAllocator), you'll see it is very simple.
+/// @param ctx The allocator's context pointer
+/// @param memory Start of a block returned by `alloc` or `remap`
+/// @param memory_len Current length of the block
+/// @param alignment The alignment the block was allocated with
+/// @param ret_addr Address of the requesting code, or 0. Safe to ignore.
 ///
-/// We chose to align with the Zig allocator interface because:
+/// @ingroup allocator
+typedef AllocatorFreeFn =
+    ffi.Pointer<ffi.NativeFunction<AllocatorFreeFnFunction>>;
+typedef AllocatorFreeFnFunction =
+    ffi.Void Function(
+      ffi.Pointer<ffi.Void> ctx,
+      ffi.Pointer<ffi.Void> memory,
+      ffi.Size memory_len,
+      ffi.Uint8 alignment,
+      ffi.UintPtr ret_addr,
+    );
+typedef DartGhosttyAllocatorFreeFnFunction =
+    void Function(
+      ffi.Pointer<ffi.Void> ctx,
+      ffi.Pointer<ffi.Void> memory,
+      int memory_len,
+      int alignment,
+      int ret_addr,
+    );
+
+/// Grow or shrink a block, moving it if that is cheaper than a copy.
 ///
-/// 1. It is a proven interface that serves a wide variety of use cases
-/// in the real world via the Zig ecosystem. It's shown to work.
+/// This is the `remap` function of a AllocatorVtable. It's optional,
+/// and leaving it NULL is the same as always returning NULL.
 ///
-/// 2. Our core implementation itself is Zig, and this lets us very
-/// cheaply and easily convert between C and Zig allocators.
+/// Unlike AllocatorResizeFn, this may return a new address, for example
+/// after remapping virtual memory pages. The block must hold the old contents
+/// at that address, and the old address is no longer valid.
 ///
-/// NOTE(mitchellh): In the future, we can have default implementations of
-/// resize/remap and allow those to be null.
+/// Return NULL when the only way to do it would be to allocate, copy, and free.
+/// The library does that itself, so there is no benefit in doing it here.
+///
+/// @param ctx The allocator's context pointer
+/// @param memory Start of a block returned by `alloc` or `remap`
+/// @param memory_len Current length of the block
+/// @param alignment The alignment the block was allocated with
+/// @param new_len Requested length, always greater than zero
+/// @param ret_addr Address of the requesting code, or 0. Safe to ignore.
+/// @return The resized block, or NULL to let the library copy instead
+///
+/// @ingroup allocator
+typedef AllocatorRemapFn =
+    ffi.Pointer<ffi.NativeFunction<AllocatorRemapFnFunction>>;
+typedef AllocatorRemapFnFunction =
+    ffi.Pointer<ffi.Void> Function(
+      ffi.Pointer<ffi.Void> ctx,
+      ffi.Pointer<ffi.Void> memory,
+      ffi.Size memory_len,
+      ffi.Uint8 alignment,
+      ffi.Size new_len,
+      ffi.UintPtr ret_addr,
+    );
+typedef DartGhosttyAllocatorRemapFnFunction =
+    ffi.Pointer<ffi.Void> Function(
+      ffi.Pointer<ffi.Void> ctx,
+      ffi.Pointer<ffi.Void> memory,
+      int memory_len,
+      int alignment,
+      int new_len,
+      int ret_addr,
+    );
+
+/// Try to grow or shrink a block without moving it.
+///
+/// This is the `resize` function of a AllocatorVtable. It's optional,
+/// and leaving it NULL is the same as always returning false.
+///
+/// Return true only if the block at `memory` is now `new_len` bytes long at
+/// the same address. Return false if that would require moving it. The library
+/// then decides whether to allocate a new block and copy.
+///
+/// For example, an arena that hands out memory from one buffer can resize its
+/// most recent block, because nothing comes after it:
+///
+/// @code{.c}
+/// typedef struct {
+/// uint8_t* base;
+/// size_t used;
+/// size_t capacity;
+/// } Arena;
+///
+/// static bool arena_resize(void* ctx, void* memory, size_t memory_len,
+/// uint8_t alignment, size_t new_len,
+/// uintptr_t ret_addr) {
+/// (void)alignment;
+/// (void)ret_addr;
+/// Arena* arena = ctx;
+/// size_t start = (size_t)((uint8_t*)memory - arena->base);
+///
+/// // Only the last block can change size in place.
+/// if (start + memory_len != arena->used) return false;
+/// if (start + new_len > arena->capacity) return false;
+///
+/// arena->used = start + new_len;
+/// return true;
+/// }
+/// @endcode
+///
+/// @param ctx The allocator's context pointer
+/// @param memory Start of a block returned by `alloc` or `remap`
+/// @param memory_len Current length of the block
+/// @param alignment The alignment the block was allocated with
+/// @param new_len Requested length, always greater than zero
+/// @param ret_addr Address of the requesting code, or 0. Safe to ignore.
+/// @return true if the block was resized in place, false otherwise
+///
+/// @ingroup allocator
+typedef AllocatorResizeFn =
+    ffi.Pointer<ffi.NativeFunction<AllocatorResizeFnFunction>>;
+typedef AllocatorResizeFnFunction =
+    ffi.Bool Function(
+      ffi.Pointer<ffi.Void> ctx,
+      ffi.Pointer<ffi.Void> memory,
+      ffi.Size memory_len,
+      ffi.Uint8 alignment,
+      ffi.Size new_len,
+      ffi.UintPtr ret_addr,
+    );
+typedef DartGhosttyAllocatorResizeFnFunction =
+    bool Function(
+      ffi.Pointer<ffi.Void> ctx,
+      ffi.Pointer<ffi.Void> memory,
+      int memory_len,
+      int alignment,
+      int new_len,
+      int ret_addr,
+    );
+
+/// The functions that make up a custom allocator.
+///
+/// `alloc` and `free` are required. `resize` and `remap` are optional, and
+/// when they are NULL the library grows memory by allocating a new block,
+/// copying, and freeing the old one. See @ref memory-custom for a complete
+/// example and @ref memory-alignment for an explanation of `alignment`.
+///
+/// Every function receives the `ctx` pointer from the Allocator it
+/// belongs to. When the library resizes, remaps, or frees memory, it always
+/// passes the same `alignment` it used for the original allocation and the
+/// current length of the block, so your allocator does not need to record
+/// either.
+///
+/// Every function also receives `ret_addr`, the address of the code that
+/// requested the memory, or 0 if it is unknown. Allocators that track
+/// leaks or report where memory came from can use it. Most allocators
+/// ignore it.
+///
+/// Initialize the whole struct to zero before setting the fields you use,
+/// so the reserved slots are NULL.
+///
+/// The interface matches Zig's `std.mem.Allocator`. The library is written
+/// in Zig, so this lets it use your allocator directly, and it is an
+/// interface already proven by a wide range of allocators in the Zig
+/// ecosystem. Simple allocators can ignore most of the arguments. Zig's
+/// own libc allocator (CAllocator in `lib/std/heap.zig`) is a good short
+/// reference.
+///
+/// @ingroup allocator
 final class AllocatorVtable extends ffi.Struct {
-  /// Return a pointer to `len` bytes with specified `alignment`, or return
-  /// `NULL` indicating the allocation failed.
-  ///
-  /// @param ctx The allocator context
-  /// @param len Number of bytes to allocate
-  /// @param alignment Required alignment for the allocation, as the number
-  /// of low bits of the returned address that must be zero. This is not
-  /// a byte count: convert it with `1 << alignment` before passing it to
-  /// aligned_alloc or posix_memalign. For example:
-  /// - 1: the lowest bit must be zero (2-byte aligned)
-  /// - 2: the lowest two bits must be zero (4-byte aligned)
-  /// - 4: the lowest four bits must be zero (16-byte aligned)
-  /// This matches Zig's `std.mem.Alignment`.
-  /// @param ret_addr First return address of the allocation call stack (0 if not provided)
-  /// @return Pointer to allocated memory, or NULL if allocation failed
-  external ffi.Pointer<
-    ffi.NativeFunction<
-      ffi.Pointer<ffi.Void> Function(
-        ffi.Pointer<ffi.Void> ctx,
-        ffi.Size len,
-        ffi.Uint8 alignment,
-        ffi.UintPtr ret_addr,
-      )
-    >
-  >
-  alloc;
+  /// Allocates a block. Required.
+  external AllocatorAllocFn alloc;
 
-  /// Attempt to expand or shrink memory in place.
-  ///
-  /// `memory_len` must equal the length requested from the most recent
-  /// successful call to `alloc`, `resize`, or `remap`. `alignment` must
-  /// equal the same value that was passed as the `alignment` parameter to
-  /// the original `alloc` call.
-  ///
-  /// `new_len` must be greater than zero.
-  ///
-  /// @param ctx The allocator context
-  /// @param memory Pointer to the memory block to resize
-  /// @param memory_len Current size of the memory block
-  /// @param alignment Alignment (must match original allocation)
-  /// @param new_len New requested size
-  /// @param ret_addr First return address of the allocation call stack (0 if not provided)
-  /// @return true if resize was successful in-place, false if relocation would be required
-  external ffi.Pointer<
-    ffi.NativeFunction<
-      ffi.Bool Function(
-        ffi.Pointer<ffi.Void> ctx,
-        ffi.Pointer<ffi.Void> memory,
-        ffi.Size memory_len,
-        ffi.Uint8 alignment,
-        ffi.Size new_len,
-        ffi.UintPtr ret_addr,
-      )
-    >
-  >
-  resize;
+  /// Resizes a block without moving it. Optional.
+  external AllocatorResizeFn resize;
 
-  /// Attempt to expand or shrink memory, allowing relocation.
-  ///
-  /// `memory_len` must equal the length requested from the most recent
-  /// successful call to `alloc`, `resize`, or `remap`. `alignment` must
-  /// equal the same value that was passed as the `alignment` parameter to
-  /// the original `alloc` call.
-  ///
-  /// A non-`NULL` return value indicates the resize was successful. The
-  /// allocation may have same address, or may have been relocated. In either
-  /// case, the allocation now has size of `new_len`. A `NULL` return value
-  /// indicates that the resize would be equivalent to allocating new memory,
-  /// copying the bytes from the old memory, and then freeing the old memory.
-  /// In such case, it is more efficient for the caller to perform the copy.
-  ///
-  /// `new_len` must be greater than zero.
-  ///
-  /// @param ctx The allocator context
-  /// @param memory Pointer to the memory block to remap
-  /// @param memory_len Current size of the memory block
-  /// @param alignment Alignment (must match original allocation)
-  /// @param new_len New requested size
-  /// @param ret_addr First return address of the allocation call stack (0 if not provided)
-  /// @return Pointer to resized memory (may be relocated), or NULL if manual copy is needed
-  external ffi.Pointer<
-    ffi.NativeFunction<
-      ffi.Pointer<ffi.Void> Function(
-        ffi.Pointer<ffi.Void> ctx,
-        ffi.Pointer<ffi.Void> memory,
-        ffi.Size memory_len,
-        ffi.Uint8 alignment,
-        ffi.Size new_len,
-        ffi.UintPtr ret_addr,
-      )
-    >
-  >
-  remap;
+  /// Resizes a block and may move it. Optional.
+  external AllocatorRemapFn remap;
 
-  /// Free and invalidate a region of memory.
-  ///
-  /// `memory_len` must equal the length requested from the most recent
-  /// successful call to `alloc`, `resize`, or `remap`. `alignment` must
-  /// equal the same value that was passed as the `alignment` parameter to
-  /// the original `alloc` call.
-  ///
-  /// @param ctx The allocator context
-  /// @param memory Pointer to the memory block to free
-  /// @param memory_len Size of the memory block
-  /// @param alignment Alignment (must match original allocation)
-  /// @param ret_addr First return address of the allocation call stack (0 if not provided)
-  external ffi.Pointer<
-    ffi.NativeFunction<
-      ffi.Void Function(
-        ffi.Pointer<ffi.Void> ctx,
-        ffi.Pointer<ffi.Void> memory,
-        ffi.Size memory_len,
-        ffi.Uint8 alignment,
-        ffi.UintPtr ret_addr,
-      )
-    >
-  >
-  free;
+  /// Frees a block. Required.
+  external AllocatorFreeFn free;
 
-  static ffi.Pointer<AllocatorVtable> $allocate(
-    ffi.Allocator $allocator, {
-    required ffi.Pointer<
-      ffi.NativeFunction<
-        ffi.Pointer<ffi.Void> Function(
-          ffi.Pointer<ffi.Void> ctx,
-          ffi.Size len,
-          ffi.Uint8 alignment,
-          ffi.UintPtr ret_addr,
-        )
-      >
-    >
-    alloc,
-    required ffi.Pointer<
-      ffi.NativeFunction<
-        ffi.Bool Function(
-          ffi.Pointer<ffi.Void> ctx,
-          ffi.Pointer<ffi.Void> memory,
-          ffi.Size memory_len,
-          ffi.Uint8 alignment,
-          ffi.Size new_len,
-          ffi.UintPtr ret_addr,
-        )
-      >
-    >
-    resize,
-    required ffi.Pointer<
-      ffi.NativeFunction<
-        ffi.Pointer<ffi.Void> Function(
-          ffi.Pointer<ffi.Void> ctx,
-          ffi.Pointer<ffi.Void> memory,
-          ffi.Size memory_len,
-          ffi.Uint8 alignment,
-          ffi.Size new_len,
-          ffi.UintPtr ret_addr,
-        )
-      >
-    >
-    remap,
-    required ffi.Pointer<
-      ffi.NativeFunction<
-        ffi.Void Function(
-          ffi.Pointer<ffi.Void> ctx,
-          ffi.Pointer<ffi.Void> memory,
-          ffi.Size memory_len,
-          ffi.Uint8 alignment,
-          ffi.UintPtr ret_addr,
-        )
-      >
-    >
-    free,
-  }) => $allocator<AllocatorVtable>()
-    ..ref.alloc = alloc
-    ..ref.resize = resize
-    ..ref.remap = remap
-    ..ref.free = free;
+  /// Reserved for future versions. Must be NULL.
+  ///
+  /// These slots let a future release add new allocator functions
+  /// without changing the size of this struct. The library ignores any
+  /// slot it does not know about, so leaving them NULL keeps your code
+  /// working with future versions.
+  ///
+  /// Debug builds of the library stop with an error if a reserved slot
+  /// is not NULL, to catch a vtable that was not zero-initialized.
+  @ffi.Array.multi([4])
+  external ffi.Array<ffi.Pointer<ffi.Void>> reserved;
 }
 
 /// A caller-provided byte buffer.
 ///
 /// APIs that write to this type use `len` for the number of bytes written on
 /// GHOSTTY_SUCCESS and the required byte capacity on GHOSTTY_OUT_OF_SPACE.
+///
+/// @ingroup core_types
 final class Buffer extends ffi.Struct {
   /// Destination buffer for bytes. May be NULL when cap is 0 to query required size.
   external ffi.Pointer<ffi.Uint8> ptr;
@@ -6446,7 +7431,7 @@ final class CellsView extends ffi.Struct {
 ///
 /// This struct has a frozen layout and will not gain fields in future versions.
 ///
-/// @ingroup terminal
+/// @ingroup effects
 final class ClipboardContent extends ffi.Struct {
   /// MIME type of the representation.
   external String mime;
@@ -6457,9 +7442,7 @@ final class ClipboardContent extends ffi.Struct {
 
 /// A synchronous request to read clipboard contents.
 ///
-/// This is a sized struct. The callback must only access fields present in the
-/// size reported by `size`. The request is borrowed and valid only for the
-/// callback duration.
+/// The request is borrowed and only valid until the callback returns.
 ///
 /// The read is answered by calling `reply` with this request and a
 /// ClipboardReadReply. This must happen before the callback returns;
@@ -6467,12 +7450,13 @@ final class ClipboardContent extends ffi.Struct {
 /// ignored. Returning without replying answers the program with an empty
 /// clipboard (OSC 52) or EPERM (OSC 5522).
 ///
-/// @ingroup terminal
+/// This struct has a frozen layout and will never gain fields. It is 72 bytes
+/// on 64-bit targets and 36 bytes on wasm32. If a later version of
+/// libghostty-vt has more to report, it will add a new option with a new
+/// struct, and this callback will keep receiving this struct unchanged.
+///
+/// @ingroup effects
 final class ClipboardRead extends ffi.Struct {
-  /// Size of this struct in bytes.
-  @ffi.Size()
-  external int size;
-
   /// Clipboard to read.
   @ffi.UnsignedInt()
   external int locationAsInt;
@@ -6499,7 +7483,7 @@ final class ClipboardRead extends ffi.Struct {
   external String name;
 
   /// True if the terminal already holds a session grant for this request
-  /// (kitty clipboard protocol passwords). The embedder should skip any
+  /// (kitty clipboard protocol passwords). You should skip any
   /// permission prompt and serve the read.
   ///
   /// Always false when mimes_len is zero: such a request is served
@@ -6509,8 +7493,8 @@ final class ClipboardRead extends ffi.Struct {
   @ffi.Bool()
   external bool granted;
 
-  /// True if the program supplied a session password, so the embedder may
-  /// offer to remember the user's decision through
+  /// True if the program supplied a session password, so you may
+  /// offer to remember the decision through
   /// ClipboardReadReply::remember. When false, remember is ignored.
   @ffi.Bool()
   external bool can_remember;
@@ -6524,7 +7508,11 @@ final class ClipboardRead extends ffi.Struct {
 
 /// The reply to a clipboard read request.
 ///
-/// This is a sized struct; set `size` to `sizeof(ClipboardReadReply)`.
+/// This is a sized struct. Initialize it with GHOSTTY_INIT_SIZED(), then set
+/// the fields you need. See @ref sized-structs. If `size` is not valid, the
+/// library ignores the rest of the reply and answers as if you had replied
+/// with GHOSTTY_CLIPBOARD_READ_RESULT_UNSUPPORTED.
+///
 /// All arrays and the strings they point to are borrowed only for the
 /// duration of the reply call and may be freed as soon as it returns.
 ///
@@ -6537,7 +7525,7 @@ final class ClipboardRead extends ffi.Struct {
 /// single text value (OSC 52) use the first entry with a text MIME type
 /// such as "text/plain".
 ///
-/// @ingroup terminal
+/// @ingroup effects
 final class ClipboardReadReply extends ffi.Struct {
   /// Size of this struct in bytes.
   @ffi.Size()
@@ -6596,7 +7584,7 @@ final class ClipboardReadReply extends ffi.Struct {
 /// @param read The request being answered
 /// @param reply The reply, borrowed only for the duration of this call
 ///
-/// @ingroup terminal
+/// @ingroup effects
 typedef ClipboardReadReplyFn =
     ffi.Pointer<ffi.NativeFunction<ClipboardReadReplyFnFunction>>;
 typedef ClipboardReadReplyFnFunction =
@@ -6612,9 +7600,9 @@ typedef DartGhosttyClipboardReadReplyFnFunction =
 
 /// A synchronous request to write clipboard contents.
 ///
-/// This is a sized struct. The callback must only access fields present in the
-/// size reported by `size`. The request, contents array, MIME strings, and
-/// data strings are all borrowed and valid only for the callback duration.
+/// The request and everything it points to, including the contents array
+/// and its strings, are borrowed. They are only valid until the callback
+/// returns.
 ///
 /// All entries in `contents` are representations of the same logical value
 /// and must be committed atomically. A `contents_len` of zero requests that
@@ -6627,12 +7615,13 @@ typedef DartGhosttyClipboardReadReplyFnFunction =
 /// `reply` more than once is safely ignored. Returning without replying
 /// denies the write.
 ///
-/// @ingroup terminal
+/// This struct has a frozen layout and will never gain fields. It is 64 bytes
+/// on 64-bit targets and 32 bytes on wasm32. If a later version of
+/// libghostty-vt has more to report, it will add a new option with a new
+/// struct, and this callback will keep receiving this struct unchanged.
+///
+/// @ingroup effects
 final class ClipboardWrite extends ffi.Struct {
-  /// Size of this struct in bytes.
-  @ffi.Size()
-  external int size;
-
   /// Clipboard destination.
   @ffi.UnsignedInt()
   external int locationAsInt;
@@ -6652,12 +7641,12 @@ final class ClipboardWrite extends ffi.Struct {
   external String name;
 
   /// True if the terminal already holds a session grant for this request
-  /// The embedder should skip any permission prompt and perform the write.
+  /// You should skip any permission prompt and perform the write.
   @ffi.Bool()
   external bool granted;
 
-  /// True if the program supplied a session password, so the embedder may
-  /// offer to remember the user's decision through
+  /// True if the program supplied a session password, so you may
+  /// offer to remember the decision through
   /// ClipboardWriteReply::remember. When false, remember is ignored.
   @ffi.Bool()
   external bool can_remember;
@@ -6671,7 +7660,11 @@ final class ClipboardWrite extends ffi.Struct {
 
 /// The reply to a clipboard write request.
 ///
-/// This is a sized struct; set `size` to `sizeof(ClipboardWriteReply)`.
+/// This is a sized struct. Initialize it with GHOSTTY_INIT_SIZED(), then set
+/// the fields you need. See @ref sized-structs. If `size` is not valid, the
+/// library ignores the rest of the reply and answers as if you had replied
+/// with GHOSTTY_CLIPBOARD_WRITE_RESULT_UNSUPPORTED.
+///
 /// The reply is borrowed only for the duration of the reply call and may be
 /// freed as soon as it returns.
 ///
@@ -6681,7 +7674,7 @@ final class ClipboardWrite extends ffi.Struct {
 /// discard the reply. `remember` is ignored on any result other than
 /// GHOSTTY_CLIPBOARD_WRITE_RESULT_SUCCESS.
 ///
-/// @ingroup terminal
+/// @ingroup effects
 final class ClipboardWriteReply extends ffi.Struct {
   /// Size of this struct in bytes.
   @ffi.Size()
@@ -6718,7 +7711,7 @@ final class ClipboardWriteReply extends ffi.Struct {
 /// @param write The request being answered
 /// @param reply The reply, borrowed only for the duration of this call
 ///
-/// @ingroup terminal
+/// @ingroup effects
 typedef ClipboardWriteReplyFn =
     ffi.Pointer<ffi.NativeFunction<ClipboardWriteReplyFnFunction>>;
 typedef ClipboardWriteReplyFnFunction =
@@ -6732,6 +7725,44 @@ typedef DartGhosttyClipboardWriteReplyFnFunction =
       ffi.Pointer<ClipboardWriteReply> reply,
     );
 
+/// A buffer you provide for the library to fill with Unicode codepoints.
+///
+/// Set ptr to an array of uint32_t and cap to the number of elements it
+/// holds. The library writes up to cap codepoints and sets len to the total
+/// number available. When len is greater than cap, the call returns
+/// GHOSTTY_OUT_OF_SPACE and ptr holds only the first cap codepoints.
+///
+/// To learn the count without copying anything, set ptr to NULL and cap to
+/// 0, then read len.
+///
+/// This struct has a frozen layout and will not gain fields in future
+/// versions.
+///
+/// @ingroup core_types
+final class CodepointBuffer extends ffi.Struct {
+  /// Where codepoints are written. May be NULL when cap is 0.
+  external ffi.Pointer<ffi.Uint32> ptr;
+
+  /// Number of uint32_t elements ptr can hold.
+  @ffi.Size()
+  external int cap;
+
+  /// Set by the library to the total number of codepoints, whether or not
+  /// they all fit.
+  @ffi.Size()
+  external int len;
+
+  static ffi.Pointer<CodepointBuffer> $allocate(
+    ffi.Allocator $allocator, {
+    required ffi.Pointer<ffi.Uint32> ptr,
+    required int cap,
+    required int len,
+  }) => $allocator<CodepointBuffer>()
+    ..ref.ptr = ptr
+    ..ref.cap = cap
+    ..ref.len = len;
+}
+
 /// A borrowed list of Unicode scalar values.
 ///
 /// Values are encoded as uint32_t scalar values. The memory is not owned by this
@@ -6739,6 +7770,8 @@ typedef DartGhosttyClipboardWriteReplyFnFunction =
 /// consumes or produces it.
 ///
 /// APIs may document special handling for NULL + len 0, such as “use defaults”.
+///
+/// @ingroup core_types
 final class Codepoints extends ffi.Struct {
   /// Pointer to Unicode scalar values.
   external ffi.Pointer<ffi.Uint32> ptr;
@@ -6826,7 +7859,7 @@ final class ColorX11Entry extends ffi.Struct {
 /// CSI > c, or CSI = c queries. The terminal uses whichever sub-struct
 /// matches the request type.
 ///
-/// @ingroup terminal
+/// @ingroup effects
 final class DeviceAttributes extends ffi.Struct {
   external DeviceAttributesPrimary primary;
 
@@ -6841,7 +7874,7 @@ final class DeviceAttributes extends ffi.Struct {
 /// The conformance_level is the Pp parameter and features contains the Ps
 /// feature codes.
 ///
-/// @ingroup terminal
+/// @ingroup effects
 final class DeviceAttributesPrimary extends ffi.Struct {
   /// Conformance level (Pp parameter). E.g. 62 for VT220.
   @ffi.Uint16()
@@ -6861,7 +7894,7 @@ final class DeviceAttributesPrimary extends ffi.Struct {
 /// Returned as part of DeviceAttributes in response to a CSI > c query.
 /// Response format: CSI > Pp ; Pv ; Pc c
 ///
-/// @ingroup terminal
+/// @ingroup effects
 final class DeviceAttributesSecondary extends ffi.Struct {
   /// Terminal type identifier (Pp). E.g. 1 for VT220.
   @ffi.Uint16()
@@ -6891,7 +7924,7 @@ final class DeviceAttributesSecondary extends ffi.Struct {
 /// Returned as part of DeviceAttributes in response to a CSI = c query.
 /// Response format: DCS ! | D...D ST (DECRPTUI).
 ///
-/// @ingroup terminal
+/// @ingroup effects
 final class DeviceAttributesTertiary extends ffi.Struct {
   /// Unit ID encoded as 8 uppercase hex digits in the response.
   @ffi.Uint32()
@@ -6908,151 +7941,103 @@ final class DeviceAttributesTertiary extends ffi.Struct {
 /// @ingroup formatter
 typedef Formatter = ffi.Pointer<FormatterImpl>;
 
+/// Terminal state to add to VT output, as a bitmask of
+/// GHOSTTY_FORMATTER_EXTRA_* values.
+///
+/// VT output is meant to be written to another terminal to recreate the
+/// screen. Without extras, it reproduces the text and how each cell is
+/// styled. Each extra adds sequences that restore one more piece of terminal
+/// state, such as the cursor position or the colors in the palette. Extras
+/// are only written when the format is GHOSTTY_FORMATTER_FORMAT_VT. Plain
+/// text and HTML output ignore them.
+///
+/// Set extras with GHOSTTY_FORMATTER_OPT_EXTRAS. A new formatter uses
+/// GHOSTTY_FORMATTER_EXTRAS_DEFAULT. Use GHOSTTY_FORMATTER_EXTRAS_ALL to
+/// recreate the terminal as closely as possible.
+///
+/// The bits combine with `|`. To change one extra and keep the rest, read the
+/// current value first:
+///
+/// @code{.c}
+/// FormatterExtras extras;
+/// ghostty_formatter_get(formatter, GHOSTTY_FORMATTER_OPT_EXTRAS, &extras);
+///
+/// // Also restore the cursor position, but not the palette.
+/// extras |= GHOSTTY_FORMATTER_EXTRA_CURSOR;
+/// extras &= ~GHOSTTY_FORMATTER_EXTRA_PALETTE;
+///
+/// ghostty_formatter_set(formatter, GHOSTTY_FORMATTER_OPT_EXTRAS, &extras);
+/// @endcode
+///
+/// @ingroup formatter
+typedef FormatterExtras = ffi.Uint32;
+typedef DartGhosttyFormatterExtras = int;
+
 final class FormatterImpl extends ffi.Opaque {}
 
-/// Extra screen state to include in styled output.
+/// A reference to a single cell in the terminal grid.
 ///
-/// @ingroup formatter
-final class FormatterScreenExtra extends ffi.Struct {
-  /// Size of this struct in bytes. Must be set to sizeof(FormatterScreenExtra).
-  @ffi.Size()
-  external int size;
-
-  /// Emit cursor position using CUP (CSI H).
-  @ffi.Bool()
-  external bool cursor;
-
-  /// Emit current SGR style state based on the cursor's active style_id.
-  @ffi.Bool()
-  external bool style;
-
-  /// Emit current hyperlink state using OSC 8 sequences.
-  @ffi.Bool()
-  external bool hyperlink;
-
-  /// Emit character protection mode using DECSCA.
-  @ffi.Bool()
-  external bool protection;
-
-  /// Emit Kitty keyboard protocol state using CSI > u and CSI = sequences.
-  @ffi.Bool()
-  external bool kitty_keyboard;
-
-  /// Emit character set designations and invocations.
-  @ffi.Bool()
-  external bool charsets;
-
-  static ffi.Pointer<FormatterScreenExtra> $allocate(
-    ffi.Allocator $allocator, {
-    required int size,
-    required bool cursor,
-    required bool style,
-    required bool hyperlink,
-    required bool protection,
-    required bool kitty_keyboard,
-    required bool charsets,
-  }) => $allocator<FormatterScreenExtra>()
-    ..ref.size = size
-    ..ref.cursor = cursor
-    ..ref.style = style
-    ..ref.hyperlink = hyperlink
-    ..ref.protection = protection
-    ..ref.kitty_keyboard = kitty_keyboard
-    ..ref.charsets = charsets;
-}
-
-/// Extra terminal state to include in styled output.
+/// You don't fill in a grid reference yourself. Get one from the library,
+/// usually with ghostty_terminal_grid_ref(), and then pass it to the
+/// ghostty_grid_ref_* functions to read the cell, its row, its style, and
+/// more.
 ///
-/// @ingroup formatter
-final class FormatterTerminalExtra extends ffi.Struct {
-  /// Size of this struct in bytes. Must be set to sizeof(FormatterTerminalExtra).
-  @ffi.Size()
-  external int size;
-
-  /// Emit the palette using OSC 4 sequences.
-  @ffi.Bool()
-  external bool palette;
-
-  /// Emit terminal modes that differ from their defaults using CSI h/l.
-  @ffi.Bool()
-  external bool modes;
-
-  /// Emit scrolling region state using DECSTBM and DECSLRM sequences.
-  @ffi.Bool()
-  external bool scrolling_region;
-
-  /// Emit tabstop positions by clearing all tabs and setting each one.
-  @ffi.Bool()
-  external bool tabstops;
-
-  /// Emit the present working directory using OSC 7.
-  @ffi.Bool()
-  external bool pwd;
-
-  /// Emit keyboard modes such as ModifyOtherKeys.
-  @ffi.Bool()
-  external bool keyboard;
-
-  /// Screen-level extras.
-  external FormatterScreenExtra screen;
-}
-
-/// Options for creating a terminal formatter.
+/// A grid reference is an untracked snapshot. It is only valid until the
+/// next call that changes the terminal, such as ghostty_terminal_vt_write()
+/// or ghostty_terminal_resize(). To keep pointing at the same cell across
+/// changes, use a tracked reference instead (see TrackedGridRef).
 ///
-/// @ingroup formatter
-final class FormatterTerminalOptions extends ffi.Struct {
-  /// Size of this struct in bytes. Must be set to sizeof(FormatterTerminalOptions).
-  @ffi.Size()
-  external int size;
-
-  /// Output format to emit.
-  @ffi.UnsignedInt()
-  external int emitAsInt;
-
-  FormatterFormat get emit => FormatterFormat.fromValue(emitAsInt);
-  set emit(FormatterFormat value) => emitAsInt = value.value;
-
-  /// Whether to unwrap soft-wrapped lines.
-  @ffi.Bool()
-  external bool unwrap;
-
-  /// Whether to trim trailing whitespace on non-blank lines.
-  @ffi.Bool()
-  external bool trim;
-
-  /// Extra terminal state to include in styled output.
-  external FormatterTerminalExtra extra;
-
-  /// Optional selection to restrict output to a range.
-  /// If NULL, the entire screen is formatted.
-  external ffi.Pointer<Selection> selection;
-}
-
-/// A resolved reference to a terminal cell position.
+/// We can't detect a stale reference, so nothing returns an error for one. A
+/// reference holds a raw pointer into the terminal's page list. If that page is
+/// still there, you read whatever is at that position now, which may be a
+/// different cell. If the page was freed, you read freed memory, and that's
+/// undefined behavior. Don't use a reference after the terminal changes.
 ///
-/// This is a sized struct. Use GHOSTTY_INIT_SIZED() to initialize it.
+/// Start with a zero-initialized value. A zeroed reference doesn't point at
+/// any cell, and the ghostty_grid_ref_* functions return
+/// GHOSTTY_INVALID_VALUE for it.
+///
+/// @code{.c}
+/// GridRef ref = {0};
+/// Point point = {
+/// .tag = GHOSTTY_POINT_TAG_ACTIVE,
+/// .value = { .coordinate = { .x = 4, .y = 0 } },
+/// };
+///
+/// if (ghostty_terminal_grid_ref(terminal, point, &ref) == GHOSTTY_SUCCESS) {
+/// Cell cell;
+/// ghostty_grid_ref_cell(&ref, &cell);
+/// }
+/// @endcode
+///
+/// The fields describe where the cell lives in the terminal's internal
+/// storage. Treat them as read-only. In particular, `x` and `y` are not
+/// screen coordinates. To get the cell's position on the screen, call
+/// ghostty_terminal_point_from_grid_ref().
+///
+/// The layout of this struct is frozen. It is 16 bytes on 64-bit targets
+/// and 8 bytes on 32-bit targets such as wasm32. If it ever needs to hold
+/// more, that will be a new type.
 ///
 /// @ingroup grid_ref
 final class GridRef extends ffi.Struct {
-  @ffi.Size()
-  external int size;
-
+  /// The internal storage page that holds the cell.
   external ffi.Pointer<ffi.Void> node;
 
+  /// The cell's column within its page.
   @ffi.Uint16()
   external int x;
 
+  /// The cell's row within its page.
   @ffi.Uint16()
   external int y;
 
   static ffi.Pointer<GridRef> $allocate(
     ffi.Allocator $allocator, {
-    required int size,
     required ffi.Pointer<ffi.Void> node,
     required int x,
     required int y,
   }) => $allocator<GridRef>()
-    ..ref.size = size
     ..ref.node = node
     ..ref.x = x
     ..ref.y = y;
@@ -7109,67 +8094,82 @@ typedef KittyGraphicsPlacementIterator =
 
 final class KittyGraphicsPlacementIteratorImpl extends ffi.Opaque {}
 
-/// Combined rendering geometry for a placement in a single sized struct.
-///
-/// Combines the results of ghostty_kitty_graphics_placement_pixel_size(),
-/// ghostty_kitty_graphics_placement_grid_size(),
-/// ghostty_kitty_graphics_placement_viewport_pos(), and
-/// ghostty_kitty_graphics_placement_source_rect() into one call. This is
-/// an optimization over calling those four functions individually,
-/// particularly useful in environments with high per-call overhead such
-/// as FFI or Cgo.
-///
-/// This struct uses the sized-struct ABI pattern. Initialize with
-/// GHOSTTY_INIT_SIZED(KittyGraphicsPlacementRenderInfo) before calling
+/// The geometry of a storage placement, filled in by
 /// ghostty_kitty_graphics_placement_render_info().
+///
+/// It holds the results of ghostty_kitty_graphics_placement_pixel_size(),
+/// ghostty_kitty_graphics_placement_grid_size(),
+/// ghostty_kitty_graphics_placement_viewport_pos() and
+/// ghostty_kitty_graphics_placement_source_rect(), so you can get all of
+/// them in one call. That helps most when each call is expensive, such
+/// as through FFI or Cgo.
+///
+/// This is for inspecting the storage. To draw, use the render state's
+/// image list, which gives the same values for every image on screen.
+/// See @ref guide-images-drawing.
+///
+/// This is a sized struct. Initialize it with GHOSTTY_INIT_SIZED() before
+/// each call. See @ref sized-structs.
+///
+/// @code{.c}
+/// KittyGraphicsPlacementRenderInfo info =
+/// GHOSTTY_INIT_SIZED(KittyGraphicsPlacementRenderInfo);
+/// ghostty_kitty_graphics_placement_render_info(iter, image, terminal, &info);
+/// @endcode
 ///
 /// @ingroup kitty_graphics
 final class KittyGraphicsPlacementRenderInfo extends ffi.Struct {
-  /// Size of this struct in bytes. Must be set to sizeof(KittyGraphicsPlacementRenderInfo).
+  /// The size of this struct in bytes. Set it with GHOSTTY_INIT_SIZED.
   @ffi.Size()
   external int size;
 
-  /// Rendered width in pixels.
+  /// The width to draw the image at, in pixels.
   @ffi.Uint32()
   external int pixel_width;
 
-  /// Rendered height in pixels.
+  /// The height to draw the image at, in pixels.
   @ffi.Uint32()
   external int pixel_height;
 
-  /// Number of grid columns the placement occupies.
+  /// The number of columns of cells the placement covers.
   @ffi.Uint32()
   external int grid_cols;
 
-  /// Number of grid rows the placement occupies.
+  /// The number of rows of cells the placement covers.
   @ffi.Uint32()
   external int grid_rows;
 
-  /// Viewport-relative column (may be negative for partially visible placements).
+  /// The column of the top-left cell, where 0 is the leftmost column of
+  /// the viewport. Only meaningful when `viewport_visible` is true.
   @ffi.Int32()
   external int viewport_col;
 
-  /// Viewport-relative row (may be negative for partially visible placements).
+  /// The row of the top-left cell, where 0 is the top row of the
+  /// viewport. It is negative when the top of the placement scrolled
+  /// above the viewport. Only meaningful when `viewport_visible` is
+  /// true.
   @ffi.Int32()
   external int viewport_row;
 
-  /// False when the placement is fully off-screen or virtual.
+  /// True when any part of the placement is in the viewport. False when
+  /// it is entirely outside the viewport, or when the storage can't find
+  /// its position: a virtual placement, or a placement relative to one.
   @ffi.Bool()
   external bool viewport_visible;
 
-  /// Resolved source rectangle x origin in pixels.
+  /// The left edge of the part of the image to draw, in image pixels.
   @ffi.Uint32()
   external int source_x;
 
-  /// Resolved source rectangle y origin in pixels.
+  /// The top edge of the part of the image to draw, in image pixels.
   @ffi.Uint32()
   external int source_y;
 
-  /// Resolved source rectangle width in pixels.
+  /// The width of the part of the image to draw, in image pixels.
   @ffi.Uint32()
   external int source_width;
 
-  /// Resolved source rectangle height in pixels.
+  /// The height of the part of the image to draw, in image pixels.
   @ffi.Uint32()
   external int source_height;
 
@@ -7305,6 +8305,9 @@ final class MouseEncoderImpl extends ffi.Opaque {}
 /// This describes the rendered terminal geometry used to convert
 /// surface-space positions into encoded coordinates.
 ///
+/// This is a sized struct. Initialize it with GHOSTTY_INIT_SIZED(), then set
+/// the fields you need. See @ref sized-structs.
+///
 /// @ingroup mouse
 final class MouseEncoderSize extends ffi.Struct {
   /// Size of this struct in bytes. Must be set to sizeof(MouseEncoderSize).
@@ -7417,8 +8420,10 @@ final class OscParserImpl extends ffi.Opaque {}
 
 /// A paste of clipboard contents into the terminal.
 ///
-/// This is a sized struct; set `size` to `sizeof(Paste)`. The
-/// MIME type array and the strings it points to are borrowed only for
+/// This is a sized struct. Initialize it with GHOSTTY_INIT_SIZED(), then set
+/// the fields you need. See @ref sized-structs.
+///
+/// The MIME type array and the strings it points to are borrowed only for
 /// the duration of the ghostty_terminal_paste() call, as is everything
 /// the reader produces.
 final class Paste extends ffi.Struct {
@@ -7467,7 +8472,7 @@ final class Paste extends ffi.Struct {
   external MimeReader reader;
 
   /// Write text that could inject commands. Call with false, confirm
-  /// with the user on GHOSTTY_REJECTED, and call again with true.
+  /// with the person using your terminal on GHOSTTY_REJECTED, and call again with true.
   @ffi.Bool()
   external bool allow_unsafe;
 }
@@ -7577,9 +8582,8 @@ typedef RenderState = ffi.Pointer<RenderStateImpl>;
 
 /// Render-state color information.
 ///
-/// This struct uses the sized-struct ABI pattern. Initialize with
-/// GHOSTTY_INIT_SIZED(RenderStateColors) before querying
-/// GHOSTTY_RENDER_STATE_DATA_COLORS.
+/// This is a sized struct. Initialize it with GHOSTTY_INIT_SIZED() before
+/// querying GHOSTTY_RENDER_STATE_DATA_COLORS. See @ref sized-structs.
 ///
 /// Example:
 /// @code
@@ -7616,9 +8620,8 @@ final class RenderStateColors extends ffi.Struct {
 
 /// Render-state cursor information.
 ///
-/// This struct uses the sized-struct ABI pattern. Initialize with
-/// GHOSTTY_INIT_SIZED(RenderStateCursor) before querying
-/// GHOSTTY_RENDER_STATE_DATA_CURSOR.
+/// This is a sized struct. Initialize it with GHOSTTY_INIT_SIZED() before
+/// querying GHOSTTY_RENDER_STATE_DATA_CURSOR. See @ref sized-structs.
 ///
 /// When viewport_has_value is false, viewport_x, viewport_y, and wide_tail
 /// contain undefined data and must not be read.
@@ -7661,10 +8664,8 @@ final class RenderStateCursor extends ffi.Struct {
   @ffi.UnsignedInt()
   external int visual_styleAsInt;
 
-  RenderStateCursorVisualStyle get visual_style =>
-      RenderStateCursorVisualStyle.fromValue(visual_styleAsInt);
-  set visual_style(RenderStateCursorVisualStyle value) =>
-      visual_styleAsInt = value.value;
+  CursorStyle get visual_style => CursorStyle.fromValue(visual_styleAsInt);
+  set visual_style(CursorStyle value) => visual_styleAsInt = value.value;
 
   static ffi.Pointer<RenderStateCursor> $allocate(
     ffi.Allocator $allocator, {
@@ -7676,7 +8677,7 @@ final class RenderStateCursor extends ffi.Struct {
     required bool visible,
     required bool blinking,
     required bool password_input,
-    required RenderStateCursorVisualStyle visual_style,
+    required CursorStyle visual_style,
   }) => $allocator<RenderStateCursor>()
     ..ref.size = size
     ..ref.viewport_has_value = viewport_has_value
@@ -7689,14 +8690,22 @@ final class RenderStateCursor extends ffi.Struct {
     ..ref.visual_style = visual_style;
 }
 
+/// Opaque handle to an iterator over the image placements of a render
+/// state.
+///
+/// @ingroup render
+typedef RenderStateImageIterator = ffi.Pointer<RenderStateImageIteratorImpl>;
+
+final class RenderStateImageIteratorImpl extends ffi.Opaque {}
+
 final class RenderStateImpl extends ffi.Opaque {}
 
 /// A number of rows above and below the viewport.
 ///
 /// This is used both to request overscan with
-/// GHOSTTY_RENDER_STATE_OPTION_OVERSCAN and to report how many rows an
-/// update captured with GHOSTTY_RENDER_STATE_DATA_OVERSCAN. See "Overscan"
-/// in the render state overview for how the extra rows are used.
+/// GHOSTTY_RENDER_STATE_OPT_OVERSCAN and to report how many rows an
+/// update captured with GHOSTTY_RENDER_STATE_DATA_OVERSCAN. See
+/// @ref guide-rendering-overscan for how the extra rows are used.
 ///
 /// @ingroup render
 final class RenderStateOverscan extends ffi.Struct {
@@ -7735,7 +8744,7 @@ final class RenderStateRowCellsImpl extends ffi.Opaque {}
 /// bool same = a.bits[0] == b.bits[0] && a.bits[1] == b.bits[1];
 /// @endcode
 ///
-/// See "Row Identity" in the render state overview for how to use ids.
+/// See @ref guide-rendering-row-identity for how to use ids.
 ///
 /// @ingroup render
 final class RenderStateRowId extends ffi.Struct {
@@ -7753,9 +8762,8 @@ final class RenderStateRowIteratorImpl extends ffi.Opaque {}
 
 /// Row-local selection range.
 ///
-/// This struct uses the sized-struct ABI pattern. Initialize with
-/// GHOSTTY_INIT_SIZED(RenderStateRowSelection) before querying
-/// GHOSTTY_RENDER_STATE_ROW_DATA_SELECTION.
+/// This is a sized struct. Initialize it with GHOSTTY_INIT_SIZED() before
+/// querying GHOSTTY_RENDER_STATE_ROW_DATA_SELECTION. See @ref sized-structs.
 ///
 /// Querying GHOSTTY_RENDER_STATE_ROW_DATA_SELECTION returns GHOSTTY_NO_VALUE
 /// if the current row does not intersect the current selection.
@@ -7808,42 +8816,59 @@ typedef Search = ffi.Pointer<SearchImpl>;
 
 final class SearchImpl extends ffi.Opaque {}
 
-/// A snapshot selection range defined by two grid references.
+/// A range of terminal content between two cells.
 ///
-/// Both endpoints are inclusive. The endpoints preserve selection direction
-/// and may be reversed; callers must not assume that start is the top-left
-/// endpoint or that end is the bottom-right endpoint.
+/// A selection is described by the two cells at its ends, `start` and `end`.
+/// Both ends are included in the selection. By default the selection is
+/// linear: it runs from `start` to `end` the way text flows, wrapping from
+/// the end of one row to the start of the next. Set `rectangle` to true to
+/// select a rectangular block instead, with `start` and `end` at opposite
+/// corners.
 ///
-/// When rectangle is false, the endpoints describe a linear selection. When
-/// rectangle is true, the same endpoints are interpreted as opposite corners
-/// of a rectangular/block selection.
+/// The ends keep the direction the user selected in. If the user dragged
+/// up or to the left, `start` comes after `end` in the terminal. Don't
+/// assume `start` is the top-left end. Use
+/// ghostty_terminal_selection_ordered() when you need the ends in order.
 ///
-/// The start and end values are untracked GridRef snapshots and are
-/// only valid until the next mutating operation on the terminal that produced
-/// them unless the selection is reconstructed from tracked references.
+/// Both ends are untracked grid references, so a selection is only valid
+/// until the next call that changes the terminal. To keep a selection
+/// across changes, track its ends with TrackedGridRef and build a new
+/// Selection from fresh snapshots when you need one.
 ///
-/// This is a sized struct. Use GHOSTTY_INIT_SIZED() to initialize it.
+/// Start with a zero-initialized value. The example below selects the first
+/// ten cells of the second row and makes that the terminal's active
+/// selection.
+///
+/// @code{.c}
+/// Point start_pt = {
+/// .tag = GHOSTTY_POINT_TAG_ACTIVE,
+/// .value = { .coordinate = { .x = 0, .y = 1 } },
+/// };
+/// Point end_pt = {
+/// .tag = GHOSTTY_POINT_TAG_ACTIVE,
+/// .value = { .coordinate = { .x = 9, .y = 1 } },
+/// };
+///
+/// Selection selection = {0};
+/// ghostty_terminal_grid_ref(terminal, start_pt, &selection.start);
+/// ghostty_terminal_grid_ref(terminal, end_pt, &selection.end);
+/// ghostty_terminal_set(terminal, GHOSTTY_TERMINAL_OPT_SELECTION, &selection);
+/// @endcode
+///
+/// The layout of this struct is frozen. It is 40 bytes on 64-bit targets
+/// and 20 bytes on 32-bit targets such as wasm32. If it ever needs to hold
+/// more, that will be a new type.
 ///
 /// @ingroup selection
 final class Selection extends ffi.Struct {
-  /// Size of this struct in bytes. Must be set to sizeof(Selection).
-  @ffi.Size()
-  external int size;
-
-  /// Start of the selection range (inclusive).
-  ///
-  /// This may be after end in terminal order. It is an untracked
-  /// GridRef snapshot and follows untracked grid-ref lifetime rules.
+  /// The cell where the selection starts. It is included in the selection.
   external GridRef start;
 
-  /// End of the selection range (inclusive).
-  ///
-  /// This may be before start in terminal order. It is an untracked
-  /// GridRef snapshot and follows untracked grid-ref lifetime rules.
+  /// The cell where the selection ends. It is included in the selection.
   external GridRef end;
 
-  /// Whether the endpoints are interpreted as a rectangular/block selection
-  /// rather than a linear selection.
+  /// Whether this is a rectangular selection. When true, `start` and `end`
+  /// are opposite corners of a block of cells.
   @ffi.Bool()
   external bool rectangle;
 }
@@ -7981,6 +9006,10 @@ final class SelectionGestureImpl extends ffi.Opaque {}
 ///
 /// A complete SGR attribute with both its type tag and associated value.
 /// Always check the tag field to determine which value union member is valid.
+///
+/// The parser handles SGR color attributes including 8-color, 16-color,
+/// 256-color, direct RGB, underline color, and reset forms. Color values use the
+/// shared @ref color types.
 ///
 /// Attributes without associated data (e.g., GHOSTTY_SGR_ATTR_BOLD) can be
 /// identified by tag alone; the value union is not used for these and
@@ -8128,6 +9157,8 @@ final class SnapshotDecoderImpl extends ffi.Opaque {}
 /// for the lifetime documented by the API that produces or consumes it.
 /// Empty strings produced by the library have a non-NULL pointer to valid
 /// storage.
+///
+/// @ingroup core_types
 final class String extends ffi.Struct {
   /// Pointer to the string bytes.
   external ffi.Pointer<ffi.Uint8> ptr;
@@ -8147,72 +9178,95 @@ final class String extends ffi.Struct {
 
 /// Terminal cell style.
 ///
-/// Describes the complete visual style for a terminal cell, including
-/// foreground, background, and underline colors, as well as text
-/// decoration flags. The underline field uses the same values as
-/// SgrUnderline.
+/// The complete visual style of a terminal cell: foreground, background,
+/// and underline colors, plus text attributes such as bold and the
+/// underline style.
 ///
-/// This is a sized struct. Use GHOSTTY_INIT_SIZED() to initialize it.
+/// The layout of this struct is fixed. It is 16 bytes on every platform
+/// and will not change in future versions, so it does not have a size
+/// field and does not need GHOSTTY_INIT_SIZED(). If a future version
+/// needs more style attributes, it will add a new type instead of
+/// changing this one.
+///
+/// Reserved bits are always zero in a style written by the library.
+/// This means two styles from the library can be compared with memcmp().
+///
+/// @code{.c}
+/// Style style;
+/// ghostty_render_state_row_cells_get(
+/// cells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_STYLE, &style);
+///
+/// if (style.flags & GHOSTTY_STYLE_FLAG_BOLD) {
+/// // Draw with a bold font.
+/// }
+///
+/// if (GHOSTTY_STYLE_UNDERLINE(style) != GHOSTTY_SGR_UNDERLINE_NONE) {
+/// // Draw an underline, colored by style.underline_color if it is set.
+/// }
+/// @endcode
 ///
 /// @ingroup style
 final class Style extends ffi.Struct {
-  @ffi.Size()
-  external int size;
-
+  /// Foreground (text) color.
   external StyleColor fg_color;
 
+  /// Background color.
   external StyleColor bg_color;
 
+  /// Underline color.
   external StyleColor underline_color;
 
-  @ffi.Bool()
-  external bool bold;
+  /// Text attributes and underline style. See StyleFlags.
+  @StyleFlags()
+  external int flags;
 
-  @ffi.Bool()
-  external bool italic;
-
-  @ffi.Bool()
-  external bool faint;
-
-  @ffi.Bool()
-  external bool blink;
-
-  @ffi.Bool()
-  external bool inverse;
-
-  @ffi.Bool()
-  external bool invisible;
-
-  @ffi.Bool()
-  external bool strikethrough;
-
-  @ffi.Bool()
-  external bool overline;
-
-  /// < One of GHOSTTY_SGR_UNDERLINE_* values
-  @ffi.Int()
-  external int underline;
+  /// Reserved for future use. Always zero.
+  @ffi.Uint16()
+  external int reserved;
 }
 
-/// Style color (tagged union).
+/// Style color.
 ///
-/// A color used in a style attribute. Can be unset (none), a palette
-/// index, or a direct RGB value.
+/// A color used by a style. It is either unset, an index into the
+/// terminal palette, or a direct RGB value. The struct is four bytes: a
+/// one-byte tag followed by the three-byte value.
+///
+/// An unset color means the style does not choose a color. Use the
+/// terminal's default color for that slot instead.
+///
+/// @code{.c}
+/// switch (style.fg_color.tag) {
+/// case GHOSTTY_STYLE_COLOR_NONE:
+/// // Use the terminal's default foreground color.
+/// break;
+/// case GHOSTTY_STYLE_COLOR_PALETTE:
+/// // Look up style.fg_color.value.palette in the palette.
+/// break;
+/// case GHOSTTY_STYLE_COLOR_RGB:
+/// // Use style.fg_color.value.rgb directly.
+/// break;
+/// }
+/// @endcode
 ///
 /// @ingroup style
 final class StyleColor extends ffi.Struct {
-  @ffi.UnsignedInt()
-  external int tagAsInt;
+  /// The kind of color. One of the StyleColorTag values.
+  @ffi.Uint8()
+  external int tag;
 
-  StyleColorTag get tag => StyleColorTag.fromValue(tagAsInt);
-  set tag(StyleColorTag value) => tagAsInt = value.value;
-
+  /// The color data. Which field is valid depends on `tag`.
   external StyleColorValue value;
 }
 
-/// Style color value union.
+/// Style color value.
 ///
-/// Use the tag to determine which field is active.
+/// The color data of a StyleColor, three bytes long. The tag of
+/// the containing color says which field to read:
+///
+/// - GHOSTTY_STYLE_COLOR_NONE: no field is set and all bytes are zero.
+/// - GHOSTTY_STYLE_COLOR_PALETTE: read `palette`. The remaining two
+/// bytes are zero.
+/// - GHOSTTY_STYLE_COLOR_RGB: read `rgb`.
 ///
 /// @ingroup style
 final class StyleColorValue extends ffi.Union {
@@ -8220,10 +9274,24 @@ final class StyleColorValue extends ffi.Union {
   external int palette;
 
   external ColorRgb rgb;
-
-  @ffi.Uint64()
-  external int _padding;
 }
+
+/// Style flags.
+///
+/// A 16-bit set of text attributes, laid out as follows:
+///
+/// | Bits     | Meaning                                             |
+/// |----------|-----------------------------------------------------|
+/// | 0 to 7   | On/off attributes, one GHOSTTY_STYLE_FLAG_* per bit |
+/// | 8 to 10  | Underline style, a SgrUnderline value        |
+/// | 11 to 15 | Reserved, always zero                               |
+///
+/// Test an attribute with a bitwise AND against its GHOSTTY_STYLE_FLAG_*
+/// mask. Read the underline style with GHOSTTY_STYLE_UNDERLINE().
+///
+/// @ingroup style
+typedef StyleFlags = ffi.Uint16;
+typedef DartGhosttyStyleFlags = int;
 
 /// Style identifier type.
 ///
@@ -8239,6 +9307,8 @@ typedef DartGhosttyStyleId = int;
 /// This is not a terminal grid coordinate. It represents an x/y position in the
 /// rendered surface coordinate space, with (0, 0) at the top-left of the
 /// surface.
+///
+/// @ingroup selection
 final class SurfacePosition extends ffi.Struct {
   /// X position in surface pixels.
   @ffi.Double()
@@ -8267,9 +9337,10 @@ final class SurfacePosition extends ffi.Struct {
 /// ### On success
 ///
 /// Allocate the pixel buffer with ghostty_alloc() and @p allocator, write
-/// the decoded pixels into it, set all four fields of @p out, and return
-/// true. The library then owns the buffer and frees it with the same
-/// allocator. See SysImage for the expected pixel layout.
+/// the decoded pixels into it, set `width`, `height`, `data` and
+/// `data_len` in @p out, and return true. The library then owns the
+/// buffer and frees it with the same allocator. See SysImage for
+/// the expected pixel layout.
 ///
 /// The allocator limits how much memory a single image may use, so
 /// ghostty_alloc() can return NULL for very large images. Treat that as
@@ -8283,7 +9354,8 @@ final class SurfacePosition extends ffi.Struct {
 /// ### The output struct starts zeroed
 ///
 /// The library sets every field of @p out to zero before it calls the
-/// callback. This has two practical effects:
+/// callback, so any field the callback does not write reads as zero.
+/// This has two practical effects:
 ///
 /// - If the callback returns true but `data` is still NULL, the library
 /// treats the call as a failure.
@@ -8294,8 +9366,19 @@ final class SurfacePosition extends ffi.Struct {
 ///
 /// Only @p out is zeroed. Memory returned by ghostty_alloc() is not.
 ///
+/// ### The output struct never changes
+///
+/// SysImage is frozen. If a later version of libghostty-vt needs
+/// more fields, it adds a new callback typedef and a new option key, and
+/// keeps calling this callback with SysImage forever. A callback
+/// written against this header keeps working with every later version of
+/// the library.
+///
 /// @p data and @p allocator are only valid for the duration of the
 /// callback.
+///
+/// Use @p allocator only through ghostty_alloc() and ghostty_free().
+/// Dereferencing its vtable is not supported.
 ///
 /// @param userdata  The userdata pointer set via GHOSTTY_SYS_OPT_USERDATA
 /// @param allocator The allocator to use for the output pixel buffer
@@ -8369,7 +9452,7 @@ final class SysImage extends ffi.Struct {
 /// Callback type for logging.
 ///
 /// When installed, internal library log messages are delivered through
-/// this callback instead of being discarded. The embedder is responsible
+/// this callback instead of being discarded. You are responsible
 /// for formatting and routing log output.
 ///
 /// @p scope is the log scope name as UTF-8 bytes (e.g. "osc", "kitty").
@@ -8442,7 +9525,7 @@ typedef Terminal = ffi.Pointer<TerminalImpl>;
 /// @param terminal The terminal handle
 /// @param userdata The userdata pointer set via GHOSTTY_TERMINAL_OPT_USERDATA
 ///
-/// @ingroup terminal
+/// @ingroup effects
 typedef TerminalBellFn =
     ffi.Pointer<ffi.NativeFunction<TerminalBellFnFunction>>;
 typedef TerminalBellFnFunction =
@@ -8454,9 +9537,9 @@ typedef DartGhosttyTerminalBellFnFunction =
 ///
 /// Called synchronously when the running program requests clipboard contents
 /// via OSC 52 with a "?" payload or a Kitty clipboard (OSC 5522) read.
-/// Answering lets the program read the user's clipboard, so the embedder is
+/// Answering lets the program read the clipboard of the person using your terminal, so you are
 /// expected to mediate consent. Because the read is synchronous, an embedder
-/// that needs to ask the user must block (for example by running a modal
+/// that needs to ask them must block (for example by running a modal
 /// prompt) until it has an answer; the VT stream waits until the callback
 /// returns.
 ///
@@ -8480,7 +9563,7 @@ typedef DartGhosttyTerminalBellFnFunction =
 /// @param userdata The userdata pointer set via GHOSTTY_TERMINAL_OPT_USERDATA
 /// @param read Borrowed clipboard read request
 ///
-/// @ingroup terminal
+/// @ingroup effects
 typedef TerminalClipboardReadFn =
     ffi.Pointer<ffi.NativeFunction<TerminalClipboardReadFnFunction>>;
 typedef TerminalClipboardReadFnFunction =
@@ -8498,7 +9581,7 @@ typedef DartGhosttyTerminalClipboardReadFnFunction =
 
 /// Callback function type for clipboard_write.
 ///
-/// The embedder may ask for permission to write or perform the write
+/// You may ask for permission to write or perform the write
 /// async, but the callback itself is synchronous and the reply function
 /// must be called during the lifetime of this function. While this callback
 /// is active the VT stream is paused.
@@ -8509,7 +9592,7 @@ typedef DartGhosttyTerminalClipboardReadFnFunction =
 /// The request may carry an optional program name requesting the write
 /// and the state of prior permission granted. If `can_remember` is set
 /// the response may set the `remember` flag and future requests from this
-/// same program will be "granted" and the embedder can skip permission
+/// same program will be "granted" and you can skip permission
 /// requests.
 ///
 /// Clipboard read requests (OSC 52 "?" and OSC 5522 reads) are delivered
@@ -8519,7 +9602,7 @@ typedef DartGhosttyTerminalClipboardReadFnFunction =
 /// @param userdata The userdata pointer set via GHOSTTY_TERMINAL_OPT_USERDATA
 /// @param write Borrowed atomic clipboard write request
 ///
-/// @ingroup terminal
+/// @ingroup effects
 typedef TerminalClipboardWriteFn =
     ffi.Pointer<ffi.NativeFunction<TerminalClipboardWriteFnFunction>>;
 typedef TerminalClipboardWriteFnFunction =
@@ -8541,12 +9624,17 @@ typedef DartGhosttyTerminalClipboardWriteFnFunction =
 /// query. Return true and fill *out_scheme with the current color scheme,
 /// or return false to silently ignore the query.
 ///
+/// The library sets *out_scheme to GHOSTTY_COLOR_SCHEME_LIGHT (zero)
+/// before the call, so returning true without writing it reports light.
+/// If the callback writes a value that isn't a ColorScheme, the
+/// library ignores the query, the same as if the callback returned false.
+///
 /// @param terminal The terminal handle
 /// @param userdata The userdata pointer set via GHOSTTY_TERMINAL_OPT_USERDATA
 /// @param[out] out_scheme Pointer to store the current color scheme
 /// @return true if the color scheme was filled, false to ignore the query
 ///
-/// @ingroup terminal
+/// @ingroup effects
 typedef TerminalColorSchemeFn =
     ffi.Pointer<ffi.NativeFunction<TerminalColorSchemeFnFunction>>;
 typedef TerminalColorSchemeFnFunction =
@@ -8564,16 +9652,16 @@ typedef DartGhosttyTerminalColorSchemeFnFunction =
 
 /// A request to show a desktop notification.
 ///
-/// This is a sized struct. The callback must only access fields present in the
-/// size reported by `size`. Both strings are borrowed and valid only for the
-/// duration of the callback.
+/// Both strings are borrowed and only valid until the callback returns.
+/// Copy them if you need them later.
 ///
-/// @ingroup terminal
+/// This struct has a frozen layout and will never gain fields. It is 32 bytes
+/// on 64-bit targets and 16 bytes on wasm32. If a later version of
+/// libghostty-vt has more to report, it will add a new option with a new
+/// struct, and this callback will keep receiving this struct unchanged.
+///
+/// @ingroup effects
 final class TerminalDesktopNotification extends ffi.Struct {
-  /// Size of this struct in bytes.
-  @ffi.Size()
-  external int size;
-
   /// Notification title, or an empty string when the protocol omits it.
   external String title;
 
@@ -8589,7 +9677,7 @@ final class TerminalDesktopNotification extends ffi.Struct {
 /// @param userdata The userdata pointer set via GHOSTTY_TERMINAL_OPT_USERDATA
 /// @param notification Borrowed desktop notification request
 ///
-/// @ingroup terminal
+/// @ingroup effects
 typedef TerminalDesktopNotificationFn =
     ffi.Pointer<ffi.NativeFunction<TerminalDesktopNotificationFnFunction>>;
 typedef TerminalDesktopNotificationFnFunction =
@@ -8609,17 +9697,42 @@ typedef DartGhosttyTerminalDesktopNotificationFnFunction =
 ///
 /// Called when the terminal receives a device attributes query (CSI c,
 /// CSI > c, or CSI = c). Return true and fill *out_attrs with the
-/// response data, or return false to silently ignore the query.
+/// response data, or return false to answer with the library's default
+/// attributes, which GHOSTTY_TERMINAL_OPT_DEVICE_ATTRIBUTES describes.
 ///
 /// The terminal uses whichever sub-struct (primary, secondary, tertiary)
 /// matches the request type, but all three should be filled for simplicity.
 ///
+/// The library zeroes *out_attrs before the call, so you only need to set
+/// the fields you want to report. Every field you leave alone is reported
+/// as zero. This callback reports a VT220 with color and clipboard
+/// support, and leaves the tertiary unit ID at zero:
+///
+/// @code
+/// static bool on_device_attributes(Terminal terminal,
+/// void* userdata,
+/// DeviceAttributes* out_attrs) {
+/// out_attrs->primary.conformance_level = GHOSTTY_DA_CONFORMANCE_VT220;
+/// out_attrs->primary.features[0] = GHOSTTY_DA_FEATURE_ANSI_COLOR;
+/// out_attrs->primary.features[1] = GHOSTTY_DA_FEATURE_CLIPBOARD;
+/// out_attrs->primary.num_features = 2;
+/// out_attrs->secondary.device_type = GHOSTTY_DA_DEVICE_TYPE_VT220;
+/// return true;
+/// }
+/// @endcode
+///
+/// DeviceAttributes is frozen. If a later version of libghostty-vt
+/// needs more fields, it adds a new callback typedef and a new option
+/// key, and keeps calling this callback with DeviceAttributes
+/// forever. A callback written against this header keeps working with
+/// every later version of the library.
+///
 /// @param terminal The terminal handle
 /// @param userdata The userdata pointer set via GHOSTTY_TERMINAL_OPT_USERDATA
 /// @param[out] out_attrs Pointer to store the device attributes response
-/// @return true if attributes were filled, false to ignore the query
+/// @return true if attributes were filled, false to use the defaults
 ///
-/// @ingroup terminal
+/// @ingroup effects
 typedef TerminalDeviceAttributesFn =
     ffi.Pointer<ffi.NativeFunction<TerminalDeviceAttributesFnFunction>>;
 typedef TerminalDeviceAttributesFnFunction =
@@ -8646,7 +9759,7 @@ typedef DartGhosttyTerminalDeviceAttributesFnFunction =
 /// @param userdata The userdata pointer set via GHOSTTY_TERMINAL_OPT_USERDATA
 /// @return The response bytes to write back to the pty
 ///
-/// @ingroup terminal
+/// @ingroup effects
 typedef TerminalEnquiryFn =
     ffi.Pointer<ffi.NativeFunction<TerminalEnquiryFnFunction>>;
 typedef TerminalEnquiryFnFunction =
@@ -8657,46 +9770,22 @@ final class TerminalImpl extends ffi.Opaque {}
 /// Memory held by a terminal.
 ///
 /// Read with ghostty_terminal_get() and
-/// `GHOSTTY_TERMINAL_DATA_MEMORY_USAGE`. This helps applications that host
-/// many terminals stay within a memory budget, for example by compressing
-/// or closing the terminals that hold the most memory first.
+/// `GHOSTTY_TERMINAL_DATA_MEMORY_USAGE`.
 ///
-/// Most of a terminal's memory goes to its screen contents and scrollback,
-/// which are stored in fixed-size blocks called pages. Resident bytes are
-/// the physical memory pages use right now, and are the figure to budget
-/// against. Virtual bytes are the address space reserved for pages.
-/// Compressing scrollback lowers the resident figure but not the virtual
-/// one, because each page's space stays reserved for decompression.
-///
-/// This is a sized struct. Set `size` before the call, most easily with
-/// GHOSTTY_INIT_SIZED(). Later versions of libghostty-vt may add fields to
-/// the end of this struct, and the size tells the library which version
-/// your program was compiled against. This lets older programs keep working
-/// with newer versions of the library.
+/// This is a sized struct. Initialize it with GHOSTTY_INIT_SIZED() before
+/// passing it to ghostty_terminal_get(). See @ref sized-structs.
 ///
 /// Each screen has its own set of fields, named with a `primary_` or
-/// `alternate_` prefix. The primary screen holds shell output and all of
-/// the scrollback. The alternate screen is used by full-screen programs
-/// such as text editors, and its fields are all zero until a program first
-/// switches to it. Add the two sets together for the terminal's total.
+/// `alternate_` prefix. Add the two sets together for the terminal's total.
+/// The alternate fields are all zero until a program first switches to that
+/// screen.
 ///
-/// Everything the terminal displays is stored inside pages, including
-/// colors, styles and hyperlinks, so those are already part of the page
-/// figures. Images are stored separately and have their own fields. Small
-/// structures outside of pages, such as the window title and internal
-/// bookkeeping, are not counted. They are small next to the pages once a
-/// terminal has any scrollback.
-///
-/// On macOS, the operating system takes back memory freed by compression
-/// lazily, when something else needs it. Until then, the memory use the
-/// system reports for your process (its RSS) can be higher than the
-/// resident figures here.
-///
-/// @snippet c-vt-compression/src/main.c memory-usage
+/// See @ref guide-scrollback-memory for what these figures cover and which one
+/// to budget against.
 ///
 /// @ingroup terminal
 final class TerminalMemoryUsage extends ffi.Struct {
-  /// Size of this struct in bytes. Set by the caller.
+  /// Size of this struct in bytes. Set by you.
   @ffi.Size()
   external int size;
 
@@ -8857,16 +9946,13 @@ final class TerminalModeConfig extends ffi.Struct {
 /// never NULL. All strings are only valid during the callback, so copy any
 /// you want to keep.
 ///
-/// This is a sized struct. Later versions may add fields at the end, and
-/// `size` tells you which fields are present. Every field below has been
-/// present since this struct was introduced.
+/// This struct has a frozen layout and will never gain fields. It is 80 bytes
+/// on 64-bit targets and 44 bytes on wasm32. If a later version of
+/// libghostty-vt has more to report, it will add a new option with a new
+/// struct, and this callback will keep receiving this struct unchanged.
 ///
-/// @ingroup terminal
+/// @ingroup effects
 final class TerminalProgramStatus extends ffi.Struct {
-  /// Size of this struct in bytes.
-  @ffi.Size()
-  external int size;
-
   /// What the program is doing.
   @ffi.UnsignedInt()
   external int stateAsInt;
@@ -8993,7 +10079,7 @@ final class TerminalProgramStatus extends ffi.Struct {
 /// @param report The report. It and its strings are only valid during the
 /// call.
 ///
-/// @ingroup terminal
+/// @ingroup effects
 typedef TerminalProgramStatusFn =
     ffi.Pointer<ffi.NativeFunction<TerminalProgramStatusFnFunction>>;
 typedef TerminalProgramStatusFnFunction =
@@ -9011,15 +10097,13 @@ typedef DartGhosttyTerminalProgramStatusFnFunction =
 
 /// A progress report emitted by the running program.
 ///
-/// This is a sized struct. The callback must only access fields present in the
-/// size reported by `size`.
+/// This struct has a frozen layout and will never gain fields. It is 8 bytes
+/// on every target. If a later version of libghostty-vt has more to report,
+/// it will add a new option with a new struct, and this callback will keep
+/// receiving this struct unchanged.
 ///
-/// @ingroup terminal
+/// @ingroup effects
 final class TerminalProgressReport extends ffi.Struct {
-  /// Size of this struct in bytes.
-  @ffi.Size()
-  external int size;
-
   /// Literal progress state reported by the running program.
   @ffi.UnsignedInt()
   external int stateAsInt;
@@ -9034,11 +10118,9 @@ final class TerminalProgressReport extends ffi.Struct {
 
   static ffi.Pointer<TerminalProgressReport> $allocate(
     ffi.Allocator $allocator, {
-    required int size,
     required TerminalProgressState state,
     required int progress,
   }) => $allocator<TerminalProgressReport>()
-    ..ref.size = size
     ..ref.state = state
     ..ref.progress = progress;
 }
@@ -9051,7 +10133,7 @@ final class TerminalProgressReport extends ffi.Struct {
 /// @param userdata The userdata pointer set via GHOSTTY_TERMINAL_OPT_USERDATA
 /// @param report Borrowed progress report
 ///
-/// @ingroup terminal
+/// @ingroup effects
 typedef TerminalProgressReportFn =
     ffi.Pointer<ffi.NativeFunction<TerminalProgressReportFnFunction>>;
 typedef TerminalProgressReportFnFunction =
@@ -9076,7 +10158,7 @@ typedef DartGhosttyTerminalProgressReportFnFunction =
 ///
 /// The terminal stores whatever bytes the shell emitted, without parsing.
 /// That means for OSC 7 the value is the raw URI (typically file://...);
-/// for OSC 9/OSC 1337 it is typically a bare path. The embedder is
+/// for OSC 9/OSC 1337 it is typically a bare path. You are
 /// responsible for decoding any URI scheme or host if it cares about them.
 ///
 /// The callback also fires when the shell clears the pwd (e.g. an empty
@@ -9086,7 +10168,7 @@ typedef DartGhosttyTerminalProgressReportFnFunction =
 /// @param terminal The terminal handle
 /// @param userdata The userdata pointer set via GHOSTTY_TERMINAL_OPT_USERDATA
 ///
-/// @ingroup terminal
+/// @ingroup effects
 typedef TerminalPwdChangedFn =
     ffi.Pointer<ffi.NativeFunction<TerminalPwdChangedFnFunction>>;
 typedef TerminalPwdChangedFnFunction =
@@ -9098,25 +10180,13 @@ typedef DartGhosttyTerminalPwdChangedFnFunction =
 ///
 /// Called when the running program asks the terminal to stop updating
 /// the screen, and again when it lets the screen update again. We call
-/// the time in between a "render hold".
+/// the time in between a "render hold". See @ref guide-rendering-holds for
+/// what to do about one.
 ///
-/// Programs use a hold to avoid flicker. A full-screen program usually
-/// redraws in several steps: clear, draw the text, move the cursor. If
-/// the screen is drawn halfway through, the user sees a broken frame. To
-/// prevent that, the program starts a hold, draws everything, and then
-/// releases the hold. The screen should keep showing the last finished
-/// frame the whole time and then switch to the new one all at once.
+/// `held` is true when the program sets mode 2026
+/// (GHOSTTY_MODE_SYNCHRONIZED_OUTPUT), which is the only way to start a hold today.
 ///
-/// Today the only way a program can start a hold is synchronized output
-/// (DEC private mode 2026, GHOSTTY_MODE_SYNC_OUTPUT). The callback is
-/// named for what the embedder should do rather than for that mode so
-/// that other sources of holds can be added later.
-///
-/// ### When it is called
-///
-/// With `held` set to true when the program sets mode 2026.
-///
-/// With `held` set to false when the hold ends, which happens when:
+/// `held` is false when the hold ends, which happens when:
 ///
 /// - the program resets mode 2026
 /// - the terminal is fully reset, by the program (RIS) or by
@@ -9128,86 +10198,11 @@ typedef DartGhosttyTerminalPwdChangedFnFunction =
 /// is no hold. Changing the mode yourself with GHOSTTY_TERMINAL_OPT_MODE
 /// never invokes the callback.
 ///
-/// ### What to do
-///
-/// When a hold begins, the terminal contains exactly the frame the
-/// program wants left on screen. Nothing after the start of the hold has
-/// been processed yet, even if more bytes follow in the same
-/// ghostty_terminal_vt_write() call. Capture that frame by calling
-/// ghostty_render_state_update() from within the callback, then stop
-/// updating the render state until the hold ends. You can keep drawing
-/// the render state in the meantime. It won't change.
-///
-/// @code{.c}
-/// typedef struct {
-/// RenderState render_state;
-/// bool held;
-/// uint64_t hold_started_ms;
-/// } Renderer;
-///
-/// void on_render_hold(Terminal terminal, void* userdata, bool held) {
-/// Renderer* r = userdata;
-/// if (held) {
-/// // Capture the frame the program wants left on screen.
-/// ghostty_render_state_update(r->render_state, terminal);
-/// r->hold_started_ms = now_ms();
-/// }
-/// r->held = held;
-/// }
-///
-/// void draw(Renderer* r, Terminal terminal) {
-/// // Give up on a program that holds the screen for too long.
-/// if (r->held && now_ms() - r->hold_started_ms >= 1000) {
-/// TerminalModeConfig mode = {
-/// .mode = GHOSTTY_MODE_SYNC_OUTPUT,
-/// .value = false,
-/// };
-/// ghostty_terminal_set(terminal, GHOSTTY_TERMINAL_OPT_MODE, &mode);
-/// r->held = false;
-/// }
-///
-/// // During a hold, skip the update and draw the captured frame.
-/// if (!r->held) ghostty_render_state_update(r->render_state, terminal);
-/// draw_render_state(r->render_state);
-/// }
-/// @endcode
-///
-/// ### Timeouts
-///
-/// The terminal has no clock, so it never ends a hold on its own. A
-/// program that crashes or forgets to release its hold would freeze the
-/// screen forever, so you need a timeout like the one above. One second
-/// is a common choice. When it expires, reset the mode yourself and go
-/// back to updating normally. Because setting the mode again during a
-/// hold does nothing, a program can't keep pushing your deadline back.
-///
-/// ### Why a callback
-///
-/// You could instead check GHOSTTY_MODE_SYNC_OUTPUT before each draw
-/// and skip the update when it is set. That is simpler, but it has two
-/// problems. First, the frame left on screen is whatever you happened to
-/// draw last, which can be older than what the program intended or even
-/// a half-drawn frame. Second, if the program releases a hold and starts
-/// the next one between two of your draws, you never see the mode turn
-/// off and the finished frame in between is lost. A program that draws
-/// continuously can then appear frozen. Capturing the frame when each
-/// hold begins avoids both.
-///
-/// ### Other notes
-///
-/// You are free to ignore a hold whenever showing live content matters
-/// more, such as when the user scrolls or starts a selection.
-///
-/// Like every callback, this runs on the thread that called
-/// ghostty_terminal_vt_write(). If another thread draws the render
-/// state, protect the update in the callback the same way you protect
-/// any other access to the render state.
-///
 /// @param terminal The terminal handle
 /// @param userdata The userdata pointer set via GHOSTTY_TERMINAL_OPT_USERDATA
 /// @param held True when a hold begins, false when it ends
 ///
-/// @ingroup terminal
+/// @ingroup effects
 typedef TerminalRenderHoldFn =
     ffi.Pointer<ffi.NativeFunction<TerminalRenderHoldFnFunction>>;
 typedef TerminalRenderHoldFnFunction =
@@ -9242,13 +10237,90 @@ typedef DartGhosttyTerminalRenderHoldFnFunction =
 /// @param terminal The terminal handle
 /// @param userdata The userdata pointer set via GHOSTTY_TERMINAL_OPT_USERDATA
 ///
-/// @ingroup terminal
+/// @ingroup effects
 typedef TerminalResetFn =
     ffi.Pointer<ffi.NativeFunction<TerminalResetFnFunction>>;
 typedef TerminalResetFnFunction =
     ffi.Void Function(Terminal terminal, ffi.Pointer<ffi.Void> userdata);
 typedef DartGhosttyTerminalResetFnFunction =
     void Function(Terminal terminal, ffi.Pointer<ffi.Void> userdata);
+
+/// A request from the running program to resize the window.
+///
+/// @ingroup effects
+final class TerminalResizeWindow extends ffi.Struct {
+  @ffi.UnsignedInt()
+  external int tagAsInt;
+
+  TerminalResizeWindowTag get tag =>
+      TerminalResizeWindowTag.fromValue(tagAsInt);
+  set tag(TerminalResizeWindowTag value) => tagAsInt = value.value;
+
+  external TerminalResizeWindowValue value;
+}
+
+/// Callback function type for window resize requests.
+///
+/// Called synchronously when the running program asks to resize the window,
+/// such as with CSI 8 ; rows ; columns t. Check `request->tag` first, because
+/// more kinds of requests may be reported in later versions. The terminal is
+/// not resized by this: you decide whether to allow the request,
+/// and if so resizes its window and the terminal. Letting any
+/// program resize the window is a nuisance at best, so consider making this
+/// opt-in for users.
+///
+/// @param terminal The terminal handle
+/// @param userdata The userdata pointer set via GHOSTTY_TERMINAL_OPT_USERDATA
+/// @param request Borrowed resize request
+///
+/// @ingroup effects
+typedef TerminalResizeWindowFn =
+    ffi.Pointer<ffi.NativeFunction<TerminalResizeWindowFnFunction>>;
+typedef TerminalResizeWindowFnFunction =
+    ffi.Void Function(
+      Terminal terminal,
+      ffi.Pointer<ffi.Void> userdata,
+      ffi.Pointer<TerminalResizeWindow> request,
+    );
+typedef DartGhosttyTerminalResizeWindowFnFunction =
+    void Function(
+      Terminal terminal,
+      ffi.Pointer<ffi.Void> userdata,
+      ffi.Pointer<TerminalResizeWindow> request,
+    );
+
+/// A request to resize the window's text area to a size in rows and columns.
+///
+/// @ingroup effects
+final class TerminalResizeWindowGrid extends ffi.Struct {
+  /// Requested height in rows, or 0 to keep the current height.
+  @ffi.Uint16()
+  external int rows;
+
+  /// Requested width in columns, or 0 to keep the current width.
+  @ffi.Uint16()
+  external int columns;
+
+  static ffi.Pointer<TerminalResizeWindowGrid> $allocate(
+    ffi.Allocator $allocator, {
+    required int rows,
+    required int columns,
+  }) => $allocator<TerminalResizeWindowGrid>()
+    ..ref.rows = rows
+    ..ref.columns = columns;
+}
+
+/// Window resize request value.
+///
+/// @ingroup effects
+final class TerminalResizeWindowValue extends ffi.Union {
+  /// Size in rows and columns (GHOSTTY_TERMINAL_RESIZE_WINDOW_GRID).
+  external TerminalResizeWindowGrid grid;
+
+  /// Padding for ABI compatibility. Do not use.
+  @ffi.Array.multi([2])
+  external ffi.Array<ffi.Uint64> _padding;
+}
 
 /// Tagged union for scroll viewport behavior.
 ///
@@ -9268,15 +10340,18 @@ final class TerminalScrollViewport extends ffi.Struct {
 ///
 /// @ingroup terminal
 final class TerminalScrollViewportValue extends ffi.Union {
-  /// Scroll delta (only used with GHOSTTY_SCROLL_VIEWPORT_DELTA). Up is negative.
+  /// Scroll delta (only used with GHOSTTY_TERMINAL_SCROLL_VIEWPORT_DELTA).
+  /// Up is negative.
   @ffi.IntPtr()
   external int delta;
 
-  /// Absolute row offset (only used with GHOSTTY_SCROLL_VIEWPORT_ROW).
+  /// Absolute row offset (only used with
+  /// GHOSTTY_TERMINAL_SCROLL_VIEWPORT_ROW).
   @ffi.Size()
   external int row;
 
-  /// Prompt delta (only used with GHOSTTY_SCROLL_VIEWPORT_DELTA_PROMPT).
+  /// Prompt delta (only used with
+  /// GHOSTTY_TERMINAL_SCROLL_VIEWPORT_DELTA_PROMPT).
   @ffi.IntPtr()
   external int delta_prompt;
 
@@ -9316,7 +10391,9 @@ final class TerminalScrollbar extends ffi.Struct {
 
 /// Options for deriving a line selection from a terminal grid reference.
 ///
-/// This is a sized struct. Use GHOSTTY_INIT_SIZED() to initialize it.
+/// This is a sized struct. Initialize it with GHOSTTY_INIT_SIZED(), then set
+/// the fields you need. See @ref sized-structs.
+///
 /// If whitespace is NULL and whitespace_len is 0, 's default line-trim
 /// whitespace codepoints are used. If whitespace_len is non-zero, whitespace
 /// must not be NULL.
@@ -9344,7 +10421,9 @@ final class TerminalSelectLineOptions extends ffi.Struct {
 
 /// Options for deriving the nearest word selection between two grid references.
 ///
-/// This is a sized struct. Use GHOSTTY_INIT_SIZED() to initialize it.
+/// This is a sized struct. Initialize it with GHOSTTY_INIT_SIZED(), then set
+/// the fields you need. See @ref sized-structs.
+///
 /// If boundary_codepoints is NULL and boundary_codepoints_len is 0, 's
 /// default word-boundary codepoints are used. If boundary_codepoints_len is
 /// non-zero, boundary_codepoints must not be NULL.
@@ -9371,7 +10450,9 @@ final class TerminalSelectWordBetweenOptions extends ffi.Struct {
 
 /// Options for deriving a word selection from a terminal grid reference.
 ///
-/// This is a sized struct. Use GHOSTTY_INIT_SIZED() to initialize it.
+/// This is a sized struct. Initialize it with GHOSTTY_INIT_SIZED(), then set
+/// the fields you need. See @ref sized-structs.
+///
 /// If boundary_codepoints is NULL and boundary_codepoints_len is 0, 's
 /// default word-boundary codepoints are used. If boundary_codepoints_len is
 /// non-zero, boundary_codepoints must not be NULL.
@@ -9393,63 +10474,6 @@ final class TerminalSelectWordOptions extends ffi.Struct {
   external int boundary_codepoints_len;
 }
 
-/// Options for one-shot formatting of a terminal selection.
-///
-/// This is a sized struct. Use GHOSTTY_INIT_SIZED() to initialize it.
-///
-/// If selection is NULL, the terminal's current active selection is used.
-/// If selection is non-NULL, that caller-provided snapshot selection is used.
-///
-/// The selection is formatted from the terminal's active screen using the same
-/// formatting semantics as Formatter. For copy/clipboard behavior
-/// matching 's Screen.selectionString(), use plain output with unwrap
-/// and trim both set to true.
-///
-/// @ingroup selection
-final class TerminalSelectionFormatOptions extends ffi.Struct {
-  /// Size of this struct in bytes. Must be set to sizeof(TerminalSelectionFormatOptions).
-  @ffi.Size()
-  external int size;
-
-  /// Output format to emit.
-  @ffi.UnsignedInt()
-  external int emitAsInt;
-
-  FormatterFormat get emit => FormatterFormat.fromValue(emitAsInt);
-  set emit(FormatterFormat value) => emitAsInt = value.value;
-
-  /// Whether to unwrap soft-wrapped lines.
-  @ffi.Bool()
-  external bool unwrap;
-
-  /// Whether to trim trailing whitespace on non-blank lines.
-  @ffi.Bool()
-  external bool trim;
-
-  /// Optional selection to format.
-  ///
-  /// If NULL, the terminal's current active selection is used. If the terminal
-  /// has no active selection, formatting returns GHOSTTY_NO_VALUE.
-  ///
-  /// If non-NULL, the pointed-to selection must be a valid snapshot selection
-  /// for this terminal and must obey Selection lifetime rules.
-  external ffi.Pointer<Selection> selection;
-
-  static ffi.Pointer<TerminalSelectionFormatOptions> $allocate(
-    ffi.Allocator $allocator, {
-    required int size,
-    required FormatterFormat emit,
-    required bool unwrap,
-    required bool trim,
-    required ffi.Pointer<Selection> selection,
-  }) => $allocator<TerminalSelectionFormatOptions>()
-    ..ref.size = size
-    ..ref.emit = emit
-    ..ref.unwrap = unwrap
-    ..ref.trim = trim
-    ..ref.selection = selection;
-}
-
 /// A shell integration event, passed to the
 /// `GHOSTTY_TERMINAL_OPT_SEMANTIC_PROMPT` callback.
 ///
@@ -9460,11 +10484,12 @@ final class TerminalSelectionFormatOptions extends ffi.Struct {
 /// Strings are only valid during the callback. Copy them if you need them
 /// later.
 ///
-/// This is a sized struct. Later versions may add fields at the end, and
-/// `size` tells you which fields are present. Every field below has been
-/// present since this struct was introduced, so you only need to check
-/// `size` before reading fields added later. Two fields are likely to be
-/// added in the future:
+/// This struct has a frozen layout and will never gain fields. It is 48 bytes
+/// on 64-bit targets and 32 bytes on wasm32. If a later version of
+/// libghostty-vt has more to report, it will add a new option with a new
+/// struct, and this callback will keep receiving this struct unchanged.
+///
+/// Two fields are likely to be added this way in the future:
 ///
 /// - An identifier the shell assigns to each command.
 /// - A flag on `GHOSTTY_SEMANTIC_PROMPT_PROMPT_START` that says the shell
@@ -9472,12 +10497,8 @@ final class TerminalSelectionFormatOptions extends ffi.Struct {
 ///
 /// Neither exists yet.
 ///
-/// @ingroup terminal
+/// @ingroup effects
 final class TerminalSemanticPrompt extends ffi.Struct {
-  /// Size of this struct in bytes.
-  @ffi.Size()
-  external int size;
-
   /// Which step of the command this event reports.
   @ffi.UnsignedInt()
   external int kindAsInt;
@@ -9542,7 +10563,7 @@ final class TerminalSemanticPrompt extends ffi.Struct {
 /// @param event The event. It and its strings are only valid during the
 /// call.
 ///
-/// @ingroup terminal
+/// @ingroup effects
 typedef TerminalSemanticPromptFn =
     ffi.Pointer<ffi.NativeFunction<TerminalSemanticPromptFnFunction>>;
 typedef TerminalSemanticPromptFnFunction =
@@ -9560,10 +10581,33 @@ typedef DartGhosttyTerminalSemanticPromptFnFunction =
 
 /// Callback function type for terminal size reports.
 ///
-/// Called in response to XTWINOPS size queries (CSI 14/16/18 t) and when VT
+/// Called in response to XTWINOPS size queries (CSI 14/16/18/19 t) and when VT
 /// input enables in-band size reports (mode 2048).
 /// Return true and fill *out_size with the current terminal geometry,
 /// or return false to suppress the report.
+///
+/// The library zeroes *out_size before the call, so any field you don't
+/// write reads as zero. A typical callback copies the geometry from your
+/// own window state, passed in through GHOSTTY_TERMINAL_OPT_USERDATA:
+///
+/// @code
+/// static bool on_size(Terminal terminal,
+/// void* userdata,
+/// SizeReportSize* out_size) {
+/// const MyWindow* window = userdata;
+/// out_size->rows = window->rows;
+/// out_size->columns = window->columns;
+/// out_size->cell_width = window->cell_width;
+/// out_size->cell_height = window->cell_height;
+/// return true;
+/// }
+/// @endcode
+///
+/// SizeReportSize is frozen. If a later version of libghostty-vt
+/// needs more fields, it adds a new callback typedef and a new option
+/// key, and keeps calling this callback with SizeReportSize
+/// forever. A callback written against this header keeps working with
+/// every later version of the library.
 ///
 /// @param terminal The terminal handle
 /// @param userdata The userdata pointer set via GHOSTTY_TERMINAL_OPT_USERDATA
@@ -9571,7 +10615,7 @@ typedef DartGhosttyTerminalSemanticPromptFnFunction =
 /// @return true if size was filled, false to suppress the XTWINOPS response or
 /// mode 2048 report
 ///
-/// @ingroup terminal
+/// @ingroup effects
 typedef TerminalSizeFn =
     ffi.Pointer<ffi.NativeFunction<TerminalSizeFnFunction>>;
 typedef TerminalSizeFnFunction =
@@ -9590,13 +10634,13 @@ typedef DartGhosttyTerminalSizeFnFunction =
 /// Callback function type for title_changed.
 ///
 /// Called when the terminal title changes via escape sequences
-/// (e.g. OSC 0 or OSC 2). The new title can be queried from the
-/// terminal after the callback returns.
+/// (e.g. OSC 0 or OSC 2). Use ghostty_terminal_get() with
+/// GHOSTTY_TERMINAL_DATA_TITLE inside the callback to read the new value.
 ///
 /// @param terminal The terminal handle
 /// @param userdata The userdata pointer set via GHOSTTY_TERMINAL_OPT_USERDATA
 ///
-/// @ingroup terminal
+/// @ingroup effects
 typedef TerminalTitleChangedFn =
     ffi.Pointer<ffi.NativeFunction<TerminalTitleChangedFnFunction>>;
 typedef TerminalTitleChangedFnFunction =
@@ -9616,10 +10660,10 @@ typedef DartGhosttyTerminalTitleChangedFnFunction =
 /// @endcode
 ///
 /// For that sequence, `content` is `7400;status=busy` and `terminator`
-/// is GHOSTTY_OSC_TERMINATOR_BEL. See the Unsupported Sequences section of
-/// the terminal documentation for a complete example.
+/// is GHOSTTY_OSC_TERMINATOR_BEL. See @ref guide-custom-sequences-unknown
+/// for a complete example.
 ///
-/// @ingroup terminal
+/// @ingroup effects
 final class TerminalUnknownOscSequence extends ffi.Struct {
   /// True if the sequence was longer than
   /// GHOSTTY_TERMINAL_OPT_UNKNOWN_MAX_BYTES, or memory ran out while
@@ -9644,7 +10688,7 @@ final class TerminalUnknownOscSequence extends ffi.Struct {
 
 /// An unsupported terminal sequence.
 ///
-/// @ingroup terminal
+/// @ingroup effects
 final class TerminalUnknownSequence extends ffi.Struct {
   @ffi.UnsignedInt()
   external int tagAsInt;
@@ -9664,10 +10708,11 @@ final class TerminalUnknownSequence extends ffi.Struct {
 ///
 /// These are not reported:
 ///
-/// - Sequences the program cancelled partway through with CAN or SUB.
+/// - Sequences cut short before their terminator, either cancelled by CAN
+/// or SUB or aborted by another 8-bit control byte.
 /// - Sequences libghostty-vt implements, even when their contents are
 /// malformed.
-/// - Supported protocols that the embedder turned off.
+/// - Supported protocols that you turned off.
 ///
 /// The callback runs during ghostty_terminal_vt_write(). It may write a reply
 /// to the pty, and that reply stays in order with the terminal's own
@@ -9682,7 +10727,7 @@ final class TerminalUnknownSequence extends ffi.Struct {
 /// @param userdata The userdata pointer set via GHOSTTY_TERMINAL_OPT_USERDATA
 /// @param sequence Borrowed unsupported sequence
 ///
-/// @ingroup terminal
+/// @ingroup effects
 typedef TerminalUnknownSequenceFn =
     ffi.Pointer<ffi.NativeFunction<TerminalUnknownSequenceFnFunction>>;
 typedef TerminalUnknownSequenceFnFunction =
@@ -9700,7 +10745,7 @@ typedef DartGhosttyTerminalUnknownSequenceFnFunction =
 
 /// Unsupported terminal sequence value.
 ///
-/// @ingroup terminal
+/// @ingroup effects
 final class TerminalUnknownSequenceValue extends ffi.Union {
   /// Application Program Command (APC).
   external TerminalUnknownStringSequence apc;
@@ -9723,7 +10768,7 @@ final class TerminalUnknownSequenceValue extends ffi.Union {
 /// contains the bytes between the sequence introducer and terminator, may
 /// contain arbitrary binary data, and is not null-terminated.
 ///
-/// @ingroup terminal
+/// @ingroup effects
 final class TerminalUnknownStringSequence extends ffi.Struct {
   /// Whether content was shortened by the byte limit or allocation failure.
   @ffi.Bool()
@@ -9738,14 +10783,14 @@ final class TerminalUnknownStringSequence extends ffi.Struct {
 /// Called when the terminal needs to write data back to the pty, for
 /// example in response to a device status report, mode query, or VT-driven
 /// mode 2048 enable. The data is only valid for the duration of the call;
-/// callers must copy it if it needs to persist.
+/// you must copy it if it needs to persist.
 ///
 /// @param terminal The terminal handle
 /// @param userdata The userdata pointer set via GHOSTTY_TERMINAL_OPT_USERDATA
 /// @param data Pointer to the response bytes
 /// @param len Length of the response in bytes
 ///
-/// @ingroup terminal
+/// @ingroup effects
 typedef TerminalWritePtyFn =
     ffi.Pointer<ffi.NativeFunction<TerminalWritePtyFnFunction>>;
 typedef TerminalWritePtyFnFunction =
@@ -9763,6 +10808,103 @@ typedef DartGhosttyTerminalWritePtyFnFunction =
       int len,
     );
 
+/// Where ghostty_terminal_vt_write_until() stopped, and why.
+///
+/// This is a sized struct. Initialize it with GHOSTTY_INIT_SIZED() before
+/// the first call. See @ref sized-structs. Each call resets every field except
+/// `size` before it writes the result, so you can reuse one struct across
+/// calls.
+///
+/// Fields that don't apply to a stop are zero. Zero is also a valid value
+/// for `kind`, `introducer` and `end`, so always check `reached` first to
+/// see which fields apply.
+///
+/// @ingroup terminal
+final class TerminalWriteStop extends ffi.Struct {
+  /// Size of this struct in bytes. Set by GHOSTTY_INIT_SIZED().
+  @ffi.Size()
+  external int size;
+
+  /// Number of input bytes consumed, including the byte that reached the
+  /// boundary. This is 0 when the stream was already at ground and you
+  /// asked for GHOSTTY_TERMINAL_BOUNDARY_GROUND.
+  @ffi.Size()
+  external int consumed;
+
+  /// The TerminalBoundary flags that the stopping byte reached. Only
+  /// flags you asked for are set, and this is 0 when no boundary was
+  /// reached.
+  ///
+  /// This is usually one flag. It holds two when a single byte does two
+  /// things:
+  ///
+  /// - It ends a string and returns to ground. BEL, CAN, SUB, 0x9C and the
+  /// other 8-bit control bytes all do this. So if you asked for both
+  /// OSC_END and GROUND, an OSC_END stop can include GROUND too.
+  /// - It ends one string and starts another. An 8-bit introducer of a
+  /// different kind does this inside an APC, or inside a DCS header: 0x90
+  /// or 0x9D in an APC ends it and starts a DCS or OSC, and 0x9F, 0x98,
+  /// 0x9E or 0x9D in a DCS header ends it and starts an APC or OSC. The
+  /// stop has an END flag and a START flag, `end` is ABORTED and
+  /// `introducer` is C1. See ghostty_terminal_vt_write_until() for an
+  /// example.
+  ///
+  /// A START flag and an END flag of the same kind are never set together.
+  @ffi.Uint32()
+  external int reached;
+
+  /// The kind of string. Valid when `reached` has a START or END flag.
+  ///
+  /// When one byte both ends a string and starts another, this is the kind
+  /// of the string that ended. The START flag in `reached` names the kind
+  /// that started, since APC_START, DCS_START and OSC_START each belong to
+  /// one kind.
+  @ffi.UnsignedInt()
+  external int kindAsInt;
+
+  TerminalStringKind get kind => TerminalStringKind.fromValue(kindAsInt);
+  set kind(TerminalStringKind value) => kindAsInt = value.value;
+
+  /// How the string started. Valid when `reached` has a START flag.
+  @ffi.UnsignedInt()
+  external int introducerAsInt;
+
+  TerminalStringIntroducer get introducer =>
+      TerminalStringIntroducer.fromValue(introducerAsInt);
+  set introducer(TerminalStringIntroducer value) =>
+      introducerAsInt = value.value;
+
+  /// How the string ended. Valid when `reached` has an END flag.
+  @ffi.UnsignedInt()
+  external int endAsInt;
+
+  TerminalStringEnd get end => TerminalStringEnd.fromValue(endAsInt);
+  set end(TerminalStringEnd value) => endAsInt = value.value;
+
+  /// The byte that started or ended the string, such as `]`, 0x90, ESC or
+  /// BEL. Valid when `reached` has a START or END flag.
+  @ffi.Uint8()
+  external int byte;
+
+  static ffi.Pointer<TerminalWriteStop> $allocate(
+    ffi.Allocator $allocator, {
+    required int size,
+    required int consumed,
+    required int reached,
+    required TerminalStringKind kind,
+    required TerminalStringIntroducer introducer,
+    required TerminalStringEnd end,
+    required int byte,
+  }) => $allocator<TerminalWriteStop>()
+    ..ref.size = size
+    ..ref.consumed = consumed
+    ..ref.reached = reached
+    ..ref.kind = kind
+    ..ref.introducer = introducer
+    ..ref.end = end
+    ..ref.byte = byte;
+}
+
 /// Callback function type for XTVERSION.
 ///
 /// Called when the terminal receives an XTVERSION query (CSI > q).
@@ -9774,7 +10916,7 @@ typedef DartGhosttyTerminalWritePtyFnFunction =
 /// @param userdata The userdata pointer set via GHOSTTY_TERMINAL_OPT_USERDATA
 /// @return The version string to report
 ///
-/// @ingroup terminal
+/// @ingroup effects
 typedef TerminalXtversionFn =
     ffi.Pointer<ffi.NativeFunction<TerminalXtversionFnFunction>>;
 typedef TerminalXtversionFnFunction =
@@ -9782,7 +10924,7 @@ typedef TerminalXtversionFnFunction =
 
 /// Opaque handle to a tracked grid reference.
 ///
-/// A tracked grid reference is owned by the caller and must be freed with
+/// A tracked grid reference is owned by you and must be freed with
 /// ghostty_tracked_grid_ref_free(). If the terminal that created it is freed
 /// first, the handle remains valid only for tracked-grid-ref APIs: it reports no
 /// value and can still be freed.

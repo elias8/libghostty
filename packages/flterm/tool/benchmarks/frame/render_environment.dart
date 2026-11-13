@@ -11,6 +11,7 @@ import 'package:flutter/rendering.dart' show ViewportOffset;
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:libghostty/libghostty.dart' show Terminal;
+
 import '../protocol.dart';
 
 const _metrics = CellMetrics(cellWidth: 8, cellHeight: 16, baseline: 12);
@@ -40,10 +41,8 @@ Future<String> _loadFonts() async {
     rootBundle.load('assets/fonts/NotoSansJP-Regular.ttf'),
     rootBundle.load('assets/fonts/NotoEmoji-Regular.ttf'),
   ]);
-  final textLoader = FontLoader('Noto Sans JP')
-    ..addFont(Future.value(assets[2]));
-  final emojiLoader = FontLoader('Noto Emoji')
-    ..addFont(Future.value(assets[3]));
+  final textLoader = FontLoader('Noto Sans JP')..addFont(.syncValue(assets[2]));
+  final emojiLoader = FontLoader('Noto Emoji')..addFont(.syncValue(assets[3]));
   await Future.wait([textLoader.load(), emojiLoader.load()]);
 
   return benchmarkFontDigest(
