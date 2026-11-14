@@ -5,6 +5,7 @@ import 'package:libghostty/src/bindings/utility/ffi.dart';
 import 'package:libghostty/src/generated/libghostty_enums.g.dart';
 import 'package:libghostty/src/types/color.dart';
 import 'package:libghostty/src/types/exceptions.dart';
+import 'package:libghostty/src/types/render.dart';
 import 'package:test/test.dart';
 
 void main() {
@@ -80,6 +81,33 @@ void main() {
         49,
         126,
       ]);
+    });
+
+    test('recognizes every non-default style attribute and color', () {
+      const styles = [
+        Style(bold: true),
+        Style(italic: true),
+        Style(faint: true),
+        Style(blink: true),
+        Style(inverse: true),
+        Style(invisible: true),
+        Style(strikethrough: true),
+        Style(overline: true),
+        Style(underline: SgrUnderline.curly),
+        Style(foreground: PaletteColor(0)),
+        Style(background: RgbColor(1, 2, 3)),
+        Style(underlineColor: PaletteColor(3)),
+      ];
+      for (final style in styles) {
+        expect(bindings.styleIsDefault(style), isFalse, reason: '$style');
+      }
+    });
+
+    test('encodes terminal size reports', () {
+      expect(
+        bindings.sizeReportEncode(SizeReportStyle.csi18T, 24, 80, 9, 18),
+        '\x1b[8;24;80t',
+      );
     });
 
     test('round trips the default style and reports build information', () {

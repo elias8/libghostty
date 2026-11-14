@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:ffi';
 
 import 'package:ffi/ffi.dart';
@@ -6,20 +5,18 @@ import 'package:ffi/ffi.dart';
 import '../../generated/libghostty.g.dart' hide String;
 import '../../generated/libghostty_enums.g.dart';
 import '../../types/types.dart';
+import '../formatter/ffi.dart';
 import '../result_helpers.dart';
 import '../types.dart';
 import 'selection.dart';
 
-const _initialFormatBufferCapacity = 4096;
-
 final class FfiSelectionBindings implements SelectionBindings {
-  var _formatBuffer = calloc<Uint8>(_initialFormatBufferCapacity);
-  var _formatBufferCapacity = _initialFormatBufferCapacity;
   final _outSize = calloc<Size>();
   final _multiKeys = calloc<UnsignedInt>(5);
   final _multiValues = calloc<Pointer<Void>>(5);
   final _multiOut = calloc<Uint64>(5);
   final _multiGridRef = calloc<GridRef>();
+  late final _formatter = FfiFormatterBindings();
 
   FfiSelectionBindings();
 
@@ -30,7 +27,7 @@ final class FfiSelectionBindings implements SelectionBindings {
     LibGhosttyHandle event,
   ) {
     return using((arena) {
-      final out = arena<Selection>()..ref.size = sizeOf<Selection>();
+      final out = arena<Selection>();
       final result = ghostty_selection_gesture_event(
         Pointer.fromAddress(gesture.value),
         Pointer.fromAddress(terminal.value),
@@ -178,7 +175,6 @@ final class FfiSelectionBindings implements SelectionBindings {
     using((arena) {
       final value = GridRef.$allocate(
         arena,
-        size: sizeOf<GridRef>(),
         node: Pointer<Void>.fromAddress(ref.node),
         x: ref.x,
         y: ref.y,
@@ -312,7 +308,7 @@ final class FfiSelectionBindings implements SelectionBindings {
     LibGhosttyHandle terminal,
   ) {
     return using((arena) {
-      final out = arena<GridRef>()..ref.size = sizeOf<GridRef>();
+      final out = arena<GridRef>();
       final result = ghostty_selection_gesture_get(
         .fromAddress(gesture.value),
         .fromAddress(terminal.value),
@@ -413,7 +409,6 @@ final class FfiSelectionBindings implements SelectionBindings {
       _multiKeys[i] = keys[i].value;
       _multiValues[i] = (_multiOut + i).cast();
     }
-    _multiGridRef.ref.size = sizeOf<GridRef>();
     _multiValues[4] = _multiGridRef.cast();
     final result = ghostty_selection_gesture_get_multi(
       .fromAddress(gesture.value),
@@ -463,7 +458,7 @@ final class FfiSelectionBindings implements SelectionBindings {
   @override
   RawSelection? terminalGetSelection(LibGhosttyHandle terminal) {
     return using((arena) {
-      final out = arena<Selection>()..ref.size = sizeOf<Selection>();
+      final out = arena<Selection>();
       final result = ghostty_terminal_get(
         .fromAddress(terminal.value),
         .selection,
@@ -478,7 +473,7 @@ final class FfiSelectionBindings implements SelectionBindings {
   @override
   RawSelection? terminalSelectAll(LibGhosttyHandle terminal) {
     return using((arena) {
-      final out = arena<Selection>()..ref.size = sizeOf<Selection>();
+      final out = arena<Selection>();
       final result = ghostty_terminal_select_all(
         .fromAddress(terminal.value),
         out,
@@ -572,44 +567,20 @@ final class FfiSelectionBindings implements SelectionBindings {
     bool trim = false,
     RawSelection? selection,
   }) {
-    return using((arena) {
-      final selected = selection == null
-          ? nullptr
-          : (arena<Selection>()..ref).cast<Selection>();
-      if (selection != null) _writeSelection(selected.ref, selection);
-      final options = TerminalSelectionFormatOptions.$allocate(
-        arena,
-        size: sizeOf<TerminalSelectionFormatOptions>(),
-        emit: format,
-        unwrap: unwrap,
-        trim: trim,
-        selection: selected,
-      );
-      var result = ghostty_terminal_selection_format_buf(
-        .fromAddress(terminal.value),
-        options.ref,
-        _formatBuffer,
-        _formatBufferCapacity,
-        _outSize,
-      );
-      if (result == .outOfSpace) {
-        _growFormatBuffer(_outSize.value);
-        result = ghostty_terminal_selection_format_buf(
-          .fromAddress(terminal.value),
-          options.ref,
-          _formatBuffer,
-          _formatBufferCapacity,
-          _outSize,
-        );
-      }
-      if (result == .noValue) return null;
-      checkResultCode(
-        result.value,
-        operation: 'ghostty_terminal_selection_format_buf',
-      );
-      final length = _outSize.value;
-      return length == 0 ? '' : utf8.decode(_formatBuffer.asTypedList(length));
-    });
+    final selected = selection ?? terminalGetSelection(terminal);
+    if (selected == null) return null;
+    final formatter = _formatter.formatterTerminalNew(
+      terminal,
+      format,
+      unwrap: unwrap,
+      trim: trim,
+      selection: selected,
+    );
+    try {
+      return _formatter.formatterFormat(formatter);
+    } finally {
+      _formatter.formatterFree(formatter);
+    }
   }
 
   @override
@@ -642,7 +613,7 @@ final class FfiSelectionBindings implements SelectionBindings {
   ) {
     return using((arena) {
       final value = arena<Selection>();
-      final out = arena<Selection>()..ref.size = sizeOf<Selection>();
+      final out = arena<Selection>();
       _writeSelection(value.ref, selection);
       final result = ghostty_terminal_selection_ordered(
         .fromAddress(terminal.value),
@@ -667,7 +638,7 @@ final class FfiSelectionBindings implements SelectionBindings {
   }) {
     return using((arena) {
       final options = arena<TerminalSelectLineOptions>();
-      final out = arena<Selection>()..ref.size = sizeOf<Selection>();
+      final out = arena<Selection>();
       options.ref
         ..size = sizeOf<TerminalSelectLineOptions>()
         ..whitespace = _writeCodepoints(arena, whitespace)
@@ -693,15 +664,14 @@ final class FfiSelectionBindings implements SelectionBindings {
     return using((arena) {
       final gridRef = GridRef.$allocate(
         arena,
-        size: sizeOf<GridRef>(),
         node: Pointer<Void>.fromAddress(ref.node),
         x: ref.x,
         y: ref.y,
       );
-      final out = arena<Selection>()..ref.size = sizeOf<Selection>();
+      final out = arena<Selection>();
       final result = ghostty_terminal_select_output(
         .fromAddress(terminal.value),
-        gridRef.ref,
+        gridRef,
         out,
       );
       if (result == .noValue) return null;
@@ -721,7 +691,7 @@ final class FfiSelectionBindings implements SelectionBindings {
   }) {
     return using((arena) {
       final options = arena<TerminalSelectWordOptions>();
-      final out = arena<Selection>()..ref.size = sizeOf<Selection>();
+      final out = arena<Selection>();
       options.ref
         ..size = sizeOf<TerminalSelectWordOptions>()
         ..boundary_codepoints = _writeCodepoints(arena, boundaryCodepoints)
@@ -747,7 +717,7 @@ final class FfiSelectionBindings implements SelectionBindings {
   }) {
     return using((arena) {
       final options = arena<TerminalSelectWordBetweenOptions>();
-      final out = arena<Selection>()..ref.size = sizeOf<Selection>();
+      final out = arena<Selection>();
       options.ref
         ..size = sizeOf<TerminalSelectWordBetweenOptions>()
         ..boundary_codepoints = _writeCodepoints(arena, boundaryCodepoints)
@@ -794,14 +764,6 @@ final class FfiSelectionBindings implements SelectionBindings {
     });
   }
 
-  void _growFormatBuffer(int required) {
-    if (required <= _formatBufferCapacity) return;
-    final replacement = calloc<Uint8>(required);
-    calloc.free(_formatBuffer);
-    _formatBuffer = replacement;
-    _formatBufferCapacity = required;
-  }
-
   static RawGridRef _readGridRef(GridRef ref) =>
       (node: ref.node.address, x: ref.x, y: ref.y);
 
@@ -822,7 +784,6 @@ final class FfiSelectionBindings implements SelectionBindings {
 
   static void _writeGridRef(GridRef target, RawGridRef value) {
     target
-      ..size = sizeOf<GridRef>()
       ..node = Pointer<Void>.fromAddress(value.node)
       ..x = value.x
       ..y = value.y;
@@ -836,9 +797,7 @@ final class FfiSelectionBindings implements SelectionBindings {
   }
 
   static void _writeSelection(Selection target, RawSelection value) {
-    target
-      ..size = sizeOf<Selection>()
-      ..rectangle = value.rectangle;
+    target.rectangle = value.rectangle;
     _writeGridRef(target.start, value.start);
     _writeGridRef(target.end, value.end);
   }

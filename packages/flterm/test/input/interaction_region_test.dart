@@ -19,7 +19,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:libghostty/libghostty.dart'
     show
         Mods,
-        MouseTracking,
+        MouseTrackingMode,
         Position,
         Selection,
         SelectionGestureBehaviors,
@@ -172,7 +172,7 @@ void main() {
 
     void enableMouseTracking(
       TerminalController controller, {
-      MouseTracking mode = .normal,
+      MouseTrackingMode mode = .normal,
     }) {
       final seq = switch (mode) {
         .normal => enableNormalMouse,

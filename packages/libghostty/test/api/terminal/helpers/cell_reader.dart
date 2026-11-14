@@ -3,21 +3,21 @@ import 'package:libghostty/libghostty.dart';
 class CellSnapshot {
   final String content;
   final bool hasText;
-  final CellWidth wide;
+  final CellWide wide;
   final Style style;
   final CellColor foreground;
   final CellColor background;
-  final UnderlineStyle underlineStyle;
+  final SgrUnderline underlineStyle;
   final bool hasHyperlink;
 
   const CellSnapshot({
     this.content = '',
     this.hasText = false,
-    this.wide = CellWidth.narrow,
+    this.wide = CellWide.narrow,
     this.style = const Style(),
     this.foreground = const DefaultColor(),
     this.background = const DefaultColor(),
-    this.underlineStyle = UnderlineStyle.none,
+    this.underlineStyle = SgrUnderline.none,
     this.hasHyperlink = false,
   });
 

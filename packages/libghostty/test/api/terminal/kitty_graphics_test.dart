@@ -293,6 +293,28 @@ void main() {
         expect(KittyGraphics.of(terminal)?.placements(), isEmpty);
       });
 
+      test('filters placements by image layer', () {
+        for (final (id, z) in [(1, -1073741825), (2, -1), (3, 0)]) {
+          terminal.write(
+            Uint8List.fromList(
+              '\x1b_Gf=24,s=1,v=1,a=T,i=$id,z=$z;/wAA\x1b\\'.codeUnits,
+            ),
+          );
+        }
+        final graphics = KittyGraphics.of(terminal)!;
+        expect(
+          graphics.placements().map((p) => p.imageId),
+          unorderedEquals([1, 2, 3]),
+        );
+        for (final (layer, id) in [
+          (ImageLayer.belowBackground, 1),
+          (ImageLayer.belowText, 2),
+          (ImageLayer.aboveText, 3),
+        ]) {
+          expect(graphics.placements(layer: layer).map((p) => p.imageId), [id]);
+        }
+      });
+
       test('captures placement emitted by transmit and display APC', () {
         terminal.write(
           Uint8List.fromList(

@@ -49,12 +49,6 @@ final class WasmSearchBindings implements SearchBindings {
       if (capacity == 0) return const [];
       final values = _allocateBytes(capacity * _layout.selectionSize);
       try {
-        for (var i = 0; i < capacity; i++) {
-          _memory.writeU32(
-            values + i * _layout.selectionSize,
-            _layout.selectionSize,
-          );
-        }
         _memory.writePtr(buffer + _layout.selectionBufferPtr, values);
         _memory.writeU32(buffer + _layout.selectionBufferCap, capacity);
         _memory.writeU32(buffer + _layout.selectionBufferLen, 0);
@@ -103,7 +97,6 @@ final class WasmSearchBindings implements SearchBindings {
   RawSelection? searchGetSelectedMatch(LibGhosttyHandle search) {
     final pointer = _allocateBytes(_layout.selectionSize);
     try {
-      _memory.writeU32(pointer, _layout.selectionSize);
       final result = Result.fromValue(
         _exports.ghostty_search_get(
           search.value,
@@ -150,12 +143,20 @@ final class WasmSearchBindings implements SearchBindings {
       _check(_exports.ghostty_search_run(search.value), 'ghostty_search_run');
 
   @override
-  void searchSelectNext(LibGhosttyHandle search) =>
-      _select(search, .selectNext);
+  void searchSelectNext(LibGhosttyHandle search) {
+    final result = _exports.ghostty_search_select_next(search.value);
+    if (result != Result.noValue.value) {
+      _check(result, 'ghostty_search_select_next');
+    }
+  }
 
   @override
-  void searchSelectPrevious(LibGhosttyHandle search) =>
-      _select(search, .selectPrev);
+  void searchSelectPrevious(LibGhosttyHandle search) {
+    final result = _exports.ghostty_search_select_prev(search.value);
+    if (result != Result.noValue.value) {
+      _check(result, 'ghostty_search_select_prev');
+    }
+  }
 
   @override
   void searchSetNeedle(LibGhosttyHandle search, String? needle) {
@@ -287,13 +288,5 @@ final class WasmSearchBindings implements SearchBindings {
   int _requirePointer(int pointer) {
     if (pointer == 0) throw const OutOfMemoryException();
     return pointer;
-  }
-
-  void _select(LibGhosttyHandle search, SearchOption option) {
-    final result = Result.fromValue(
-      _exports.ghostty_search_set(search.value, option.value, 0),
-    );
-    if (result == .noValue) return;
-    _check(result.value, 'ghostty_search_set');
   }
 }

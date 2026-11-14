@@ -45,6 +45,25 @@ final class FfiFormatterBindings implements FormatterBindings {
   }
 
   @override
+  void formatterSetSelection(
+    LibGhosttyHandle formatter,
+    RawSelection? selection,
+  ) {
+    using((arena) {
+      final selected = selection == null ? nullptr : arena<Selection>();
+      if (selection != null) _writeSelection(selected.ref, selection);
+      checkResultCode(
+        ghostty_formatter_set(
+          Pointer.fromAddress(formatter.value),
+          .selection,
+          selected.cast(),
+        ).value,
+        operation: 'ghostty_formatter_set',
+      );
+    });
+  }
+
+  @override
   LibGhosttyHandle formatterTerminalNew(
     LibGhosttyHandle terminal,
     FormatterFormat format, {
@@ -55,48 +74,42 @@ final class FfiFormatterBindings implements FormatterBindings {
   }) {
     return using((arena) {
       final out = arena<Pointer<FormatterImpl>>();
-      final options = arena<FormatterTerminalOptions>();
-      options.ref
-        ..size = sizeOf<FormatterTerminalOptions>()
-        ..emitAsInt = format.value
-        ..unwrap = unwrap
-        ..trim = trim;
-      options.ref.extra
-        ..size = sizeOf<FormatterTerminalExtra>()
-        ..palette = extra.palette
-        ..modes = extra.modes
-        ..scrolling_region = extra.scrollingRegion
-        ..tabstops = extra.tabstops
-        ..pwd = extra.pwd
-        ..keyboard = extra.keyboard;
-      options.ref.extra.screen
-        ..size = sizeOf<FormatterScreenExtra>()
-        ..cursor = extra.cursor
-        ..style = extra.style
-        ..hyperlink = extra.hyperlink
-        ..protection = extra.protection
-        ..kitty_keyboard = extra.kittyKeyboard
-        ..charsets = extra.charsets;
-
-      if (selection == null) {
-        options.ref.selection = nullptr;
-      } else {
-        final selected = arena<Selection>();
-        _writeSelection(selected.ref, selection);
-        options.ref.selection = selected;
-      }
-
       final result = ghostty_formatter_terminal_new(
         nullptr,
         out,
         Pointer.fromAddress(terminal.value),
-        options.ref,
       );
       checkResultCode(
         result.value,
         operation: 'ghostty_formatter_terminal_new',
       );
-      return .fromAddress(out.value.address);
+      final formatter = out.value;
+      try {
+        void set(FormatterOption option, Pointer<Void> value) {
+          checkResultCode(
+            ghostty_formatter_set(formatter, option, value).value,
+            operation: 'ghostty_formatter_set',
+          );
+        }
+
+        final scalar = arena<Uint32>()..value = format.value;
+        set(.emit, scalar.cast());
+        final flag = arena<Bool>()..value = unwrap;
+        set(.unwrap, flag.cast());
+        flag.value = trim;
+        set(.trim, flag.cast());
+        scalar.value = formatterExtrasMask(extra);
+        set(.extras, scalar.cast());
+        if (selection != null) {
+          final selected = arena<Selection>();
+          _writeSelection(selected.ref, selection);
+          set(.selection, selected.cast());
+        }
+        return .fromAddress(formatter.address);
+      } on Object {
+        ghostty_formatter_free(formatter);
+        rethrow;
+      }
     });
   }
 
@@ -110,16 +123,13 @@ final class FfiFormatterBindings implements FormatterBindings {
 
   static void _writeGridRef(GridRef target, RawGridRef value) {
     target
-      ..size = sizeOf<GridRef>()
       ..node = Pointer<Void>.fromAddress(value.node)
       ..x = value.x
       ..y = value.y;
   }
 
   static void _writeSelection(Selection target, RawSelection selection) {
-    target
-      ..size = sizeOf<Selection>()
-      ..rectangle = selection.rectangle;
+    target.rectangle = selection.rectangle;
     _writeGridRef(target.start, selection.start);
     _writeGridRef(target.end, selection.end);
   }

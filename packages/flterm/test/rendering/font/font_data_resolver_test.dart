@@ -53,7 +53,7 @@ void main() {
     messenger.setMockMessageHandler('flutter/assets', (_) {
       requests++;
       if (requests == 1) return old.future;
-      return Future.value(ByteData.sublistView(Uint8List.fromList([9])));
+      return Future.syncValue(ByteData.sublistView(Uint8List.fromList([9])));
     });
     final stale = FontDataResolver.resolve('__FltermClearFamily__');
     FontDataResolver.clearCache();

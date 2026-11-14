@@ -6,11 +6,14 @@ import 'package:meta/meta.dart';
 import '../../bindings/bindings.dart';
 import '../../bindings/types.dart';
 import '../../generated/libghostty_enums.g.dart';
+import '../../types/snapshot_progress.dart';
 import '../../types/types.dart';
 import '../key/kitty_key_flags.dart';
 import '../key/mods.dart';
 import 'lifetime_native.dart' if (dart.library.js_interop) 'lifetime_web.dart';
 import 'terminal_mode.dart';
+
+export '../../types/snapshot_progress.dart';
 
 part '../key/key_encoder.dart';
 part '../key/key_event.dart';
@@ -277,7 +280,7 @@ final class Terminal with ChangeNotifier implements NativeFinalizable {
   }
 
   /// Sets the cursor shape restored by DECSCUSR reset (CSI 0 q).
-  set defaultCursorShape(TerminalCursorShape? value) {
+  set defaultCursorShape(CursorStyle? value) {
     bindings.terminal.terminalSetDefaultCursorShape(_requireHandle(), value);
   }
 
@@ -428,15 +431,15 @@ final class Terminal with ChangeNotifier implements NativeFinalizable {
 
   /// Active mouse tracking mode derived from the current terminal modes.
   ///
-  /// Returns [MouseTracking.none] if no mouse tracking mode is enabled.
+  /// Returns [MouseTrackingMode.none] if no mouse tracking mode is enabled.
   /// Programs enable mouse tracking via DEC private modes (9, 1000, 1002,
   /// 1003).
-  MouseTracking get mouseTracking {
+  MouseTrackingMode get mouseTracking {
     if (modeGet(const .anyMouse())) return .any;
     if (modeGet(const .buttonMouse())) return .button;
     if (modeGet(const .normalMouse())) return .normal;
     if (modeGet(const .x10Mouse())) return .x10;
-    return MouseTracking.none;
+    return MouseTrackingMode.none;
   }
 
   /// Registers a callback for BEL character (0x07).

@@ -21,6 +21,8 @@ void checkResultCode(int code, {String? operation}) {
       throw LimitExceededException(operation: operation);
     case -7:
       throw RejectedException(operation: operation);
+    case -8:
+      throw UnsupportedException(operation: operation);
     default:
       throw UnknownResultException(code, operation: operation);
   }

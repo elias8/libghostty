@@ -6,6 +6,7 @@ import 'dart:js_interop_unsafe';
 import 'dart:typed_data';
 
 import 'package:libghostty/src/bindings/terminal/wasm.dart';
+import 'package:libghostty/src/bindings/types.dart';
 import 'package:libghostty/src/bindings/wasm/adapter.dart';
 import 'package:libghostty/src/bindings/wasm/layouts.dart';
 import 'package:libghostty/src/bindings/wasm/memory.dart';
@@ -28,6 +29,112 @@ void main() {
   tearDownAll(fixture.close);
 
   group('WasmTerminalBindings', () {
+    test('distinguishes unlimited scrollback from the upstream reset', () {
+      final bindings = WasmTerminalBindings(fixture.exports, layout);
+      final terminal = bindings.terminalNew(8, 4);
+      addTearDown(() => bindings.terminalFree(terminal));
+      bindings.terminalSetScrollbackMaxBytes(terminal, null);
+      expect(bindings.terminalGetScrollbackMaxBytes(terminal), isNull);
+      expect(
+        fixture.exports.ghostty_terminal_set(
+          terminal.value,
+          TerminalOption.scrollbackMaxBytes.value,
+          0,
+        ),
+        Result.success.value,
+      );
+      expect(bindings.terminalGetScrollbackMaxBytes(terminal), 10000);
+      bindings.terminalSetScrollbackMaxBytes(terminal, null);
+      expect(bindings.terminalGetScrollbackMaxBytes(terminal), isNull);
+    });
+
+    test('reads packed cursor style and colors', () {
+      final bindings = WasmTerminalBindings(fixture.exports, layout);
+      final terminal = bindings.terminalNew(8, 4);
+      addTearDown(() => bindings.terminalFree(terminal));
+      bindings.terminalVtWrite(
+        terminal,
+        Uint8List.fromList('\x1b[1;3;4:3;38;2;12;34;56m'.codeUnits),
+      );
+      final style = bindings.terminalGetCursorStyle(terminal);
+      expect(style.bold, isTrue);
+      expect(style.italic, isTrue);
+      expect(style.faint, isFalse);
+      expect(style.underline, SgrUnderline.curly);
+      expect(style.foreground, const RgbColor(12, 34, 56));
+    });
+
+    test('writes through ground and reports partial consumption', () {
+      final bindings = WasmTerminalBindings(fixture.exports, layout);
+      final terminal = bindings.terminalNew(8, 4);
+      addTearDown(() => bindings.terminalFree(terminal));
+
+      bindings.terminalVtWrite(terminal, Uint8List.fromList([0x1b, 0x5b]));
+      expect(
+        bindings.terminalWriteUntilGround(
+          terminal,
+          Uint8List.fromList('31mA'.codeUnits),
+        ),
+        3,
+      );
+      bindings.terminalVtWrite(terminal, Uint8List.fromList([0x1b, 0x5b]));
+      expect(
+        bindings.terminalWriteUntilGround(
+          terminal,
+          Uint8List.fromList('31'.codeUnits),
+        ),
+        isNull,
+      );
+    });
+
+    test('handles unsupported Kitty options without hiding other failures', () {
+      final harness = FaultExports()..poisonAllocations = true;
+      harness.object['__indirect_function_table'] = web.Table(
+        web.TableDescriptor(element: 'anyfunc', initial: 0),
+      );
+      var result = Result.unsupported.value;
+      harness.object['ghostty_terminal_get'] =
+          ((JSNumber _, JSNumber _, JSNumber _) => result.toJS).toJS;
+      harness.object['ghostty_terminal_set'] =
+          ((JSNumber _, JSNumber _, JSNumber _) => result.toJS).toJS;
+      final bindings = WasmTerminalBindings(harness.exports, layout);
+      const terminal = LibGhosttyHandle.fromAddress(7);
+
+      expect(bindings.terminalGetKittyImageMediumFile(terminal), isNull);
+      expect(bindings.terminalGetKittyImageMediumSharedMem(terminal), isNull);
+      expect(bindings.terminalGetKittyImageMediumTempFile(terminal), isNull);
+      expect(bindings.terminalGetKittyImageStorageLimit(terminal), isNull);
+      for (final value in [true, false, null]) {
+        bindings.terminalSetKittyImageMediumFile(terminal, enabled: value);
+        bindings.terminalSetKittyImageMediumSharedMem(terminal, enabled: value);
+      }
+      for (final value in ['/tmp/kitty', null]) {
+        bindings.terminalSetKittyImageMediumTempFile(terminal, value);
+      }
+      for (final value in [42, null]) {
+        bindings.terminalSetKittyImageStorageLimit(terminal, value);
+      }
+      expect(
+        () => bindings.terminalGetTitle(terminal),
+        throwsA(isA<UnsupportedException>()),
+      );
+      expect(
+        () => bindings.terminalSetTitle(terminal, 'title'),
+        throwsA(isA<UnsupportedException>()),
+      );
+
+      result = Result.invalidValue.value;
+      expect(
+        () => bindings.terminalGetKittyImageMediumFile(terminal),
+        throwsA(isA<InvalidValueException>()),
+      );
+      expect(
+        () => bindings.terminalSetKittyImageMediumTempFile(terminal, null),
+        throwsA(isA<InvalidValueException>()),
+      );
+      expect(harness.frees, harness.allocations);
+    });
+
     group('terminalPaste', () {
       test(
         'paste owns one block and releases it after retry and rejection',

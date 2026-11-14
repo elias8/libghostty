@@ -78,19 +78,18 @@ final class KittyGraphics {
   /// [KittyPlacement.imageId] is not; resolve it with [image] afresh when you
   /// need pixel bytes after a mutation.
   ///
-  /// Passing a [layer] other than [KittyPlacementLayer.all] installs a
-  /// z-layer filter on the iterator so placements outside the requested
-  /// layer are skipped. See [KittyPlacementLayer] for the bucket
-  /// boundaries.
+  /// Passing a [layer] filters placements by their z-index layer. When
+  /// omitted, placements in all layers are returned. See [ImageLayer] for
+  /// the layer boundaries.
   ///
   /// Throws [OutOfMemoryException] if the iterator allocation fails.
-  List<KittyPlacement> placements({KittyPlacementLayer layer = .all}) {
+  List<KittyPlacement> placements({ImageLayer? layer}) {
     final handle = _requireHandle();
     final terminalHandle = _terminal._requireHandle();
     final iterator = bindings.kittyGraphics.kittyGraphicsPlacementIteratorNew();
     try {
       bindings.kittyGraphics.kittyGraphicsGetPlacements(handle, iterator);
-      if (layer != KittyPlacementLayer.all) {
+      if (layer != null) {
         bindings.kittyGraphics.kittyGraphicsPlacementIteratorSetLayer(
           iterator,
           layer,
@@ -197,7 +196,8 @@ final class KittyImage {
   /// Stored images are already decoded and decompressed. PNG payloads are
   /// decoded through the callback installed via [LibGhostty.setPngDecoder]
   /// and copied as RGBA. The destination must be large enough for the complete
-  /// payload; otherwise a [RangeError] is thrown. The copy completes
+  /// payload; otherwise a [RangeError] is thrown. If the image pixels have not
+  /// arrived yet, a [NoValueException] is thrown. The copy completes
   /// synchronously, so the written bytes remain valid after subsequent
   /// terminal mutations.
   int copyPixelDataInto(Uint8List destination) {

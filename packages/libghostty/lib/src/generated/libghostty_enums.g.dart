@@ -13,7 +13,10 @@ enum BuildInfo {
   /// Output type: bool *
   simd(1),
 
-  /// Whether Kitty graphics protocol support is available.
+  /// Whether this build includes the `%kitty_graphics` feature, which
+  /// provides the Kitty graphics protocol and the `ghostty_kitty_graphics_*`
+  /// functions. It is always false on targets without an operating system,
+  /// such as wasm32-freestanding. See @ref features.
   ///
   /// Output type: bool *
   kittyGraphics(2),
@@ -58,7 +61,66 @@ enum BuildInfo {
   /// no build metadata is present.
   ///
   /// Output type: String *
-  versionBuild(10);
+  versionBuild(10),
+
+  /// Whether this build includes the `%snapshot` feature, which provides
+  /// the `ghostty_snapshot_*` functions. See @ref features.
+  ///
+  /// Output type: bool *
+  featureSnapshot(11),
+
+  /// Whether this build includes the `%formatter` feature, which provides
+  /// the `ghostty_formatter_*` functions. See @ref features.
+  ///
+  /// Output type: bool *
+  featureFormatter(12),
+
+  /// Whether this build includes the `%selection` feature, which provides
+  /// the `ghostty_terminal_select_*`, `ghostty_terminal_selection_*` and
+  /// `ghostty_selection_gesture_*` functions. See @ref features.
+  ///
+  /// Output type: bool *
+  featureSelection(13),
+
+  /// Whether this build includes the `%search` feature, which provides the
+  /// `ghostty_search_*` functions. See @ref features.
+  ///
+  /// Output type: bool *
+  featureSearch(14),
+
+  /// Whether this build includes the `%render_state` feature, which provides
+  /// the `ghostty_render_state_*` functions. See @ref features.
+  ///
+  /// Output type: bool *
+  featureRenderState(15),
+
+  /// Whether this build includes the `%input_encode` feature, which provides
+  /// the key, mouse, focus and paste encoding functions. See
+  /// @ref features for the full list.
+  ///
+  /// Output type: bool *
+  featureInputEncode(16),
+
+  /// Whether this build includes the `%color` feature, which provides the
+  /// `ghostty_color_*` functions. See @ref features.
+  ///
+  /// Output type: bool *
+  featureColor(17),
+
+  /// Whether this build includes the `%grid_introspection` feature, which
+  /// provides the `ghostty_grid_ref_*`, `ghostty_tracked_grid_ref_*`,
+  /// `ghostty_cell_get*` and `ghostty_row_get*` functions. See
+  /// @ref features for the full list.
+  ///
+  /// Output type: bool *
+  featureGridIntrospection(18),
+
+  /// Whether this build includes the `%glyph_protocol` feature, which lets
+  /// applications register custom glyphs with 's glyph protocol. It
+  /// has no functions of its own. See @ref features.
+  ///
+  /// Output type: bool *
+  featureGlyphProtocol(19);
 
   final int value;
   const BuildInfo(this.value);
@@ -75,6 +137,15 @@ enum BuildInfo {
     8 => versionPatch,
     9 => versionPre,
     10 => versionBuild,
+    11 => featureSnapshot,
+    12 => featureFormatter,
+    13 => featureSelection,
+    14 => featureSearch,
+    15 => featureRenderState,
+    16 => featureInputEncode,
+    17 => featureColor,
+    18 => featureGridIntrospection,
+    19 => featureGlyphProtocol,
     _ => throw ArgumentError('Unknown value for BuildInfo: $value'),
   };
 }
@@ -146,7 +217,7 @@ enum CellData {
 
   /// The style ID for the cell (for use with style lookups).
   ///
-  /// Output type: uint16_t *
+  /// Output type: StyleId * (uint16_t *)
   styleId(6),
 
   /// Whether the cell has a hyperlink.
@@ -258,7 +329,7 @@ enum CellWide {
 /// Protocol-specific destination identifiers are normalized to these values
 /// before the clipboard write callback is invoked.
 ///
-/// @ingroup terminal
+/// @ingroup effects
 enum ClipboardLocation {
   /// The standard system clipboard.
   standard(0),
@@ -282,7 +353,7 @@ enum ClipboardLocation {
 
 /// Result of a clipboard read reply.
 ///
-/// @ingroup terminal
+/// @ingroup effects
 enum ClipboardReadResult {
   /// The clipboard was read; the reply carries its contents.
   success(0),
@@ -290,7 +361,7 @@ enum ClipboardReadResult {
   /// The clipboard read was denied by policy or the user.
   denied(1),
 
-  /// The embedder cannot read this clipboard.
+  /// You cannot read this clipboard.
   unsupported(2),
 
   /// The clipboard is temporarily unavailable.
@@ -314,7 +385,7 @@ enum ClipboardReadResult {
 
 /// Result of a clipboard write reply.
 ///
-/// @ingroup terminal
+/// @ingroup effects
 enum ClipboardWriteResult {
   /// The clipboard write completed successfully.
   success(0),
@@ -350,7 +421,7 @@ enum ClipboardWriteResult {
 
 /// Color scheme reported in response to a CSI ? 996 n query.
 ///
-/// @ingroup terminal
+/// @ingroup effects
 enum ColorScheme {
   light(0),
   dark(1);
@@ -362,6 +433,39 @@ enum ColorScheme {
     0 => light,
     1 => dark,
     _ => throw ArgumentError('Unknown value for ColorScheme: $value'),
+  };
+}
+
+/// The shape of the cursor.
+///
+/// Programs change the cursor's shape with the DECSCUSR escape sequence
+/// (CSI Ps SP q). Set the shape that DECSCUSR 0 restores with
+/// GHOSTTY_TERMINAL_OPT_DEFAULT_CURSOR_STYLE. Read the shape to draw with
+/// GHOSTTY_RENDER_STATE_DATA_CURSOR_VISUAL_STYLE.
+///
+/// @ingroup terminal
+enum CursorStyle {
+  /// Bar cursor (DECSCUSR 5, 6).
+  bar(0),
+
+  /// Block cursor (DECSCUSR 1, 2).
+  block(1),
+
+  /// Underline cursor (DECSCUSR 3, 4).
+  underline(2),
+
+  /// Hollow block cursor.
+  blockHollow(3);
+
+  final int value;
+  const CursorStyle(this.value);
+
+  static CursorStyle fromValue(int value) => switch (value) {
+    0 => bar,
+    1 => block,
+    2 => underline,
+    3 => blockHollow,
+    _ => throw ArgumentError('Unknown value for CursorStyle: $value'),
   };
 }
 
@@ -404,6 +508,177 @@ enum FormatterFormat {
     1 => vt,
     2 => html,
     _ => throw ArgumentError('Unknown value for FormatterFormat: $value'),
+  };
+}
+
+/// Formatter options, set with ghostty_formatter_set() and read with
+/// ghostty_formatter_get().
+///
+/// A new formatter emits plain text with trailing whitespace trimmed. To
+/// change that, call ghostty_formatter_set() with a FormatterOption
+/// and a pointer to the new value. Options stay set across format calls, and
+/// a change takes effect on the next one. ghostty_formatter_get() reads an
+/// option back.
+///
+/// | Option                            | Value type               | Default                            |
+/// | --------------------------------- | ------------------------ | ---------------------------------- |
+/// | `GHOSTTY_FORMATTER_OPT_EMIT`      | `FormatterFormat` | `GHOSTTY_FORMATTER_FORMAT_PLAIN`   |
+/// | `GHOSTTY_FORMATTER_OPT_UNWRAP`    | `bool`                   | `false`                            |
+/// | `GHOSTTY_FORMATTER_OPT_TRIM`      | `bool`                   | `true`                             |
+/// | `GHOSTTY_FORMATTER_OPT_SELECTION` | `Selection`       | None (the whole screen)            |
+/// | `GHOSTTY_FORMATTER_OPT_EXTRAS`    | `FormatterExtras` | `GHOSTTY_FORMATTER_EXTRAS_DEFAULT` |
+///
+/// Each option lists the type its value points to. To set an option, pass a
+/// pointer to a value of that type. To read one, pass a pointer to a
+/// variable of that type and the formatter writes the current value there.
+///
+/// @ingroup formatter
+enum FormatterOption {
+  /// Not an option. Setting or reading it returns GHOSTTY_INVALID_VALUE.
+  invalid(0),
+
+  /// The output format: plain text, VT sequences, or HTML.
+  ///
+  /// Value type: FormatterFormat. Default:
+  /// GHOSTTY_FORMATTER_FORMAT_PLAIN.
+  emit(1),
+
+  /// Join lines that wrapped because they were too long for the screen.
+  ///
+  /// When false, each row of the screen is its own line in the output. When
+  /// true, a line the terminal wrapped onto several rows comes out as one
+  /// line, the way the program originally wrote it.
+  ///
+  /// Value type: bool. Default: false.
+  unwrap(2),
+
+  /// Remove spaces from the end of each line that has other text.
+  ///
+  /// Blank lines at the end of the output are always removed. The one
+  /// exception is VT output with trimming turned off, which keeps them so
+  /// the output fills the same rows as the screen.
+  ///
+  /// Value type: bool. Default: true.
+  trim(3),
+
+  /// Format only the content inside a selection.
+  ///
+  /// The formatter keeps its own copy of the selection, so the
+  /// Selection you pass doesn't need to stay around. Like any
+  /// selection, the copy is only valid until the next call that changes the
+  /// terminal. After the terminal changes, set the selection again before
+  /// you format, or clear it.
+  ///
+  /// Set NULL to clear the selection and format the whole screen again. When
+  /// no selection is set, ghostty_formatter_get() returns GHOSTTY_NO_VALUE.
+  ///
+  /// To format the terminal's active selection, read it with
+  /// GHOSTTY_TERMINAL_DATA_SELECTION and set it here. For the same text
+  ///  copies to the clipboard, use plain output with
+  /// GHOSTTY_FORMATTER_OPT_UNWRAP and GHOSTTY_FORMATTER_OPT_TRIM both true.
+  ///
+  /// @code{.c}
+  /// // Format only the selected text.
+  /// ghostty_formatter_set(formatter, GHOSTTY_FORMATTER_OPT_SELECTION, &selection);
+  /// ghostty_formatter_format_alloc(formatter, NULL, &buf, &len);
+  ///
+  /// // Go back to formatting the whole screen.
+  /// ghostty_formatter_set(formatter, GHOSTTY_FORMATTER_OPT_SELECTION, NULL);
+  /// @endcode
+  ///
+  /// Value type: Selection. Default: none, so the whole screen is
+  /// formatted.
+  selection(4),
+
+  /// Terminal state to add to VT output. See FormatterExtras.
+  ///
+  /// Value type: FormatterExtras. Default:
+  /// GHOSTTY_FORMATTER_EXTRAS_DEFAULT.
+  extras(5);
+
+  final int value;
+  const FormatterOption(this.value);
+
+  static FormatterOption fromValue(int value) => switch (value) {
+    0 => invalid,
+    1 => emit,
+    2 => unwrap,
+    3 => trim,
+    4 => selection,
+    5 => extras,
+    _ => throw ArgumentError('Unknown value for FormatterOption: $value'),
+  };
+}
+
+/// Where an image is drawn relative to the terminal's text.
+///
+/// Draw each frame from the bottom up, in this order:
+///
+/// 1. Images in GHOSTTY_IMAGE_LAYER_BELOW_BACKGROUND.
+/// 2. Cell background colors.
+/// 3. Images in GHOSTTY_IMAGE_LAYER_BELOW_TEXT.
+/// 4. Text.
+/// 5. Images in GHOSTTY_IMAGE_LAYER_ABOVE_TEXT.
+///
+/// Within a layer, draw images in order of their z-index, lowest first.
+///
+/// A Kitty graphics placement's layer comes from its z-index. Each value
+/// below lists its z-index range. For example, a placement with z-index -1
+/// is in GHOSTTY_IMAGE_LAYER_BELOW_TEXT.
+///
+/// The render state reports each image's layer with
+/// GHOSTTY_RENDER_STATE_IMAGE_DATA_LAYER. To visit only some layers with
+/// the Kitty graphics placement iterator, build a mask from the
+/// GHOSTTY_IMAGE_LAYER_MASK_* macros and set it with
+/// GHOSTTY_KITTY_GRAPHICS_PLACEMENT_ITERATOR_OPT_LAYER.
+///
+/// @ingroup render
+enum ImageLayer {
+  /// Below the cell background colors. Kitty z-index below INT32_MIN / 2
+  /// (-1,073,741,824).
+  belowBackground(0),
+
+  /// Above the cell background colors and below the text. Kitty z-index
+  /// from INT32_MIN / 2 up to -1.
+  belowText(1),
+
+  /// Above the text. Kitty z-index 0 and above.
+  aboveText(2);
+
+  final int value;
+  const ImageLayer(this.value);
+
+  static ImageLayer fromValue(int value) => switch (value) {
+    0 => belowBackground,
+    1 => belowText,
+    2 => aboveText,
+    _ => throw ArgumentError('Unknown value for ImageLayer: $value'),
+  };
+}
+
+/// The image protocols that a terminal supports.
+///
+/// The render state uses this to say which protocol each image placement
+/// came from (see GHOSTTY_RENDER_STATE_IMAGE_DATA_PROTOCOL). Use it to
+/// decide where to read the image's pixels. Unlike the other image types
+/// here, the name has no RenderState prefix, because the protocol isn't
+/// specific to the render state.
+///
+/// New protocols may be added in later versions. Skip placements with a
+/// protocol you don't support.
+///
+/// @ingroup render
+enum ImageProtocol {
+  /// The Kitty graphics protocol. Read the image with
+  /// ghostty_kitty_graphics_image().
+  kitty(0);
+
+  final int value;
+  const ImageProtocol(this.value);
+
+  static ImageProtocol fromValue(int value) => switch (value) {
+    0 => kitty,
+    _ => throw ArgumentError('Unknown value for ImageProtocol: $value'),
   };
 }
 
@@ -807,50 +1082,62 @@ enum KeyAction {
 
 /// Key encoder option identifiers.
 ///
-/// These values are used with ghostty_key_encoder_setopt() to configure
+/// These values are used with ghostty_key_encoder_set() to configure
 /// the behavior of the key encoder.
 ///
 /// @ingroup key
 enum KeyEncoderOption {
-  /// Terminal DEC mode 1: cursor key application mode (value: bool)
-  cursorKeyApplication(0),
+  /// Not a real option. ghostty_key_encoder_set() returns
+  /// GHOSTTY_INVALID_VALUE for it. Its value is 0, so a zeroed or
+  /// uninitialized variable is never mistaken for a real option.
+  invalid(0),
 
-  /// Terminal DEC mode 66: keypad key application mode (value: bool)
-  keypadKeyApplication(1),
+  /// Terminal DEC mode 1: cursor key application mode (value: bool,
+  /// default: false)
+  cursorKeyApplication(1),
 
-  /// Terminal DEC mode 1035: ignore keypad with numlock (value: bool)
-  ignoreKeypadWithNumlock(2),
+  /// Terminal DEC mode 66: keypad key application mode (value: bool,
+  /// default: false)
+  keypadKeyApplication(2),
 
-  /// Terminal DEC mode 1036: alt sends escape prefix (value: bool)
-  altEscPrefix(3),
+  /// Terminal DEC mode 1035: ignore keypad with numlock (value: bool,
+  /// default: false)
+  ignoreKeypadWithNumlock(3),
 
-  /// xterm modifyOtherKeys mode 2 (value: bool)
-  modifyOtherKeysState2(4),
+  /// Terminal DEC mode 1036: alt sends escape prefix (value: bool,
+  /// default: false)
+  altEscPrefix(4),
 
-  /// Kitty keyboard protocol flags (value: KittyKeyFlags bitmask)
-  kittyFlags(5),
+  /// xterm modifyOtherKeys mode 2 (value: bool, default: false)
+  modifyOtherKeysState2(5),
 
-  /// macOS option-as-alt setting (value: OptionAsAlt)
-  macosOptionAsAlt(6),
+  /// Kitty keyboard protocol flags (value: KittyKeyFlags bitmask,
+  /// default: GHOSTTY_KITTY_KEY_DISABLED)
+  kittyFlags(6),
+
+  /// macOS option-as-alt setting (value: OptionAsAlt,
+  /// default: GHOSTTY_OPTION_AS_ALT_FALSE)
+  macosOptionAsAlt(7),
 
   /// Backarrow key mode (value: bool)
   /// See https://vt100.net/dec/ek-vt3xx-tp-002.pdf page 170
   /// If `false` (the default), `backspace` emits 0x7f
   /// If `true`, `backspace` emits 0x08
-  backarrowKeyMode(7);
+  backarrowKeyMode(8);
 
   final int value;
   const KeyEncoderOption(this.value);
 
   static KeyEncoderOption fromValue(int value) => switch (value) {
-    0 => cursorKeyApplication,
-    1 => keypadKeyApplication,
-    2 => ignoreKeypadWithNumlock,
-    3 => altEscPrefix,
-    4 => modifyOtherKeysState2,
-    5 => kittyFlags,
-    6 => macosOptionAsAlt,
-    7 => backarrowKeyMode,
+    0 => invalid,
+    1 => cursorKeyApplication,
+    2 => keypadKeyApplication,
+    3 => ignoreKeypadWithNumlock,
+    4 => altEscPrefix,
+    5 => modifyOtherKeysState2,
+    6 => kittyFlags,
+    7 => macosOptionAsAlt,
+    8 => backarrowKeyMode,
     _ => throw ArgumentError('Unknown value for KeyEncoderOption: $value'),
   };
 }
@@ -869,23 +1156,20 @@ enum KittyGraphicsData {
   /// Output type: KittyGraphicsPlacementIterator *
   placementIterator(1),
 
-  /// Generation stamp of the last content mutation to this storage:
-  /// any image transmit/replace, placement add, or delete. Zero means
-  /// the storage has never been mutated (and is therefore empty).
+  /// A value that changes whenever a program sends, replaces, places or
+  /// deletes an image. It is 0 if nothing has changed the storage yet,
+  /// which means the storage is empty.
   ///
-  /// If the generation is unchanged since a previous query, the set of
-  /// placements and all image data are identical, so placement iteration
-  /// and image staleness checks can be skipped entirely. Note that
-  /// placement *geometry* may still have changed (scrolling and resizing
-  /// move placements without changing the storage contents), so rendering
-  /// geometry such as ghostty_kitty_graphics_placement_render_info()
-  /// must still be recomputed for frames marked dirty.
+  /// If the value matches the last one you read, the storage holds the
+  /// same images and placements as before. The placements may still have
+  /// moved on screen, because scrolling and resizing move them without
+  /// changing the storage. So this value can't tell you when to read the
+  /// render state's image list again. For that, use
+  /// GHOSTTY_RENDER_STATE_DATA_IMAGE_PLACEMENTS_GENERATION. See
+  /// @ref guide-images-changes.
   ///
-  /// Stamps are unique and monotonically increasing process-wide: a
-  /// value observed from any storage never recurs for different content,
-  /// even across screen switches (main vs. alternate screen have
-  /// independent storages) or terminal resets. It is therefore safe to
-  /// key caches on this value alone.
+  /// A value is never reused, not even by another screen, after a reset,
+  /// or by another terminal. You can use it as a cache key on its own.
   ///
   /// Output type: uint64_t *
   generation(2);
@@ -941,47 +1225,70 @@ enum KittyGraphicsImageData {
   /// Output type: KittyImageCompression *
   compression(6),
 
-  /// Borrowed pointer to the raw pixel data. Valid as long as the
-  /// underlying terminal is not mutated. Returns GHOSTTY_NO_VALUE when
-  /// the image metadata is resident but its pixel payload is pending.
+  /// The image's pixel data. The string points into memory owned by the
+  /// terminal and stays valid until the terminal is next modified. Its
+  /// length is always width * height * bytes per pixel for the reported
+  /// format.
+  ///
+  /// Returns GHOSTTY_NO_VALUE if the image's pixels have not arrived yet.
+  /// The expected size is still available through
+  /// GHOSTTY_KITTY_GRAPHICS_IMAGE_DATA_EXPECTED_LEN.
   ///
   /// The data is always fully decoded, uncompressed pixels in the
-  /// format reported by GHOSTTY_KITTY_IMAGE_DATA_FORMAT: zlib payloads
+  /// format reported by GHOSTTY_KITTY_GRAPHICS_IMAGE_DATA_FORMAT: zlib payloads
   /// are inflated and PNG payloads are decoded to RGBA at transmission
   /// time, before the image is stored. Consumers can upload this
   /// directly to the GPU without any decode step.
   ///
   /// For an animated image (Kitty graphics animation, actions a=f/a=a)
   /// this is the pixel data of the current animation frame. The
-  /// image's GHOSTTY_KITTY_IMAGE_DATA_GENERATION changes whenever the
+  /// image's GHOSTTY_KITTY_GRAPHICS_IMAGE_DATA_GENERATION changes whenever the
   /// current frame changes, so generation-keyed caches remain
   /// coherent.
   ///
-  /// Output type: const uint8_t **
-  dataPtr(7),
+  /// @code{.c}
+  /// String pixels;
+  /// if (ghostty_kitty_graphics_image_get(
+  /// image, GHOSTTY_KITTY_GRAPHICS_IMAGE_DATA_PIXELS, &pixels) ==
+  /// GHOSTTY_SUCCESS) {
+  /// upload_texture(pixels.ptr, pixels.len);
+  /// }
+  /// @endcode
+  ///
+  /// Output type: String *
+  pixels(7),
 
-  /// Length of the raw pixel data in bytes. Always equal to
-  /// width * height * bytes-per-pixel for the reported format. For a
-  /// pending image, this is the expected length reserved against the
-  /// storage limit even though DATA_PTR is not available yet.
+  /// The size of the image's pixel data in bytes, which is
+  /// width * height * bytes per pixel for the reported format.
+  ///
+  /// This is available even before the pixels arrive, when
+  /// GHOSTTY_KITTY_GRAPHICS_IMAGE_DATA_PIXELS still returns
+  /// GHOSTTY_NO_VALUE. In that case the image already counts this many
+  /// bytes against the storage limit. Once the pixels arrive, this equals
+  /// the length of GHOSTTY_KITTY_GRAPHICS_IMAGE_DATA_PIXELS.
   ///
   /// Output type: size_t *
-  dataLen(8),
+  expectedLen(8),
 
-  /// Generation stamp assigned when this image was added to (or
-  /// replaced in) the storage. A changed generation for a given image
-  /// ID means the pixel contents may have changed even when the
-  /// dimensions, format, and data length are identical (e.g. a
-  /// retransmission of the same image ID), so texture caches must key
-  /// staleness on this value rather than on size heuristics.
+  /// A value that changes whenever this image's pixels may have changed:
+  /// when a program sends the image or replaces it, and when an animation
+  /// moves to a new frame. Use it as part of your texture cache key. If
+  /// it matches the texture you have, you don't need to read the pixels
+  /// again. The render state reports the same value for each of its
+  /// entries as GHOSTTY_RENDER_STATE_IMAGE_DATA_IMAGE_GENERATION.
   ///
-  /// Stamps are unique and monotonically increasing process-wide and
-  /// are drawn from the same sequence as
-  /// GHOSTTY_KITTY_GRAPHICS_DATA_GENERATION. Never zero for a stored
-  /// image, so zero can be used as an "empty" sentinel by callers. Pending
-  /// payload completion preserves this value to retain image age; consumers
-  /// detect that completion through GHOSTTY_KITTY_GRAPHICS_DATA_GENERATION
-  /// and retry DATA_PTR.
+  /// Don't use the image's size or data length to detect changes instead.
+  /// A program can send new pixels of the same size under the same ID.
+  ///
+  /// A value is never reused, not even by another image, another screen,
+  /// or another terminal. It is never 0 for a stored image, so you can
+  /// use 0 to mean "no texture yet".
+  ///
+  /// One case doesn't change this value. When a program finishes sending
+  /// an image whose pixels were still on the way, the image keeps its
+  /// value, and GHOSTTY_KITTY_GRAPHICS_IMAGE_DATA_PIXELS starts returning the
+  /// pixels. GHOSTTY_KITTY_GRAPHICS_DATA_GENERATION changes when that
+  /// happens, so read PIXELS again then.
   ///
   /// Output type: uint64_t *
   generation(9);
@@ -997,8 +1304,8 @@ enum KittyGraphicsImageData {
     4 => height,
     5 => format,
     6 => compression,
-    7 => dataPtr,
-    8 => dataLen,
+    7 => pixels,
+    8 => expectedLen,
     9 => generation,
     _ => throw ArgumentError(
       'Unknown value for KittyGraphicsImageData: $value',
@@ -1023,7 +1330,13 @@ enum KittyGraphicsPlacementData {
   /// Output type: uint32_t *
   placementId(2),
 
-  /// Whether this is a virtual placement (unicode placeholder).
+  /// Whether this is a virtual placement, which a program shows with
+  /// Unicode placeholder cells.
+  ///
+  /// A virtual placement appears wherever its placeholder cells are, so
+  /// the storage has no position for it. The render state's image list
+  /// positions it from its cells like any other placement, so a renderer
+  /// doesn't need to check this. See @ref guide-images-placeholders.
   ///
   /// Output type: bool *
   isVirtual(3),
@@ -1100,17 +1413,47 @@ enum KittyGraphicsPlacementData {
 ///
 /// @ingroup kitty_graphics
 enum KittyGraphicsPlacementIteratorOption {
-  /// Set the z-layer filter for the iterator.
+  /// Not a real option. ghostty_kitty_graphics_placement_iterator_set()
+  /// returns GHOSTTY_INVALID_VALUE for it. Its value is 0, so a zeroed or
+  /// uninitialized variable is never mistaken for a real option.
+  invalid(0),
+
+  /// Only visit placements in the chosen layers.
   ///
-  /// Input type: KittyPlacementLayer *
-  layer(0);
+  /// The value is a mask with one bit for each ImageLayer. Combine
+  /// the GHOSTTY_IMAGE_LAYER_MASK_* macros with `|` to choose layers. For
+  /// example, this visits every placement except the ones drawn below the
+  /// cell backgrounds:
+  ///
+  /// @code{.c}
+  /// uint32_t mask = GHOSTTY_IMAGE_LAYER_MASK_BELOW_TEXT |
+  /// GHOSTTY_IMAGE_LAYER_MASK_ABOVE_TEXT;
+  /// ghostty_kitty_graphics_placement_iterator_set(
+  /// iterator, GHOSTTY_KITTY_GRAPHICS_PLACEMENT_ITERATOR_OPT_LAYER, &mask);
+  /// @endcode
+  ///
+  /// A mask of 0 or a NULL value turns the filter off, and the iterator
+  /// visits every placement. This is the default. A mask with a bit that
+  /// matches no layer returns GHOSTTY_INVALID_VALUE and keeps the current
+  /// filter.
+  ///
+  /// Each placement's layer comes from its z-index, using the ranges listed
+  /// in ImageLayer. This filter only applies to the storage
+  /// iterator. To draw images, use the layer the render state reports for
+  /// each entry (GHOSTTY_RENDER_STATE_IMAGE_DATA_LAYER). The render state
+  /// uses the same ranges and also includes virtual placements, which are
+  /// always drawn below the text.
+  ///
+  /// Input type: const uint32_t *
+  layer(1);
 
   final int value;
   const KittyGraphicsPlacementIteratorOption(this.value);
 
   static KittyGraphicsPlacementIteratorOption fromValue(int value) =>
       switch (value) {
-        0 => layer,
+        0 => invalid,
+        1 => layer,
         _ => throw ArgumentError(
           'Unknown value for KittyGraphicsPlacementIteratorOption: $value',
         ),
@@ -1166,33 +1509,6 @@ enum KittyImageFormat {
     3 => grayAlpha,
     4 => gray,
     _ => throw ArgumentError('Unknown value for KittyImageFormat: $value'),
-  };
-}
-
-/// Z-layer classification for kitty graphics placements.
-///
-/// Based on the kitty protocol z-index conventions:
-/// - BELOW_BG:   z < INT32_MIN/2  (drawn below cell background)
-/// - BELOW_TEXT:  INT32_MIN/2 <= z < 0  (above background, below text)
-/// - ABOVE_TEXT:  z >= 0  (above text)
-/// - ALL:         no filtering (current behavior)
-///
-/// @ingroup kitty_graphics
-enum KittyPlacementLayer {
-  all(0),
-  belowBg(1),
-  belowText(2),
-  aboveText(3);
-
-  final int value;
-  const KittyPlacementLayer(this.value);
-
-  static KittyPlacementLayer fromValue(int value) => switch (value) {
-    0 => all,
-    1 => belowBg,
-    2 => belowText,
-    3 => aboveText,
-    _ => throw ArgumentError('Unknown value for KittyPlacementLayer: $value'),
   };
 }
 
@@ -1292,35 +1608,46 @@ enum MouseButton {
 
 /// Mouse encoder option identifiers.
 ///
-/// These values are used with ghostty_mouse_encoder_setopt() to configure
+/// These values are used with ghostty_mouse_encoder_set() to configure
 /// the behavior of the mouse encoder.
 ///
 /// @ingroup mouse
 enum MouseEncoderOption {
-  /// Mouse tracking mode (value: MouseTrackingMode).
-  event(0),
+  /// Not a real option. ghostty_mouse_encoder_set() returns
+  /// GHOSTTY_INVALID_VALUE for it. Its value is 0, so a zeroed or
+  /// uninitialized variable is never mistaken for a real option.
+  invalid(0),
 
-  /// Mouse output format (value: MouseFormat).
-  format(1),
+  /// Mouse tracking mode (value: MouseTrackingMode,
+  /// default: GHOSTTY_MOUSE_TRACKING_NONE).
+  event(1),
 
-  /// Renderer size context (value: MouseEncoderSize).
-  size(2),
+  /// Mouse output format (value: MouseFormat,
+  /// default: GHOSTTY_MOUSE_FORMAT_X10).
+  format(2),
 
-  /// Whether any mouse button is currently pressed (value: bool).
-  anyButtonPressed(3),
+  /// Renderer size context (value: MouseEncoderSize, default: a
+  /// 1x1 pixel screen with 1x1 pixel cells and no padding).
+  size(3),
 
-  /// Whether to enable motion deduplication by last cell (value: bool).
-  trackLastCell(4);
+  /// Whether any mouse button is currently pressed (value: bool,
+  /// default: false).
+  anyButtonPressed(4),
+
+  /// Whether to enable motion deduplication by last cell (value: bool,
+  /// default: false).
+  trackLastCell(5);
 
   final int value;
   const MouseEncoderOption(this.value);
 
   static MouseEncoderOption fromValue(int value) => switch (value) {
-    0 => event,
-    1 => format,
-    2 => size,
-    3 => anyButtonPressed,
-    4 => trackLastCell,
+    0 => invalid,
+    1 => event,
+    2 => format,
+    3 => size,
+    4 => anyButtonPressed,
+    5 => trackLastCell,
     _ => throw ArgumentError('Unknown value for MouseEncoderOption: $value'),
   };
 }
@@ -1528,7 +1855,8 @@ enum OscCommandData {
   ///
   /// Valid for: GHOSTTY_OSC_COMMAND_CHANGE_WINDOW_TITLE
   ///
-  /// Output type: const char ** (pointer to null-terminated string)
+  /// Output type: String *. The bytes are not null-terminated, so
+  /// use the string's length.
   ///
   /// Lifetime: Valid until the next call to any ghostty_osc_* function with
   /// the same parser instance. Memory is owned by the parser.
@@ -1607,7 +1935,7 @@ enum OscCommandType {
   kittyTextSizing(22),
   kittyClipboardProtocol(23),
   kittyDndProtocol(24),
-  contextSignal(25),
+  hierarchicalContext(25),
   kittyDesktopNotification(26),
 
   /// An OSC sequence whose number the parser does not implement. Read it
@@ -1654,7 +1982,7 @@ enum OscCommandType {
     22 => kittyTextSizing,
     23 => kittyClipboardProtocol,
     24 => kittyDndProtocol,
-    25 => contextSignal,
+    25 => hierarchicalContext,
     26 => kittyDesktopNotification,
     27 => unknown,
     28 => programStatus,
@@ -1666,8 +1994,18 @@ enum OscCommandType {
 ///
 /// @ingroup osc
 enum OscOption {
+  /// Not a real option. ghostty_osc_set() returns GHOSTTY_INVALID_VALUE for
+  /// it. Its value is 0, so a zeroed or uninitialized variable is never
+  /// mistaken for a real option.
+  invalid(0),
+
   /// The most bytes to keep from each OSC sequence whose number the parser
   /// does not implement.
+  ///
+  /// Every OSC sequence starts with a number that says what it is, such as 2
+  /// for the window title or 8 for a hyperlink. Set this to implement a
+  /// sequence yourself, and read its raw bytes with
+  /// GHOSTTY_OSC_DATA_UNKNOWN_CONTENT.
   ///
   /// Zero, the default, discards these sequences and they produce
   /// GHOSTTY_OSC_COMMAND_INVALID. Any other value makes them produce
@@ -1682,14 +2020,46 @@ enum OscOption {
   /// allocate memory. Larger limits allocate memory from the parser's
   /// allocator for each unknown sequence.
   ///
+  /// Only numbers the parser does not implement are reported this way. A
+  /// sequence with a number the parser does implement stays
+  /// GHOSTTY_OSC_COMMAND_INVALID when its contents are malformed.
+  ///
+  /// @code{.c}
+  /// OscParser parser;
+  /// ghostty_osc_new(NULL, &parser);
+  ///
+  /// // Keep up to 1 KiB of each unknown sequence.
+  /// size_t max_bytes = 1024;
+  /// ghostty_osc_set(parser, GHOSTTY_OSC_OPT_UNKNOWN_MAX_BYTES, &max_bytes);
+  ///
+  /// // Feed the bytes between ESC ] and the terminator. OSC 7400 is made up
+  /// // for this example, so the parser does not implement it.
+  /// const char* input = "7400;status=busy";
+  /// for (size_t i = 0; input[i] != '\0'; i++) {
+  /// ghostty_osc_next(parser, (uint8_t)input[i]);
+  /// }
+  ///
+  /// // This sequence ended with BEL (0x07).
+  /// OscCommand command = ghostty_osc_end(parser, 0x07);
+  /// if (ghostty_osc_command_type(command) == GHOSTTY_OSC_COMMAND_UNKNOWN) {
+  /// String content;
+  /// ghostty_osc_command_data(command, GHOSTTY_OSC_DATA_UNKNOWN_CONTENT,
+  /// &content);
+  /// // content now holds "7400;status=busy".
+  /// }
+  ///
+  /// ghostty_osc_free(parser);
+  /// @endcode
+  ///
   /// Input type: size_t*
-  unknownMaxBytes(0);
+  unknownMaxBytes(1);
 
   final int value;
   const OscOption(this.value);
 
   static OscOption fromValue(int value) => switch (value) {
-    0 => unknownMaxBytes,
+    0 => invalid,
+    1 => unknownMaxBytes,
     _ => throw ArgumentError('Unknown value for OscOption: $value'),
   };
 }
@@ -1772,7 +2142,7 @@ enum PointTag {
 /// What a blocked program needs from the user, in a program status report
 /// (OSC 7501).
 ///
-/// @ingroup terminal
+/// @ingroup effects
 enum ProgramStatusKind {
   /// The program didn't say, or the state isn't
   /// GHOSTTY_PROGRAM_STATUS_STATE_BLOCKED.
@@ -1803,7 +2173,7 @@ enum ProgramStatusKind {
 ///
 /// See TerminalProgramStatus for an overview of the protocol.
 ///
-/// @ingroup terminal
+/// @ingroup effects
 enum ProgramStatusState {
   /// At rest, waiting for the user's next instruction. For example, an
   /// interactive tool sitting at its own prompt.
@@ -1842,36 +2212,6 @@ enum ProgramStatusState {
   };
 }
 
-/// Visual style of the cursor.
-///
-/// @ingroup render
-enum RenderStateCursorVisualStyle {
-  /// Bar cursor (DECSCUSR 5, 6).
-  bar(0),
-
-  /// Block cursor (DECSCUSR 1, 2).
-  block(1),
-
-  /// Underline cursor (DECSCUSR 3, 4).
-  underline(2),
-
-  /// Hollow block cursor.
-  blockHollow(3);
-
-  final int value;
-  const RenderStateCursorVisualStyle(this.value);
-
-  static RenderStateCursorVisualStyle fromValue(int value) => switch (value) {
-    0 => bar,
-    1 => block,
-    2 => underline,
-    3 => blockHollow,
-    _ => throw ArgumentError(
-      'Unknown value for RenderStateCursorVisualStyle: $value',
-    ),
-  };
-}
-
 /// Queryable data kinds for ghostty_render_state_get().
 ///
 /// @ingroup render
@@ -1896,7 +2236,7 @@ enum RenderStateData {
   ///
   /// The iterator visits every row the last update captured, from top
   /// to bottom. This is exactly the viewport unless overscan was
-  /// requested with GHOSTTY_RENDER_STATE_OPTION_OVERSCAN.
+  /// requested with GHOSTTY_RENDER_STATE_OPT_OVERSCAN.
   rowIterator(4),
 
   /// Default/current background color (ColorRgb).
@@ -1906,8 +2246,7 @@ enum RenderStateData {
   colorForeground(6),
 
   /// Cursor color when explicitly set by terminal state (ColorRgb).
-  /// Returns GHOSTTY_INVALID_VALUE if no explicit cursor color is set;
-  /// use COLOR_CURSOR_HAS_VALUE to check first.
+  /// Returns GHOSTTY_NO_VALUE if no explicit cursor color is set.
   colorCursor(7),
 
   /// Whether an explicit cursor color is set (bool).
@@ -1916,7 +2255,7 @@ enum RenderStateData {
   /// The active 256-color palette (ColorRgb[256]).
   colorPalette(9),
 
-  /// The visual style of the cursor (RenderStateCursorVisualStyle).
+  /// The visual style of the cursor (CursorStyle).
   cursorVisualStyle(10),
 
   /// Whether the cursor is visible based on terminal modes (bool).
@@ -1929,19 +2268,20 @@ enum RenderStateData {
   cursorPasswordInput(13),
 
   /// Whether the cursor is visible within the viewport (bool).
-  /// If false, the cursor viewport position values are undefined.
+  /// If false, querying the cursor viewport position values returns
+  /// GHOSTTY_NO_VALUE.
   cursorViewportHasValue(14),
 
   /// Cursor viewport x position in cells (uint16_t).
-  /// Only valid when CURSOR_VIEWPORT_HAS_VALUE is true.
+  /// Returns GHOSTTY_NO_VALUE when CURSOR_VIEWPORT_HAS_VALUE is false.
   cursorViewportX(15),
 
   /// Cursor viewport y position in cells (uint16_t).
-  /// Only valid when CURSOR_VIEWPORT_HAS_VALUE is true.
+  /// Returns GHOSTTY_NO_VALUE when CURSOR_VIEWPORT_HAS_VALUE is false.
   cursorViewportY(16),
 
   /// Whether the cursor is on the tail of a wide character (bool).
-  /// Only valid when CURSOR_VIEWPORT_HAS_VALUE is true.
+  /// Returns GHOSTTY_NO_VALUE when CURSOR_VIEWPORT_HAS_VALUE is false.
   cursorViewportWideTail(17),
 
   /// All cursor state in one sized struct (RenderStateCursor).
@@ -1960,10 +2300,29 @@ enum RenderStateData {
   overscan(20),
 
   /// The overscan request most recently set with
-  /// GHOSTTY_RENDER_STATE_OPTION_OVERSCAN (RenderStateOverscan).
+  /// GHOSTTY_RENDER_STATE_OPT_OVERSCAN (RenderStateOverscan).
   /// The next update uses this request. Both sides are zero if it was
   /// never set.
-  overscanRequest(21);
+  overscanRequest(21),
+
+  /// Populate an existing RenderStateImageIterator with the image
+  /// placements found by the last update. See @ref guide-images-drawing.
+  imageIterator(22),
+
+  /// A value (uint64_t) that changes whenever an update changes the
+  /// placements that GHOSTTY_RENDER_STATE_DATA_IMAGE_ITERATOR returns. If
+  /// it matches the value from the last time you read the iterator, the
+  /// placements are the same and you don't need to read them again. See
+  /// @ref guide-images-changes for an example and for exactly when the
+  /// value changes.
+  ///
+  /// The value belongs to the whole list. To know when the pixels of a
+  /// single image changed, use
+  /// GHOSTTY_RENDER_STATE_IMAGE_DATA_IMAGE_GENERATION.
+  ///
+  /// Only compare the value for equality. It is always 0 when Kitty
+  /// graphics are disabled.
+  imagePlacementsGeneration(23);
 
   final int value;
   const RenderStateData(this.value);
@@ -1991,6 +2350,8 @@ enum RenderStateData {
     19 => colors,
     20 => overscan,
     21 => overscanRequest,
+    22 => imageIterator,
+    23 => imagePlacementsGeneration,
     _ => throw ArgumentError('Unknown value for RenderStateData: $value'),
   };
 }
@@ -2019,28 +2380,235 @@ enum RenderStateDirty {
   };
 }
 
+/// Data you can read about the current placement of an image iterator
+/// with ghostty_render_state_image_get().
+///
+/// The type in parentheses is the type that the `out` pointer must point
+/// to. All pixel values use the cell size set with ghostty_terminal_resize().
+///
+/// Some values only apply to one protocol, and have the protocol in their
+/// name. For example, GHOSTTY_RENDER_STATE_IMAGE_DATA_KITTY_KIND only
+/// applies to Kitty graphics placements. Reading one of these for a
+/// placement from another protocol returns GHOSTTY_NO_VALUE.
+///
+/// @ingroup render
+enum RenderStateImageData {
+  /// Invalid value. Querying it returns GHOSTTY_INVALID_VALUE.
+  invalid(0),
+
+  /// The protocol the image came from (ImageProtocol).
+  protocol(1),
+
+  /// The ID of the image to draw (uint32_t). IDs are only unique within
+  /// one protocol, so look the image up in the storage of its protocol.
+  /// For Kitty graphics, use ghostty_kitty_graphics_image().
+  imageId(2),
+
+  /// The generation of the image's contents (uint64_t). It changes
+  /// whenever the image's pixels change, including when an animation
+  /// moves to a new frame. Use it as part of your texture cache key,
+  /// with the protocol and image ID: if it matches the texture you have,
+  /// you don't need to read the pixels again. For Kitty graphics, this
+  /// is the same value as GHOSTTY_KITTY_GRAPHICS_IMAGE_DATA_GENERATION.
+  ///
+  /// To know when the list of placements as a whole changed, use
+  /// GHOSTTY_RENDER_STATE_DATA_IMAGE_PLACEMENTS_GENERATION.
+  imageGeneration(3),
+
+  /// The layer to draw the image in (ImageLayer).
+  layer(4),
+
+  /// The z-index (int32_t), which orders images within a layer. Images
+  /// with a lower z-index are drawn first. The value comes from the
+  /// image's protocol. For Kitty graphics, it is the z-index the program
+  /// asked for, and virtual placements are always -1.
+  z(5),
+
+  /// The column of the top-left cell (int32_t), where 0 is the leftmost
+  /// column of the viewport. Fixed and relative placements are reported
+  /// at their full size, so they can start to the left of the viewport,
+  /// which gives a negative value. Virtual placements never do. See
+  /// @ref guide-images-clipping.
+  viewportCol(6),
+
+  /// The row of the top-left cell (int32_t), where 0 is the top row of
+  /// the viewport. A placement in an overscan row above the viewport has
+  /// a negative row, the same as GHOSTTY_RENDER_STATE_ROW_DATA_VIEWPORT_Y.
+  /// Fixed and relative placements are reported at their full size, so
+  /// they can also start above the first overscan row. Virtual
+  /// placements are always inside the captured rows. See
+  /// @ref guide-images-clipping.
+  viewportRow(7),
+
+  /// The number of columns of cells the placement covers (uint32_t).
+  gridCols(8),
+
+  /// The number of rows of cells the placement covers (uint32_t).
+  gridRows(9),
+
+  /// How far the image starts from the left edge of the top-left cell,
+  /// in pixels (uint32_t). For a virtual placement, an image that is
+  /// narrower than its cells is centered, so this can be larger than a
+  /// cell is wide. For fixed and relative placements, this is the offset
+  /// the program asked for, limited to less than one cell.
+  cellOffsetX(10),
+
+  /// How far the image starts from the top edge of the top-left cell,
+  /// in pixels (uint32_t). For a virtual placement, an image that is
+  /// shorter than its cells is centered, so this can be larger than a
+  /// cell is tall. For fixed and relative placements, this is the offset
+  /// the program asked for, limited to less than one cell.
+  cellOffsetY(11),
+
+  /// The width to draw the image at, in pixels (uint32_t).
+  pixelWidth(12),
+
+  /// The height to draw the image at, in pixels (uint32_t).
+  pixelHeight(13),
+
+  /// The left edge of the part of the image to draw, in image pixels
+  /// (uint32_t).
+  sourceX(14),
+
+  /// The top edge of the part of the image to draw, in image pixels
+  /// (uint32_t).
+  sourceY(15),
+
+  /// The width of the part of the image to draw, in image pixels
+  /// (uint32_t). Scale it to PIXEL_WIDTH when drawing.
+  sourceWidth(16),
+
+  /// The height of the part of the image to draw, in image pixels
+  /// (uint32_t). Scale it to PIXEL_HEIGHT when drawing.
+  sourceHeight(17),
+
+  /// Kitty graphics only: the placement ID (uint32_t), or 0 if there
+  /// isn't one.
+  ///
+  /// For a virtual placement, this is the placement ID that the
+  /// placeholder cells ask for. Cells that don't ask for one show the
+  /// image's virtual placement, whichever it is, and report 0. For a
+  /// fixed or relative placement, this is the ID the program gave it, or
+  /// 0 if it didn't give one.
+  kittyPlacementId(18),
+
+  /// Kitty graphics only: the kind of placement
+  /// (RenderStateKittyPlacementKind).
+  kittyKind(19);
+
+  final int value;
+  const RenderStateImageData(this.value);
+
+  static RenderStateImageData fromValue(int value) => switch (value) {
+    0 => invalid,
+    1 => protocol,
+    2 => imageId,
+    3 => imageGeneration,
+    4 => layer,
+    5 => z,
+    6 => viewportCol,
+    7 => viewportRow,
+    8 => gridCols,
+    9 => gridRows,
+    10 => cellOffsetX,
+    11 => cellOffsetY,
+    12 => pixelWidth,
+    13 => pixelHeight,
+    14 => sourceX,
+    15 => sourceY,
+    16 => sourceWidth,
+    17 => sourceHeight,
+    18 => kittyPlacementId,
+    19 => kittyKind,
+    _ => throw ArgumentError('Unknown value for RenderStateImageData: $value'),
+  };
+}
+
+/// The kinds of Kitty graphics placements in a render state's image list.
+///
+/// Read with GHOSTTY_RENDER_STATE_IMAGE_DATA_KITTY_KIND. Most renderers
+/// can draw every kind the same way. The kind is useful when you need to
+/// tell them apart, for example for debugging.
+///
+/// @ingroup render
+enum RenderStateKittyPlacementKind {
+  /// Part of a virtual placement: one run of neighboring placeholder
+  /// cells in a single row. It is always one row tall.
+  virtual(0),
+
+  /// A placement that a program positioned relative to another
+  /// placement, its parent. Kitty graphics lets a program attach one
+  /// image to another so that they move together. The parent is either
+  /// a virtual or a fixed placement, possibly through a chain of other
+  /// relative placements.
+  ///
+  /// With a virtual parent, the position depends on the placeholder
+  /// cells. It is measured from the top-left corner of the parent's
+  /// cells on screen. That is the leftmost column and the topmost row
+  /// that any of its cells use, which matches Kitty. If none of those
+  /// cells are in the captured rows (the viewport plus any overscan), the
+  /// relative placement is not included.
+  ///
+  /// With a fixed parent, the position is measured from the parent's
+  /// cell. The relative placement is included at its full size when any
+  /// part of it is in the captured rows, even if the parent isn't, so it
+  /// may need to be clipped when drawn.
+  ///
+  /// See @ref guide-images-relative.
+  relative(1),
+
+  /// A placement at a cell on the screen. It scrolls with the text,
+  /// like a line of output would. Its z-index is the one the program
+  /// chose, so it can be in any layer.
+  ///
+  /// It is included at its full size when any part of it is in the
+  /// captured rows, so it may need to be clipped when drawn. See
+  /// @ref guide-images-clipping.
+  fixed(2);
+
+  final int value;
+  const RenderStateKittyPlacementKind(this.value);
+
+  static RenderStateKittyPlacementKind fromValue(int value) => switch (value) {
+    0 => virtual,
+    1 => relative,
+    2 => fixed,
+    _ => throw ArgumentError(
+      'Unknown value for RenderStateKittyPlacementKind: $value',
+    ),
+  };
+}
+
 /// Settable options for ghostty_render_state_set().
 ///
 /// @ingroup render
 enum RenderStateOption {
-  /// Set dirty state (RenderStateDirty).
-  dirty(0),
+  /// Not a real option. ghostty_render_state_set() returns
+  /// GHOSTTY_INVALID_VALUE for it. Its value is 0, so a zeroed or
+  /// uninitialized variable is never mistaken for a real option.
+  invalid(0),
+
+  /// Set dirty state (RenderStateDirty). Each update sets this
+  /// value itself, so there is no default to restore and a NULL value
+  /// returns GHOSTTY_INVALID_VALUE.
+  dirty(1),
 
   /// Request overscan rows above and below the viewport
   /// (RenderStateOverscan). The request takes effect on the next
   /// update and stays in effect until it is changed. Both sides are zero
-  /// by default, which captures only the viewport. The rows of the last
-  /// update can still be read after changing the request. Expect a full
-  /// redraw on the update after a change. See "Overscan" in the render
-  /// state overview.
-  overscan(1);
+  /// by default, which captures only the viewport. A NULL value restores
+  /// that default. The rows of the last update can still be read after
+  /// changing the request. Expect a full redraw on the update after a
+  /// change. See @ref guide-rendering-overscan.
+  overscan(2);
 
   final int value;
   const RenderStateOption(this.value);
 
   static RenderStateOption fromValue(int value) => switch (value) {
-    0 => dirty,
-    1 => overscan,
+    0 => invalid,
+    1 => dirty,
+    2 => overscan,
     _ => throw ArgumentError('Unknown value for RenderStateOption: $value'),
   };
 }
@@ -2062,31 +2630,54 @@ enum RenderStateRowCellsData {
   /// (uint32_t). Returns 0 if the cell has no text.
   graphemesLen(3),
 
-  /// Write grapheme codepoints into a caller-provided buffer (uint32_t*).
-  /// The buffer must be at least graphemes_len elements. The base codepoint
-  /// is written first, followed by any extra codepoints.
+  /// Copy the cell's grapheme codepoints into a buffer you provide
+  /// (CodepointBuffer).
+  ///
+  /// The base codepoint comes first, followed by any extra codepoints. Up
+  /// to cap codepoints are written, and len is set to the total number of
+  /// codepoints in the cell. If they do not all fit, this returns
+  /// GHOSTTY_OUT_OF_SPACE and the buffer holds the first cap of them. A
+  /// cell with no text returns GHOSTTY_SUCCESS with len set to 0.
+  ///
+  /// @code{.c}
+  /// uint32_t codepoints[16];
+  /// CodepointBuffer graphemes = {.ptr = codepoints, .cap = 16};
+  /// Result result = ghostty_render_state_row_cells_get(
+  /// cells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_GRAPHEMES_BUF, &graphemes);
+  /// if (result == GHOSTTY_OUT_OF_SPACE) {
+  /// // The cell has graphemes.len codepoints, but only the first 16
+  /// // were written. Retry with a larger buffer to get the rest.
+  /// }
+  /// @endcode
   graphemesBuf(4),
 
   /// The resolved background color of the cell (ColorRgb).
   /// Flattens the three possible sources: content-tag bg_color_rgb,
   /// content-tag bg_color_palette (looked up in the palette), or the
-  /// style's bg_color. Returns GHOSTTY_INVALID_VALUE if the cell has
-  /// no background color, in which case the caller should use whatever
-  /// default background color it wants (e.g. the terminal background).
+  /// style's bg_color.
+  ///
+  /// Returns GHOSTTY_NO_VALUE if the cell has no background color of its
+  /// own. Draw it with your default background, such as the terminal's:
+  ///
+  /// @code{.c}
+  /// ColorRgb bg;
+  /// Result result = ghostty_render_state_row_cells_get(
+  /// cells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_BG_COLOR, &bg);
+  /// if (result == GHOSTTY_NO_VALUE) bg = colors.background;
+  /// @endcode
   bgColor(5),
 
   /// The resolved foreground color of the cell (ColorRgb).
   /// Resolves palette indices through the palette. Bold color handling
-  /// is not applied; the caller should handle bold styling separately.
-  /// Returns GHOSTTY_INVALID_VALUE if the cell has no explicit foreground
-  /// color, in which case the caller should use whatever default foreground
-  /// color it wants (e.g. the terminal foreground).
+  /// is not applied; you should handle bold styling separately.
+  /// Returns GHOSTTY_NO_VALUE if the cell has no foreground color of its
+  /// own. Draw it with your default foreground, such as the terminal's.
   fgColor(6),
 
   /// Whether the cell is contained within the current selection (bool).
   /// This returns true when the cell's column is within the current row's
   /// row-local selection range, and false otherwise. Rendering policy for
-  /// selected cells (colors, inversion, etc.) is left to the caller.
+  /// selected cells (colors, inversion, etc.) is left to you.
   ///
   /// Renderers that can draw cells in spans may be more efficient querying
   /// GHOSTTY_RENDER_STATE_ROW_DATA_SELECTION once per row and applying that
@@ -2176,8 +2767,8 @@ enum RenderStateRowData {
   viewportY(6),
 
   /// The row's identity across updates (RenderStateRowId). This
-  /// works with or without overscan. See "Row Identity" in the render
-  /// state overview.
+  /// works with or without overscan. See
+  /// @ref guide-rendering-row-identity.
   id(7);
 
   final int value;
@@ -2200,19 +2791,39 @@ enum RenderStateRowData {
 ///
 /// @ingroup render
 enum RenderStateRowOption {
-  /// Set dirty state for the current row (bool).
-  dirty(0);
+  /// Not a real option. ghostty_render_state_row_set() returns
+  /// GHOSTTY_INVALID_VALUE for it. Its value is 0, so a zeroed or
+  /// uninitialized variable is never mistaken for a real option.
+  invalid(0),
+
+  /// Set dirty state for the current row (bool). Each update sets this
+  /// value itself, so there is no default to restore and a NULL value
+  /// returns GHOSTTY_INVALID_VALUE.
+  dirty(1);
 
   final int value;
   const RenderStateRowOption(this.value);
 
   static RenderStateRowOption fromValue(int value) => switch (value) {
-    0 => dirty,
+    0 => invalid,
+    1 => dirty,
     _ => throw ArgumentError('Unknown value for RenderStateRowOption: $value'),
   };
 }
 
 /// Result codes for libghostty-vt operations.
+///
+/// Functions that can fail return one of these codes. GHOSTTY_SUCCESS is
+/// zero and every error is negative, so `result < 0` tests for any error.
+///
+/// Functions that read or write values by key, such as
+/// ghostty_terminal_get(), return GHOSTTY_UNSUPPORTED for a key that this
+/// version of the library does not know. See @ref values for how to use
+/// that to support older versions of the library. Functions of an
+/// optional feature that this build leaves out return it too. See
+/// @ref features.
+///
+/// @ingroup core_types
 enum Result {
   /// Operation completed successfully
   success(0),
@@ -2220,7 +2831,12 @@ enum Result {
   /// Operation failed due to failed allocation
   outOfMemory(-1),
 
-  /// Operation failed due to invalid value
+  /// An argument is not valid.
+  ///
+  /// For example, a NULL pointer where a value is required, an enum value
+  /// that is out of range, or a sized struct whose size is too small.
+  /// When a key is involved, this means the library knows the key but a
+  /// value passed with it is wrong. Compare GHOSTTY_UNSUPPORTED.
   invalidValue(-2),
 
   /// Operation failed because the provided buffer was too small
@@ -2236,9 +2852,23 @@ enum Result {
   limitExceeded(-6),
 
   /// Operation was rejected by a safety check (e.g. pasted text that could
-  /// inject commands). Nothing was done. Confirm with the user and retry
+  /// inject commands). Nothing was done. Confirm with the person using your terminal and retry
   /// with the operation's allow flag set.
-  rejected(-7);
+  rejected(-7),
+
+  /// This library cannot do what was asked.
+  ///
+  /// Returned by the functions that read or write values by key when the
+  /// key is newer than the library. Nothing is read or written. This
+  /// usually means the program was built with a newer header than the
+  /// library it is running with. Check for it to fall back gracefully, as
+  /// shown in @ref values-older-libraries.
+  ///
+  /// Also returned by every function of an optional feature that this
+  /// build leaves out. For example, ghostty_snapshot_encode() returns it
+  /// when the library was built without the `%snapshot` feature. See
+  /// @ref features.
+  unsupported(-8);
 
   final int value;
   const Result(this.value);
@@ -2252,6 +2882,7 @@ enum Result {
     -5 => ioError,
     -6 => limitExceeded,
     -7 => rejected,
+    -8 => unsupported,
     _ => throw ArgumentError('Unknown value for Result: $value'),
   };
 }
@@ -2361,37 +2992,42 @@ enum RowSemanticPrompt {
 ///
 /// @ingroup search
 enum SearchData {
+  /// Not a real data type. ghostty_search_get() returns GHOSTTY_INVALID_VALUE
+  /// for it. Its value is 0, so a zeroed or uninitialized variable is never
+  /// mistaken for a real data type.
+  invalid(0),
+
   /// Current search status: SearchStatus*.
-  status(0),
+  status(1),
 
   /// The needle this search is looking for: String*. The bytes
   /// are borrowed from the search and remain valid until the needle is
   /// changed or the search is freed. Returns GHOSTTY_NO_VALUE when no
   /// needle is set.
-  needle(1),
+  needle(2),
 
   /// Total matches found so far on the active screen: size_t*. Zero
   /// until the first feed.
-  totalMatches(2),
+  totalMatches(3),
 
   /// Index of the selected match: size_t*. This indexes the newest to
   /// oldest ordering of GHOSTTY_SEARCH_DATA_MATCHES, where 0 is the
   /// newest match, so a "k of n" find bar renders index + 1 of
   /// GHOSTTY_SEARCH_DATA_TOTAL_MATCHES. Returns GHOSTTY_NO_VALUE when
   /// nothing is selected.
-  selectedIndex(3),
+  selectedIndex(4),
 
   /// The selected match: Selection*. This is an untracked
   /// snapshot with standard Selection lifetime rules. Returns
   /// GHOSTTY_NO_VALUE when nothing is selected.
-  selectedMatch(4),
+  selectedMatch(5),
 
   /// All matches on the active screen, ordered newest to oldest, from
   /// the bottom of the active area up through scrollback:
   /// SelectionBuffer*. Set ptr to NULL with cap 0 to query the
   /// required capacity. An undersized buffer returns
   /// GHOSTTY_OUT_OF_SPACE with the required capacity in len.
-  matches(5),
+  matches(6),
 
   /// Matches on the pages covering the viewport, for drawing highlight
   /// rectangles: SelectionBuffer*. The list is computed during
@@ -2405,23 +3041,24 @@ enum SearchData {
   /// ghostty_terminal_point_from_grid_ref() clips this naturally: skip
   /// matches that fail the conversion or whose row is beyond the
   /// visible row count.
-  viewportMatches(6),
+  viewportMatches(7),
 
   /// Current scroll policy: SearchScroll*.
-  selectScroll(7);
+  selectScroll(8);
 
   final int value;
   const SearchData(this.value);
 
   static SearchData fromValue(int value) => switch (value) {
-    0 => status,
-    1 => needle,
-    2 => totalMatches,
-    3 => selectedIndex,
-    4 => selectedMatch,
-    5 => matches,
-    6 => viewportMatches,
-    7 => selectScroll,
+    0 => invalid,
+    1 => status,
+    2 => needle,
+    3 => totalMatches,
+    4 => selectedIndex,
+    5 => selectedMatch,
+    6 => matches,
+    7 => viewportMatches,
+    8 => selectScroll,
     _ => throw ArgumentError('Unknown value for SearchData: $value'),
   };
 }
@@ -2431,8 +3068,13 @@ enum SearchData {
 ///
 /// @ingroup search
 enum SearchOption {
+  /// Not a real option. ghostty_search_set() returns GHOSTTY_INVALID_VALUE for
+  /// it. Its value is 0, so a zeroed or uninitialized variable is never
+  /// mistaken for a real option.
+  invalid(0),
+
   /// Set the needle to search for: const String*. The bytes are
-  /// copied, so the caller's memory does not need to outlive the call.
+  /// copied, so your memory does not need to outlive the call.
   /// Matching is byte-exact except ASCII letters, which compare
   /// case-insensitively.
   ///
@@ -2443,51 +3085,31 @@ enum SearchOption {
   /// the needle and returns the search to idle.
   ///
   /// Replacing or clearing a needle releases tracked state held
-  /// within the terminal, so the caller must serialize this with all
+  /// within the terminal, so you must serialize this with all
   /// other access to the same terminal. Returns GHOSTTY_INVALID_VALUE
   /// after the terminal was freed.
-  needle(0),
+  needle(1),
 
-  /// Select the next match, moving toward older content: from the
-  /// bottom of the screen upward into history, the direction a search
-  /// from the prompt usually wants. Wraps around past the oldest
-  /// match.
-  ///
-  /// The value must be NULL. It is reserved for future use.
-  ///
-  /// This catches up with the terminal first, so it is safe to call at
-  /// any time relative to feeds. The viewport scrolls to the newly
-  /// selected match according to GHOSTTY_SEARCH_OPT_SELECT_SCROLL.
-  /// This reads the terminal, so the caller must serialize it with all
-  /// other access to the same terminal. Returns GHOSTTY_NO_VALUE when
-  /// there are no matches.
-  selectNext(1),
-
-  /// Select the previous match, moving toward newer content, wrapping
-  /// around past the newest match. Otherwise identical to
-  /// GHOSTTY_SEARCH_OPT_SELECT_NEXT.
-  selectPrev(2),
-
-  /// Set the scroll policy applied by the select options: const
-  /// SearchScroll*. The policy persists until changed. A NULL
-  /// value resets it to GHOSTTY_SEARCH_SCROLL_IF_NEEDED. This only
-  /// modifies search-owned state and never reads the terminal.
-  selectScroll(3);
+  /// Set the scroll policy applied by ghostty_search_select_next() and
+  /// ghostty_search_select_prev(): const SearchScroll*. The
+  /// policy persists until changed. A NULL value resets it to
+  /// GHOSTTY_SEARCH_SCROLL_IF_NEEDED. This only modifies search-owned
+  /// state and never reads the terminal.
+  selectScroll(4);
 
   final int value;
   const SearchOption(this.value);
 
   static SearchOption fromValue(int value) => switch (value) {
-    0 => needle,
-    1 => selectNext,
-    2 => selectPrev,
-    3 => selectScroll,
+    0 => invalid,
+    1 => needle,
+    4 => selectScroll,
     _ => throw ArgumentError('Unknown value for SearchOption: $value'),
   };
 }
 
 /// Scroll policy applied when a match becomes selected via
-/// GHOSTTY_SEARCH_OPT_SELECT_NEXT or GHOSTTY_SEARCH_OPT_SELECT_PREV.
+/// ghostty_search_select_next() or ghostty_search_select_prev().
 ///
 /// @ingroup search
 enum SearchScroll {
@@ -2658,34 +3280,40 @@ enum SelectionGestureBehavior {
 ///
 /// @ingroup selection
 enum SelectionGestureData {
+  /// Not a real data type. ghostty_selection_gesture_get() returns
+  /// GHOSTTY_INVALID_VALUE for it. Its value is 0, so a zeroed or
+  /// uninitialized variable is never mistaken for a real data type.
+  invalid(0),
+
   /// Current click count: uint8_t*. 0 means inactive.
-  clickCount(0),
+  clickCount(1),
 
   /// Whether the current/last left-click gesture has dragged: bool*.
-  dragged(1),
+  dragged(2),
 
   /// Current autoscroll request: SelectionGestureAutoscroll*.
-  autoscroll(2),
+  autoscroll(3),
 
   /// Current gesture behavior: SelectionGestureBehavior*.
-  behavior(3),
+  behavior(4),
 
   /// Current left-click anchor: GridRef*.
   ///
   /// Returns GHOSTTY_NO_VALUE if there is no valid active anchor. On success,
   /// writes an untracked GridRef snapshot with normal GhosttyGridRef
   /// lifetime rules.
-  anchor(4);
+  anchor(5);
 
   final int value;
   const SelectionGestureData(this.value);
 
   static SelectionGestureData fromValue(int value) => switch (value) {
-    0 => clickCount,
-    1 => dragged,
-    2 => autoscroll,
-    3 => behavior,
-    4 => anchor,
+    0 => invalid,
+    1 => clickCount,
+    2 => dragged,
+    3 => autoscroll,
+    4 => behavior,
+    5 => anchor,
     _ => throw ArgumentError('Unknown value for SelectionGestureData: $value'),
   };
 }
@@ -2697,28 +3325,33 @@ enum SelectionGestureData {
 ///
 /// @ingroup selection
 enum SelectionGestureEventOption {
+  /// Not a real option. ghostty_selection_gesture_event_set() returns
+  /// GHOSTTY_INVALID_VALUE for it. Its value is 0, so a zeroed or
+  /// uninitialized variable is never mistaken for a real option.
+  invalid(0),
+
   /// Grid reference under the pointer: GridRef*.
   ///
   /// Required for PRESS and DRAG events. Optional for RELEASE events; when unset
   /// or cleared, release records that the pointer did not map to a valid cell.
-  ref(0),
+  ref(1),
 
   /// Surface-space pointer position: SurfacePosition*.
   ///
   /// Valid for PRESS, DRAG, and AUTOSCROLL_TICK.
-  position(1),
+  position(2),
 
   /// Maximum repeat-click distance in pixels: double*.
-  repeatDistance(2),
+  repeatDistance(3),
 
   /// Optional monotonic event time in nanoseconds: uint64_t*.
   ///
   /// If unset, press treats the event as untimed and only single-click behavior
   /// is available.
-  timeNs(3),
+  timeNs(4),
 
   /// Maximum interval between repeat clicks in nanoseconds: uint64_t*.
-  repeatIntervalNs(4),
+  repeatIntervalNs(5),
 
   /// Word-boundary codepoints: Codepoints*.
   ///
@@ -2726,36 +3359,37 @@ enum SelectionGestureEventOption {
   /// operations that need word boundaries use 's defaults.
   ///
   /// Valid for PRESS, DRAG, AUTOSCROLL_TICK, and DEEP_PRESS.
-  wordBoundaryCodepoints(5),
+  wordBoundaryCodepoints(6),
 
   /// Selection behavior table: SelectionGestureBehaviors*.
   ///
   /// If unset, press uses the default behavior table: cell, word, line.
-  behaviors(6),
+  behaviors(7),
 
   /// Whether a drag or autoscroll tick should produce a rectangular selection: bool*.
-  rectangle(7),
+  rectangle(8),
 
   /// Drag display geometry: SelectionGestureGeometry*. Required for DRAG and AUTOSCROLL_TICK.
-  geometry(8),
+  geometry(9),
 
   /// Viewport coordinate for an autoscroll tick: PointCoordinate*. Required for AUTOSCROLL_TICK.
-  viewport(9);
+  viewport(10);
 
   final int value;
   const SelectionGestureEventOption(this.value);
 
   static SelectionGestureEventOption fromValue(int value) => switch (value) {
-    0 => ref,
-    1 => position,
-    2 => repeatDistance,
-    3 => timeNs,
-    4 => repeatIntervalNs,
-    5 => wordBoundaryCodepoints,
-    6 => behaviors,
-    7 => rectangle,
-    8 => geometry,
-    9 => viewport,
+    0 => invalid,
+    1 => ref,
+    2 => position,
+    3 => repeatDistance,
+    4 => timeNs,
+    5 => repeatIntervalNs,
+    6 => wordBoundaryCodepoints,
+    7 => behaviors,
+    8 => rectangle,
+    9 => geometry,
+    10 => viewport,
     _ => throw ArgumentError(
       'Unknown value for SelectionGestureEventOption: $value',
     ),
@@ -2836,7 +3470,7 @@ enum SelectionOrder {
 /// More kinds may be added in later versions, so ignore any kind you don't
 /// handle.
 ///
-/// @ingroup terminal
+/// @ingroup effects
 enum SemanticPromptKind {
   /// Never reported. This exists so that a zeroed value is not mistaken
   /// for a real event.
@@ -2874,7 +3508,7 @@ enum SemanticPromptKind {
 /// right side of the line, or a prompt at the start of each extra line
 /// when a command spans several lines.
 ///
-/// @ingroup terminal
+/// @ingroup effects
 enum SemanticPromptPromptKind {
   /// The main prompt shown before each command. This is used when the
   /// shell doesn't say which prompt it is drawing.
@@ -3025,7 +3659,13 @@ enum SizeReportStyle {
   csi16T(2),
 
   /// XTWINOPS text area size in characters: ESC [ 8 ; rows ; cols t
-  csi18T(3);
+  csi18T(3),
+
+  /// XTWINOPS screen size in characters: ESC [ 9 ; rows ; cols t
+  ///
+  /// The physical screen size is not known, so this reports the text
+  /// area size in characters, the same as CSI 18 t.
+  csi19T(4);
 
   final int value;
   const SizeReportStyle(this.value);
@@ -3035,6 +3675,7 @@ enum SizeReportStyle {
     1 => csi14T,
     2 => csi16T,
     3 => csi18T,
+    4 => csi19T,
     _ => throw ArgumentError('Unknown value for SizeReportStyle: $value'),
   };
 }
@@ -3080,7 +3721,8 @@ enum SnapshotDecoderData {
   /// Output type: uint64_t *
   historyRowsAlternate(4),
 
-  /// Screen associated with the most recently decoded history page.
+  /// Screen associated with the most recently decoded history page or
+  /// image pixels.
   ///
   /// This value is available only after ghostty_snapshot_decoder_next()
   /// returns GHOSTTY_SUCCESS. A later call to next replaces it or clears it
@@ -3092,14 +3734,17 @@ enum SnapshotDecoderData {
   /// Rows prepended by the most recently decoded history page.
   ///
   /// Zero means the page was consumed and validated but could not be
-  /// applied to the live terminal.
+  /// applied to the live terminal. Returns GHOSTTY_NO_VALUE unless the
+  /// progress kind is GHOSTTY_SNAPSHOT_DECODER_PROGRESS_KIND_PAGE.
   ///
   /// Output type: size_t *
   progressRows(6),
 
   /// Page records remaining in the same screen's HISTORY sequence.
   ///
-  /// This is not a count of all pages remaining in the snapshot.
+  /// This is not a count of all pages remaining in the snapshot. Returns
+  /// GHOSTTY_NO_VALUE unless the progress kind is
+  /// GHOSTTY_SNAPSHOT_DECODER_PROGRESS_KIND_PAGE.
   ///
   /// Output type: uint32_t *
   progressRemaining(7),
@@ -3117,7 +3762,100 @@ enum SnapshotDecoderData {
   /// available in every non-failed decoder state.
   ///
   /// Output type: bool *
-  compressHistory(9);
+  compressHistory(9),
+
+  /// Kitty graphics image storage limit applied to each restored screen.
+  ///
+  /// See GHOSTTY_SNAPSHOT_DECODER_OPT_KITTY_IMAGE_STORAGE_LIMIT. This value
+  /// is available in every non-failed decoder state.
+  ///
+  /// Output type: uint64_t *
+  kittyImageStorageLimit(10),
+
+  /// What the most recent successful ghostty_snapshot_decoder_next() call
+  /// decoded: a history page or the pixels of a Kitty graphics image.
+  ///
+  /// This value has the same lifetime as
+  /// GHOSTTY_SNAPSHOT_DECODER_DATA_PROGRESS_SCREEN.
+  ///
+  /// Output type: SnapshotDecoderProgressKind *
+  progressKind(11),
+
+  /// ID of the Kitty graphics image whose pixels the most recent
+  /// ghostty_snapshot_decoder_next() call decoded.
+  ///
+  /// Returns GHOSTTY_NO_VALUE unless the progress kind is
+  /// GHOSTTY_SNAPSHOT_DECODER_PROGRESS_KIND_IMAGE.
+  ///
+  /// Output type: uint32_t *
+  progressImageId(12),
+
+  /// Which frame of the image those pixels are for, numbered as the Kitty
+  /// graphics protocol numbers frames. 1 is the image itself, and 2 and up
+  /// are its animation frames.
+  ///
+  /// Returns GHOSTTY_NO_VALUE unless the progress kind is
+  /// GHOSTTY_SNAPSHOT_DECODER_PROGRESS_KIND_IMAGE.
+  ///
+  /// Output type: uint32_t *
+  progressImageFrame(13),
+
+  /// Number of pixel bytes the most recent
+  /// ghostty_snapshot_decoder_next() call attached to its image.
+  ///
+  /// Zero means the pixels were consumed and validated but dropped. That
+  /// happens when live input deleted the image or sent a new image with the
+  /// same ID, when the image did not fit the storage limit, or when its
+  /// screen was removed or replaced. Returns GHOSTTY_NO_VALUE unless the
+  /// progress kind is GHOSTTY_SNAPSHOT_DECODER_PROGRESS_KIND_IMAGE.
+  ///
+  /// Output type: size_t *
+  progressImageBytes(14),
+
+  /// Number of Kitty graphics images restored for the primary screen at
+  /// READY.
+  ///
+  /// These images can be placed and queried right away, but their pixels
+  /// arrive later through ghostty_snapshot_decoder_next(). Until then,
+  /// GHOSTTY_KITTY_GRAPHICS_IMAGE_DATA_PIXELS returns GHOSTTY_NO_VALUE for them.
+  /// This value becomes available after READY validates, and is zero in a
+  /// library built without Kitty graphics.
+  ///
+  /// Output type: uint32_t *
+  kittyImagesPrimary(15),
+
+  /// Number of Kitty graphics images restored for the alternate screen at
+  /// READY.
+  ///
+  /// Returns GHOSTTY_NO_VALUE when the snapshot does not declare an
+  /// alternate screen. See GHOSTTY_SNAPSHOT_DECODER_DATA_KITTY_IMAGES_PRIMARY.
+  ///
+  /// Output type: uint32_t *
+  kittyImagesAlternate(16),
+
+  /// Bytes of Kitty graphics pixels for the primary screen that were still
+  /// to come at READY.
+  ///
+  /// Use it to size a progress indicator while the pixels arrive, adding
+  /// up GHOSTTY_SNAPSHOT_DECODER_DATA_PROGRESS_IMAGE_BYTES for the primary
+  /// screen after each call to ghostty_snapshot_decoder_next(), which has an
+  /// example. Pixels that are dropped report zero bytes, so the sum can end
+  /// up below this total. Pixels may arrive between history pages, so they
+  /// are only known to be done once next returns GHOSTTY_NO_VALUE. This
+  /// value becomes available after READY validates.
+  ///
+  /// Output type: uint64_t *
+  kittyPendingBytesPrimary(17),
+
+  /// Bytes of Kitty graphics pixels for the alternate screen that were
+  /// still to come at READY.
+  ///
+  /// Returns GHOSTTY_NO_VALUE when the snapshot does not declare an
+  /// alternate screen. See
+  /// GHOSTTY_SNAPSHOT_DECODER_DATA_KITTY_PENDING_BYTES_PRIMARY.
+  ///
+  /// Output type: uint64_t *
+  kittyPendingBytesAlternate(18);
 
   final int value;
   const SnapshotDecoderData(this.value);
@@ -3133,6 +3871,15 @@ enum SnapshotDecoderData {
     7 => progressRemaining,
     8 => retainContinuation,
     9 => compressHistory,
+    10 => kittyImageStorageLimit,
+    11 => progressKind,
+    12 => progressImageId,
+    13 => progressImageFrame,
+    14 => progressImageBytes,
+    15 => kittyImagesPrimary,
+    16 => kittyImagesAlternate,
+    17 => kittyPendingBytesPrimary,
+    18 => kittyPendingBytesAlternate,
     _ => throw ArgumentError('Unknown value for SnapshotDecoderData: $value'),
   };
 }
@@ -3143,18 +3890,23 @@ enum SnapshotDecoderData {
 /// ghostty_snapshot_decoder_set() after ghostty_snapshot_decoder_ready() or
 /// ghostty_snapshot_decoder_decode() returns GHOSTTY_INVALID_VALUE.
 enum SnapshotDecoderOption {
+  /// Not a real option. ghostty_snapshot_decoder_set() returns
+  /// GHOSTTY_INVALID_VALUE for it. Its value is 0, so a zeroed or
+  /// uninitialized variable is never mistaken for a real option.
+  invalid(0),
+
   /// Largest non-ground continuation the decoder will accept.
   ///
   /// A value of zero accepts only snapshots whose VT parser is in the ground
   /// state. The decoder default matches the largest built-in APC protocol
-  /// buffer limit, currently 65 MiB.
+  /// buffer limit, currently 65 MiB. A NULL value restores the default.
   ///
   /// This is primarily an input validation limit. When
   /// GHOSTTY_SNAPSHOT_DECODER_OPT_RETAIN_CONTINUATION is true, the same value
   /// also becomes the continuation tracking limit on the returned terminal.
   ///
   /// Input type: size_t *
-  maxContinuationBytes(0),
+  maxContinuationBytes(1),
 
   /// Retain the decoded continuation on the returned terminal.
   ///
@@ -3164,15 +3916,16 @@ enum SnapshotDecoderOption {
   /// tracking limit. The existing ghostty_terminal_continuation_* APIs can then
   /// export the exact unfinished VT or UTF-8 input restored from the snapshot.
   ///
-  /// This is false by default. A maximum continuation size of zero leaves
-  /// tracking disabled. With a nonzero maximum, tracking remains enabled even
-  /// when the decoded continuation is empty. Exporting an empty continuation
-  /// does not disable it. Callers that do not need ongoing tracking must still
-  /// set GHOSTTY_TERMINAL_OPT_CONTINUATION_MAX_BYTES to zero after export and
+  /// This is false by default, and a NULL value restores false. A maximum
+  /// continuation size of zero leaves tracking disabled. With a nonzero
+  /// maximum, tracking remains enabled even when the decoded continuation is
+  /// empty. Exporting an empty continuation does not disable it. Callers
+  /// that do not need ongoing tracking must still set
+  /// GHOSTTY_TERMINAL_OPT_CONTINUATION_MAX_BYTES to zero after export and
   /// before writing post-snapshot input.
   ///
   /// Input type: bool *
-  retainContinuation(1),
+  retainContinuation(2),
 
   /// Compress scrollback history while it is restored.
   ///
@@ -3200,26 +3953,72 @@ enum SnapshotDecoderOption {
   /// On platforms that do not support scrollback compression, this option is
   /// accepted and has no effect.
   ///
-  /// This is false by default.
+  /// This is false by default, and a NULL value restores false.
   ///
   /// Input type: bool *
-  compressHistory(2);
+  compressHistory(3),
+
+  /// Kitty graphics image storage limit, in bytes, for each restored screen.
+  ///
+  /// The limit of the terminal that wrote the snapshot is not part of the
+  /// snapshot, so the decoder always applies this one. Images are restored
+  /// oldest first, and an image that does not fit evicts older images,
+  /// exactly as a live transmission would. The newest images are kept, and
+  /// the placements of evicted images are dropped with them. Zero disables
+  /// Kitty graphics on the restored terminal.
+  ///
+  /// The default is the storage limit of a new terminal, and a NULL value
+  /// restores it. Change the limit of a restored terminal later with
+  /// GHOSTTY_TERMINAL_OPT_KITTY_IMAGE_STORAGE_LIMIT.
+  ///
+  /// Input type: uint64_t *
+  kittyImageStorageLimit(4);
 
   final int value;
   const SnapshotDecoderOption(this.value);
 
   static SnapshotDecoderOption fromValue(int value) => switch (value) {
-    0 => maxContinuationBytes,
-    1 => retainContinuation,
-    2 => compressHistory,
+    0 => invalid,
+    1 => maxContinuationBytes,
+    2 => retainContinuation,
+    3 => compressHistory,
+    4 => kittyImageStorageLimit,
     _ => throw ArgumentError('Unknown value for SnapshotDecoderOption: $value'),
+  };
+}
+
+/// What the most recent successful ghostty_snapshot_decoder_next() call
+/// decoded.
+///
+/// Query it with GHOSTTY_SNAPSHOT_DECODER_DATA_PROGRESS_KIND, then read the
+/// progress values that apply to that kind.
+enum SnapshotDecoderProgressKind {
+  /// One history page, together with the Kitty graphics placements pinned
+  /// to it. GHOSTTY_SNAPSHOT_DECODER_DATA_PROGRESS_ROWS and
+  /// GHOSTTY_SNAPSHOT_DECODER_DATA_PROGRESS_REMAINING describe it.
+  page(0),
+
+  /// The pixels of one Kitty graphics image or animation frame. The
+  /// GHOSTTY_SNAPSHOT_DECODER_DATA_PROGRESS_IMAGE_* values describe it.
+  image(1);
+
+  final int value;
+  const SnapshotDecoderProgressKind(this.value);
+
+  static SnapshotDecoderProgressKind fromValue(int value) => switch (value) {
+    0 => page,
+    1 => image,
+    _ => throw ArgumentError(
+      'Unknown value for SnapshotDecoderProgressKind: $value',
+    ),
   };
 }
 
 /// Style color tags.
 ///
-/// These values identify the type of color in a style color.
-/// Use the tag to determine which field in the color value union to access.
+/// Identifies which kind of color a StyleColor holds. The tag is
+/// stored in the one-byte `tag` field of StyleColor, so compare
+/// that field against these values.
 ///
 /// @ingroup style
 enum StyleColorTag {
@@ -3259,10 +4058,15 @@ enum SysLogLevel {
 
 /// System option identifiers for ghostty_sys_set().
 enum SysOption {
+  /// Not a real option. ghostty_sys_set() returns GHOSTTY_INVALID_VALUE for
+  /// it. Its value is 0, so a zeroed or uninitialized variable is never
+  /// mistaken for a real option.
+  invalid(0),
+
   /// Set the userdata pointer passed to all sys callbacks.
   ///
   /// Input type: void* (or NULL)
-  userdata(0),
+  userdata(1),
 
   /// Set the PNG decode function.
   ///
@@ -3271,7 +4075,7 @@ enum SysOption {
   /// unsupported and PNG image data will be rejected.
   ///
   /// Input type: SysDecodePngFn (function pointer, or NULL)
-  decodePng(1),
+  decodePng(2),
 
   /// Set the log callback.
   ///
@@ -3289,7 +4093,7 @@ enum SysOption {
   /// never reach the callback.
   ///
   /// Input type: SysLogFn (function pointer, or NULL)
-  log(2),
+  log(3),
 
   /// Override the secure random source.
   ///
@@ -3302,17 +4106,87 @@ enum SysOption {
   /// cleared (NULL value), the platform default is restored.
   ///
   /// Input type: SysRandomSecureFn (function pointer, or NULL)
-  randomSecure(3);
+  randomSecure(4);
 
   final int value;
   const SysOption(this.value);
 
   static SysOption fromValue(int value) => switch (value) {
-    0 => userdata,
-    1 => decodePng,
-    2 => log,
-    3 => randomSecure,
+    0 => invalid,
+    1 => userdata,
+    2 => decodePng,
+    3 => log,
+    4 => randomSecure,
     _ => throw ArgumentError('Unknown value for SysOption: $value'),
+  };
+}
+
+/// A point in the VT stream where ghostty_terminal_vt_write_until() can stop.
+///
+/// The values are bit flags. Combine them with `|` to stop at any of several
+/// boundaries.
+///
+/// Most boundaries mark the first or last byte of a control string: an APC,
+/// DCS or OSC sequence, made of an introducer, some content, and a
+/// terminator. GROUND is different. It marks the state between sequences
+/// rather than a byte inside one.
+///
+/// Terminal protocols spell control bytes two ways, and both are recognized.
+/// A 7-bit introducer is ESC followed by one byte, such as `ESC ]` for OSC.
+/// The 8-bit form is a single byte in the range 0x80 to 0x9F, such as 0x9D
+/// for OSC. The string terminator ST is `ESC \` or the single byte 0x9C.
+///
+/// @ingroup terminal
+enum TerminalBoundary {
+  /// The stream is not inside any escape sequence or partial UTF-8
+  /// character. This is a safe point to insert your own sequences.
+  ///
+  /// Ground is a state, not an event. If the stream is already at ground,
+  /// the call stops immediately and consumes nothing.
+  ground(1),
+
+  /// The byte that started an APC string: `_` after ESC, or 0x9F.
+  ///
+  /// SOS (`X` or 0x98) and PM (`^` or 0x9E) strings also report this
+  /// boundary, because the parser handles all three the same way. Check
+  /// TerminalWriteStop.byte to tell them apart.
+  apcStart(2),
+
+  /// The byte that ended an APC, SOS or PM string.
+  apcEnd(4),
+
+  /// The byte that started a DCS string: `P` after ESC, or 0x90.
+  ///
+  /// A DCS has a header before its payload: parameters, intermediates and
+  /// a final byte, in the same shape as a CSI sequence. The stop lands on
+  /// the introducer, so the header follows it. A 0x90 inside the header
+  /// restarts the header without leaving the string, so it does not stop.
+  dcsStart(8),
+
+  /// The byte that ended a DCS string, whether it was still in its header
+  /// or already in its payload. A DCS cut short in its header reports this
+  /// without ever having had a payload.
+  dcsEnd(16),
+
+  /// The byte that started an OSC string: `]` after ESC, or 0x9D.
+  oscStart(32),
+
+  /// The byte that ended an OSC string. This is reported for every OSC,
+  /// including ones the terminal does not understand.
+  oscEnd(64);
+
+  final int value;
+  const TerminalBoundary(this.value);
+
+  static TerminalBoundary fromValue(int value) => switch (value) {
+    1 => ground,
+    2 => apcStart,
+    4 => apcEnd,
+    8 => dcsStart,
+    16 => dcsEnd,
+    32 => oscStart,
+    64 => oscEnd,
+    _ => throw ArgumentError('Unknown value for TerminalBoundary: $value'),
   };
 }
 
@@ -3361,34 +4235,6 @@ enum TerminalCompressionResult {
     _ => throw ArgumentError(
       'Unknown value for TerminalCompressionResult: $value',
     ),
-  };
-}
-
-/// Visual style of the terminal cursor.
-///
-/// @ingroup terminal
-enum TerminalCursorStyle {
-  /// Bar cursor (DECSCUSR 5, 6).
-  bar(0),
-
-  /// Block cursor (DECSCUSR 1, 2).
-  block(1),
-
-  /// Underline cursor (DECSCUSR 3, 4).
-  underline(2),
-
-  /// Hollow block cursor.
-  blockHollow(3);
-
-  final int value;
-  const TerminalCursorStyle(this.value);
-
-  static TerminalCursorStyle fromValue(int value) => switch (value) {
-    0 => bar,
-    1 => block,
-    2 => underline,
-    3 => blockHollow,
-    _ => throw ArgumentError('Unknown value for TerminalCursorStyle: $value'),
   };
 }
 
@@ -3460,10 +4306,12 @@ enum TerminalData {
 
   /// The current SGR style of the cursor.
   ///
-  /// This is the style that will be applied to newly printed characters.
+  /// This is the style that will be applied to newly printed characters, such
+  /// as bold or a foreground color. It isn't the shape of the cursor. For that,
+  /// see CursorStyle.
   ///
   /// Output type: Style *
-  cursorStyle(10),
+  cursorSgrStyle(10),
 
   /// Whether any mouse tracking mode is active.
   ///
@@ -3571,7 +4419,8 @@ enum TerminalData {
   /// The Kitty image storage limit in bytes for the active screen.
   ///
   /// A value of zero means the Kitty graphics protocol is disabled.
-  /// Returns GHOSTTY_NO_VALUE when Kitty graphics are disabled at build time.
+  /// ghostty_terminal_get() returns GHOSTTY_UNSUPPORTED for this data when
+  /// Kitty graphics are disabled at build time.
   ///
   /// Output type: uint64_t *
   kittyImageStorageLimit(26),
@@ -3579,7 +4428,8 @@ enum TerminalData {
   /// Whether the file medium is enabled for Kitty image loading on the
   /// active screen.
   ///
-  /// Returns GHOSTTY_NO_VALUE when Kitty graphics are disabled at build time.
+  /// ghostty_terminal_get() returns GHOSTTY_UNSUPPORTED for this data when
+  /// Kitty graphics are disabled at build time.
   ///
   /// Output type: bool *
   kittyImageMediumFile(27),
@@ -3588,7 +4438,8 @@ enum TerminalData {
   /// medium on the active screen. The string is empty when the medium is
   /// disabled.
   ///
-  /// Returns GHOSTTY_NO_VALUE when Kitty graphics are disabled at build time.
+  /// ghostty_terminal_get() returns GHOSTTY_UNSUPPORTED for this data when
+  /// Kitty graphics are disabled at build time.
   ///
   /// Output type: String *
   kittyImageMediumTempFile(28),
@@ -3596,7 +4447,8 @@ enum TerminalData {
   /// Whether the shared memory medium is enabled for Kitty image loading
   /// on the active screen.
   ///
-  /// Returns GHOSTTY_NO_VALUE when Kitty graphics are disabled at build time.
+  /// ghostty_terminal_get() returns GHOSTTY_UNSUPPORTED for this data when
+  /// Kitty graphics are disabled at build time.
   ///
   /// Output type: bool *
   kittyImageMediumSharedMem(29),
@@ -3607,7 +4459,8 @@ enum TerminalData {
   /// until the next mutating terminal call (e.g. ghostty_terminal_vt_write()
   /// or ghostty_terminal_reset()).
   ///
-  /// Returns GHOSTTY_NO_VALUE when Kitty graphics are disabled at build time.
+  /// ghostty_terminal_get() returns GHOSTTY_UNSUPPORTED for this data when
+  /// Kitty graphics are disabled at build time.
   ///
   /// Output type: KittyGraphics *
   kittyGraphics(30),
@@ -3615,7 +4468,7 @@ enum TerminalData {
   /// The active screen's current selection.
   ///
   /// On success, writes an untracked snapshot of the terminal-owned selection
-  /// to the caller-provided Selection. The GhosttySelection struct is
+  /// to your Selection. The GhosttySelection struct is
   /// caller-owned and may be kept, but the grid references inside it are
   /// untracked borrowed references into the active screen. They are only valid
   /// until the next mutating terminal call, such as ghostty_terminal_set(),
@@ -3678,7 +4531,7 @@ enum TerminalData {
 
   /// Get the current value of a terminal mode.
   ///
-  /// The caller must initialize the `mode` field. On success, the `value` field
+  /// You must initialize the `mode` field. On success, the `value` field
   /// is updated with the current value. A NULL pointer or unknown mode returns
   /// GHOSTTY_INVALID_VALUE.
   ///
@@ -3748,7 +4601,7 @@ enum TerminalData {
     7 => cursorVisible,
     8 => kittyKeyboardFlags,
     9 => scrollbar,
-    10 => cursorStyle,
+    10 => cursorSgrStyle,
     11 => mouseTracking,
     12 => title,
     13 => pwd,
@@ -3792,10 +4645,15 @@ enum TerminalData {
 ///
 /// @ingroup terminal
 enum TerminalOption {
-  /// Opaque userdata pointer passed to all callbacks.
+  /// Not a real option. ghostty_terminal_set() returns GHOSTTY_INVALID_VALUE
+  /// for it. Its value is 0, so a zeroed or uninitialized variable is never
+  /// mistaken for a real option.
+  invalid(0),
+
+  /// Opaque userdata pointer passed to all callbacks. NULL by default.
   ///
   /// Input type: void*
-  userdata(0),
+  userdata(1),
 
   /// Callback invoked when the terminal needs to write data back
   /// to the pty (e.g. in response to a DECRQM query, device status
@@ -3803,38 +4661,38 @@ enum TerminalOption {
   /// sequences.
   ///
   /// Input type: TerminalWritePtyFn
-  writePty(1),
+  writePty(2),
 
   /// Callback invoked when the terminal receives a BEL character
   /// (0x07). Set to NULL to ignore bell events.
   ///
   /// Input type: TerminalBellFn
-  bell(2),
+  bell(3),
 
   /// Callback invoked when the terminal receives an ENQ character
   /// (0x05). Set to NULL to send no response.
   ///
   /// Input type: TerminalEnquiryFn
-  enquiry(3),
+  enquiry(4),
 
   /// Callback invoked when the terminal receives an XTVERSION query
   /// (CSI > q). Set to NULL to report the default "libghostty" string.
   ///
   /// Input type: TerminalXtversionFn
-  xtversion(4),
+  xtversion(5),
 
   /// Callback invoked when the terminal title changes via escape
   /// sequences (e.g. OSC 0 or OSC 2). Set to NULL to ignore title
   /// change events.
   ///
   /// Input type: TerminalTitleChangedFn
-  titleChanged(5),
+  titleChanged(6),
 
   /// Callback invoked in response to XTWINOPS size queries
-  /// (CSI 14/16/18 t). Set to NULL to silently ignore size queries.
+  /// (CSI 14/16/18/19 t). Set to NULL to silently ignore size queries.
   ///
   /// Input type: TerminalSizeFn
-  size(6),
+  size(7),
 
   /// Callback invoked in response to a color scheme device status
   /// report query (CSI ? 996 n). Return true and fill the out pointer
@@ -3842,15 +4700,19 @@ enum TerminalOption {
   /// Set to NULL to ignore color scheme queries.
   ///
   /// Input type: TerminalColorSchemeFn
-  colorScheme(7),
+  colorScheme(8),
 
   /// Callback invoked in response to a device attributes query
   /// (CSI c, CSI > c, or CSI = c). Return true and fill the out
-  /// pointer with response data, or return false to silently ignore.
-  /// Set to NULL to ignore device attributes queries.
+  /// pointer with response data, or return false to answer with the
+  /// library's default attributes.
+  ///
+  /// Set to NULL to answer with the library's default attributes (a VT220
+  /// with ANSI color). The default replies are CSI ? 62 ; 22 c to CSI c,
+  /// CSI > 1 ; 0 ; 0 c to CSI > c, and DCS ! | 00000000 ST to CSI = c.
   ///
   /// Input type: TerminalDeviceAttributesFn
-  deviceAttributes(8),
+  deviceAttributes(9),
 
   /// Set the terminal title manually.
   ///
@@ -3858,7 +4720,7 @@ enum TerminalOption {
   /// clears the title (equivalent to setting an empty string).
   ///
   /// Input type: String*
-  title(9),
+  title(10),
 
   /// Set the terminal working directory manually.
   ///
@@ -3866,28 +4728,28 @@ enum TerminalOption {
   /// clears the pwd (equivalent to setting an empty string).
   ///
   /// Input type: String*
-  pwd(10),
+  pwd(11),
 
   /// Set the default foreground color.
   ///
   /// A NULL value pointer clears the default (unset).
   ///
   /// Input type: ColorRgb*
-  colorForeground(11),
+  colorForeground(12),
 
   /// Set the default background color.
   ///
   /// A NULL value pointer clears the default (unset).
   ///
   /// Input type: ColorRgb*
-  colorBackground(12),
+  colorBackground(13),
 
   /// Set the default cursor color.
   ///
   /// A NULL value pointer clears the default (unset).
   ///
   /// Input type: ColorRgb*
-  colorCursor(13),
+  colorCursor(14),
 
   /// Set the default 256-color palette.
   ///
@@ -3895,43 +4757,48 @@ enum TerminalOption {
   /// A NULL value pointer resets to the built-in default palette.
   ///
   /// Input type: ColorRgb[256]*
-  colorPalette(14),
+  colorPalette(15),
 
   /// Set the Kitty image storage limit in bytes.
   ///
   /// Applied to all initialized screens (primary and alternate).
   /// A value of zero disables the Kitty graphics protocol entirely,
-  /// deleting all stored images and placements. A NULL value pointer
-  /// is equivalent to zero (disables). Has no effect when Kitty graphics
-  /// are disabled at build time.
+  /// deleting all stored images and placements. The default is 10 MB
+  /// (10,000,000 bytes), and a NULL value pointer restores it. Values too
+  /// large for the platform's address space are treated as the largest
+  /// possible limit. ghostty_terminal_set() returns GHOSTTY_UNSUPPORTED
+  /// for this option when Kitty graphics are disabled at build time.
   ///
   /// Input type: uint64_t*
-  kittyImageStorageLimit(15),
+  kittyImageStorageLimit(16),
 
   /// Enable or disable Kitty image loading via the file medium.
   ///
-  /// A NULL value pointer is a no-op. Has no effect when Kitty graphics
-  /// are disabled at build time.
+  /// Disabled by default, and a NULL value pointer disables it again.
+  /// ghostty_terminal_set() returns GHOSTTY_UNSUPPORTED for this option
+  /// when Kitty graphics are disabled at build time.
   ///
   /// Input type: bool*
-  kittyImageMediumFile(16),
+  kittyImageMediumFile(17),
 
   /// Enable Kitty image loading via the temporary file medium, restricted to
   /// the provided directory. The string data is copied into the terminal.
   ///
-  /// A NULL value pointer disables the temporary file medium. Has no effect
+  /// Disabled by default, and a NULL value pointer disables it again.
+  /// ghostty_terminal_set() returns GHOSTTY_UNSUPPORTED for this option
   /// when Kitty graphics are disabled at build time.
   ///
   /// Input type: String*
-  kittyImageMediumTempFile(17),
+  kittyImageMediumTempFile(18),
 
   /// Enable or disable Kitty image loading via the shared memory medium.
   ///
-  /// A NULL value pointer is a no-op. Has no effect when Kitty graphics
-  /// are disabled at build time.
+  /// Disabled by default, and a NULL value pointer disables it again.
+  /// ghostty_terminal_set() returns GHOSTTY_UNSUPPORTED for this option
+  /// when Kitty graphics are disabled at build time.
   ///
   /// Input type: bool*
-  kittyImageMediumSharedMem(18),
+  kittyImageMediumSharedMem(19),
 
   /// Set the maximum bytes the APC handler will buffer for all protocols.
   /// This prevents malicious input from causing unbounded memory allocation.
@@ -3939,14 +4806,14 @@ enum TerminalOption {
   /// defaults.
   ///
   /// Input type: size_t*
-  apcMaxBytes(19),
+  apcMaxBytes(20),
 
   /// Set the maximum bytes the APC handler will buffer for Kitty graphics
   /// protocol data. A NULL value pointer removes the override, reverting
   /// to the built-in default.
   ///
   /// Input type: size_t*
-  apcMaxBytesKitty(20),
+  apcMaxBytesKitty(21),
 
   /// Set the active screen selection.
   ///
@@ -3959,14 +4826,14 @@ enum TerminalOption {
   /// Passing NULL clears the active screen selection.
   ///
   /// Input type: Selection*
-  selection(21),
+  selection(22),
 
   /// Set the default cursor style used by DECSCUSR reset (CSI 0 q).
   ///
   /// A NULL value pointer resets to the built-in default block cursor.
   ///
-  /// Input type: TerminalCursorStyle*
-  defaultCursorStyle(22),
+  /// Input type: CursorStyle*
+  defaultCursorStyle(23),
 
   /// Set whether the default cursor should blink when reset by DECSCUSR
   /// (CSI 0 q).
@@ -3974,23 +4841,27 @@ enum TerminalOption {
   /// A NULL value pointer resets to the built-in default of not blinking.
   ///
   /// Input type: bool*
-  defaultCursorBlink(23),
+  defaultCursorBlink(24),
 
   /// Enable or disable Glyph Protocol APC handling.
   ///
   /// When disabled, Glyph Protocol APC sequences are ignored and no
   /// support/query/register/clear responses are emitted. Disabling also clears
-  /// the terminal session's glyph glossary. A NULL value pointer is a no-op.
+  /// the terminal session's glyph glossary.
+  ///
+  /// Disabled by default, and a NULL value pointer disables it again. An
+  /// application opts in because registered glyphs change what the terminal
+  /// draws.
   ///
   /// Input type: bool*
-  glyphProtocol(24),
+  glyphProtocol(25),
 
   /// Callback invoked when the terminal pwd changes via escape
   /// sequences (OSC 7, OSC 9, or OSC 1337 CurrentDir). Set to NULL
   /// to ignore pwd change events.
   ///
   /// Input type: TerminalPwdChangedFn
-  pwdChanged(25),
+  pwdChanged(26),
 
   /// Callback invoked when the running program performs a clipboard write.
   /// OSC 52, iTerm2 OSC 1337 Copy, and Kitty clipboard (OSC 5522) writes
@@ -4000,7 +4871,7 @@ enum TerminalOption {
   /// GHOSTTY_TERMINAL_OPT_CLIPBOARD_READ instead.
   ///
   /// Input type: TerminalClipboardWriteFn
-  clipboardWrite(26),
+  clipboardWrite(27),
 
   /// Set the maximum scrollback allocation in bytes.
   ///
@@ -4017,10 +4888,23 @@ enum TerminalOption {
   ///
   /// Lowering the limit immediately removes eligible complete historical
   /// pages. A value of zero disables scrollback and erases retained history.
-  /// A NULL value pointer removes the byte limit.
+  ///
+  /// The default is 10,000 bytes. Because history is kept in whole pages,
+  /// this is rounded up to one page in practice. Pass SIZE_MAX for no byte
+  /// limit, or NULL to restore the default:
+  ///
+  /// @code{.c}
+  /// size_t unlimited = SIZE_MAX;
+  /// ghostty_terminal_set(terminal,
+  /// GHOSTTY_TERMINAL_OPT_SCROLLBACK_MAX_BYTES, &unlimited);
+  ///
+  /// // Back to the default of 10,000 bytes.
+  /// ghostty_terminal_set(terminal,
+  /// GHOSTTY_TERMINAL_OPT_SCROLLBACK_MAX_BYTES, NULL);
+  /// @endcode
   ///
   /// Input type: size_t*
-  scrollbackMaxBytes(27),
+  scrollbackMaxBytes(28),
 
   /// Set the maximum number of physical lines retained in scrollback.
   ///
@@ -4039,23 +4923,26 @@ enum TerminalOption {
   /// a narrower terminal viewport). So, they are useful together.
   ///
   /// Lowering the limit immediately removes eligible complete historical
-  /// pages. A NULL value pointer removes the line limit.
+  /// pages.
+  ///
+  /// There is no line limit by default. Pass SIZE_MAX or NULL to remove a
+  /// line limit you set earlier.
   ///
   /// Input type: size_t*
-  scrollbackMaxLines(28),
+  scrollbackMaxLines(29),
 
   /// Callback invoked when the running program requests a desktop
   /// notification via OSC 9 or OSC 777. Set to NULL to ignore desktop
   /// notification requests.
   ///
   /// Input type: TerminalDesktopNotificationFn
-  desktopNotification(29),
+  desktopNotification(30),
 
   /// Callback invoked when the running program reports progress via OSC 9;4.
   /// Set to NULL to ignore progress reports.
   ///
   /// Input type: TerminalProgressReportFn
-  progressReport(30),
+  progressReport(31),
 
   /// Set the maximum number of replay-safe VT continuation bytes retained.
   ///
@@ -4073,7 +4960,7 @@ enum TerminalOption {
   /// later write reaches the ground state or contains a fresh replay start.
   ///
   /// Input type: size_t*
-  continuationMaxBytes(31),
+  continuationMaxBytes(32),
 
   /// Enable window title reports in response to CSI 21 t.
   ///
@@ -4083,7 +4970,7 @@ enum TerminalOption {
   /// disables title reporting.
   ///
   /// Input type: bool*
-  titleReport(32),
+  titleReport(33),
 
   /// Set the reset default for a terminal mode.
   ///
@@ -4096,7 +4983,7 @@ enum TerminalOption {
   /// GHOSTTY_INVALID_VALUE.
   ///
   /// Input type: TerminalModeConfig*
-  modeDefault(33),
+  modeDefault(34),
 
   /// Set the current value of a terminal mode.
   ///
@@ -4104,17 +4991,17 @@ enum TerminalOption {
   /// A NULL value pointer or unknown mode returns GHOSTTY_INVALID_VALUE.
   ///
   /// Input type: TerminalModeConfig*
-  mode(34),
+  mode(35),
 
   /// Callback for escape sequences that libghostty-vt does not implement.
   /// Set to NULL to stop receiving them.
   ///
   /// GHOSTTY_TERMINAL_OPT_UNKNOWN_MAX_BYTES must also be set, or the
-  /// callback is never called. See the Unsupported Sequences section of the
-  /// terminal documentation for an example.
+  /// callback is never called. See @ref guide-custom-sequences-unknown for
+  /// an example.
   ///
   /// Input type: TerminalUnknownSequenceFn
-  unknownSequence(35),
+  unknownSequence(36),
 
   /// The most bytes of each unsupported sequence to keep and pass to the
   /// GHOSTTY_TERMINAL_OPT_UNKNOWN_SEQUENCE callback. The same limit applies
@@ -4133,7 +5020,7 @@ enum TerminalOption {
   /// sequences are always kept in allocated memory.
   ///
   /// Input type: size_t*
-  unknownMaxBytes(36),
+  unknownMaxBytes(37),
 
   /// Set the name of the terminfo entry this terminal runs as, reported
   /// in response to an XTGETTCAP query for "TN" (e.g. "xterm-256color").
@@ -4147,7 +5034,7 @@ enum TerminalOption {
   /// libghostty is advertising itself as.
   ///
   /// Input type: String*
-  terminfoName(37),
+  terminfoName(38),
 
   /// Callback invoked when the running program requests clipboard contents
   /// via OSC 52 with a "?" payload or a Kitty clipboard (OSC 5522) read. The
@@ -4156,7 +5043,7 @@ enum TerminalOption {
   /// OSC 5522 reads with EPERM.
   ///
   /// Input type: TerminalClipboardReadFn
-  clipboardRead(38),
+  clipboardRead(39),
 
   /// Set the maximum total decoded bytes a single Kitty clipboard protocol
   /// (OSC 5522) write transaction may accumulate. The limit is captured
@@ -4177,7 +5064,7 @@ enum TerminalOption {
   /// maximum length of an escape sequence instead.
   ///
   /// Input type: size_t*
-  clipboardWriteMaxBytes(39),
+  clipboardWriteMaxBytes(40),
 
   /// Set whether a resize may pull rows out of scrollback back into the
   /// active area.
@@ -4200,30 +5087,30 @@ enum TerminalOption {
   /// A NULL value pointer resets to the built-in default of true.
   ///
   /// Input type: bool*
-  resizePullScrollback(40),
+  resizePullScrollback(41),
 
   /// Callback invoked when the running program asks the terminal to
   /// stop updating the screen and when it allows updates again. Today
   /// this is driven by synchronized output (mode 2026). Set to NULL to
   /// ignore these events.
   ///
-  /// See TerminalRenderHoldFn for how to use this in a renderer.
+  /// See @ref guide-rendering-holds for how to use this in a renderer.
   ///
   /// Input type: TerminalRenderHoldFn
-  renderHold(41),
+  renderHold(42),
 
   /// Callback invoked when the shell reports a step of a command: a prompt
   /// starts, input starts, output starts, or the command ends. Set to NULL
   /// to ignore these events.
   ///
   /// Input type: TerminalSemanticPromptFn
-  semanticPrompt(42),
+  semanticPrompt(43),
 
   /// Callback invoked after the running program performs a full reset
   /// (RIS, ESC c). Set to NULL to ignore resets.
   ///
   /// Input type: TerminalResetFn
-  reset(43),
+  reset(44),
 
   /// Enable checksum reports in response to DECRQCRA (CSI Pi ; Pg ; Pt ; Pl ;
   /// Pb ; Pr * y).
@@ -4237,7 +5124,7 @@ enum TerminalOption {
   /// checksum is calculated, is ignored as well.
   ///
   /// Input type: bool*
-  xtChecksumReport(44),
+  xtChecksumReport(45),
 
   /// Set how the DECRQCRA checksum is calculated after a reset (RIS or DECSTR).
   /// This also changes the current calculation.
@@ -4256,7 +5143,7 @@ enum TerminalOption {
   /// Values above 31 return GHOSTTY_INVALID_VALUE.
   ///
   /// Input type: uint8_t*
-  xtChecksumExtension(45),
+  xtChecksumExtension(46),
 
   /// Callback invoked when the running program sends a program status
   /// report via OSC 7501. Set to NULL to ignore these reports.
@@ -4277,66 +5164,75 @@ enum TerminalOption {
   /// callback too, or programs never see the reply.
   ///
   /// Input type: TerminalProgramStatusFn
-  programStatus(46);
+  programStatus(47),
+
+  /// Callback invoked when the running program asks to resize the window,
+  /// such as with CSI 8 ; rows ; columns t. Set to NULL to ignore resize
+  /// requests.
+  ///
+  /// Input type: TerminalResizeWindowFn
+  resizeWindow(48);
 
   final int value;
   const TerminalOption(this.value);
 
   static TerminalOption fromValue(int value) => switch (value) {
-    0 => userdata,
-    1 => writePty,
-    2 => bell,
-    3 => enquiry,
-    4 => xtversion,
-    5 => titleChanged,
-    6 => size,
-    7 => colorScheme,
-    8 => deviceAttributes,
-    9 => title,
-    10 => pwd,
-    11 => colorForeground,
-    12 => colorBackground,
-    13 => colorCursor,
-    14 => colorPalette,
-    15 => kittyImageStorageLimit,
-    16 => kittyImageMediumFile,
-    17 => kittyImageMediumTempFile,
-    18 => kittyImageMediumSharedMem,
-    19 => apcMaxBytes,
-    20 => apcMaxBytesKitty,
-    21 => selection,
-    22 => defaultCursorStyle,
-    23 => defaultCursorBlink,
-    24 => glyphProtocol,
-    25 => pwdChanged,
-    26 => clipboardWrite,
-    27 => scrollbackMaxBytes,
-    28 => scrollbackMaxLines,
-    29 => desktopNotification,
-    30 => progressReport,
-    31 => continuationMaxBytes,
-    32 => titleReport,
-    33 => modeDefault,
-    34 => mode,
-    35 => unknownSequence,
-    36 => unknownMaxBytes,
-    37 => terminfoName,
-    38 => clipboardRead,
-    39 => clipboardWriteMaxBytes,
-    40 => resizePullScrollback,
-    41 => renderHold,
-    42 => semanticPrompt,
-    43 => reset,
-    44 => xtChecksumReport,
-    45 => xtChecksumExtension,
-    46 => programStatus,
+    0 => invalid,
+    1 => userdata,
+    2 => writePty,
+    3 => bell,
+    4 => enquiry,
+    5 => xtversion,
+    6 => titleChanged,
+    7 => size,
+    8 => colorScheme,
+    9 => deviceAttributes,
+    10 => title,
+    11 => pwd,
+    12 => colorForeground,
+    13 => colorBackground,
+    14 => colorCursor,
+    15 => colorPalette,
+    16 => kittyImageStorageLimit,
+    17 => kittyImageMediumFile,
+    18 => kittyImageMediumTempFile,
+    19 => kittyImageMediumSharedMem,
+    20 => apcMaxBytes,
+    21 => apcMaxBytesKitty,
+    22 => selection,
+    23 => defaultCursorStyle,
+    24 => defaultCursorBlink,
+    25 => glyphProtocol,
+    26 => pwdChanged,
+    27 => clipboardWrite,
+    28 => scrollbackMaxBytes,
+    29 => scrollbackMaxLines,
+    30 => desktopNotification,
+    31 => progressReport,
+    32 => continuationMaxBytes,
+    33 => titleReport,
+    34 => modeDefault,
+    35 => mode,
+    36 => unknownSequence,
+    37 => unknownMaxBytes,
+    38 => terminfoName,
+    39 => clipboardRead,
+    40 => clipboardWriteMaxBytes,
+    41 => resizePullScrollback,
+    42 => renderHold,
+    43 => semanticPrompt,
+    44 => reset,
+    45 => xtChecksumReport,
+    46 => xtChecksumExtension,
+    47 => programStatus,
+    48 => resizeWindow,
     _ => throw ArgumentError('Unknown value for TerminalOption: $value'),
   };
 }
 
 /// State of a terminal progress report.
 ///
-/// @ingroup terminal
+/// @ingroup effects
 enum TerminalProgressState {
   /// Remove any visible progress indication.
   remove(0),
@@ -4363,6 +5259,29 @@ enum TerminalProgressState {
     3 => indeterminate,
     4 => pause,
     _ => throw ArgumentError('Unknown value for TerminalProgressState: $value'),
+  };
+}
+
+/// The kind of window resize request passed to a
+/// TerminalResizeWindowFn callback.
+///
+/// New kinds may be added in later versions. Callbacks should ignore any
+/// tag they don't handle.
+///
+/// @ingroup effects
+enum TerminalResizeWindowTag {
+  /// Resize the window's text area to a size in rows and columns
+  /// (CSI 8 ; rows ; columns t). The value is in `value.grid`.
+  grid(0);
+
+  final int value;
+  const TerminalResizeWindowTag(this.value);
+
+  static TerminalResizeWindowTag fromValue(int value) => switch (value) {
+    0 => grid,
+    _ => throw ArgumentError(
+      'Unknown value for TerminalResizeWindowTag: $value',
+    ),
   };
 }
 
@@ -4439,13 +5358,129 @@ enum TerminalScrollViewportTag {
   };
 }
 
+/// How a control string ended.
+///
+/// @ingroup terminal
+enum TerminalStringEnd {
+  /// ESC, the first byte of the string terminator `ESC \`.
+  ///
+  /// The ESC is consumed but the `\` after it is not. Pass the `\` as the
+  /// first byte of your next write, where it completes the terminator. If
+  /// you forward the stream elsewhere, forward the ESC along with the
+  /// string.
+  stEsc(0),
+
+  /// 0x9C, the 8-bit string terminator. The stream is now at ground.
+  ///
+  /// Inside an OSC, and inside a DCS once its header is complete, 0x9C is
+  /// content rather than a terminator. So this is only reported for an APC
+  /// or for a DCS still in its header.
+  stC1(1),
+
+  /// CAN (0x18) or SUB (0x1A) cancelled the string. The stream is now at
+  /// ground.
+  ///
+  /// The terminal discards a cancelled APC or OSC. Its command does not
+  /// run and it is not passed to the unknown sequence callback. For
+  /// example, `ESC _ G a=t,i=7;AAAA` followed by CAN stores no image.
+  cancelled(2),
+
+  /// Another 8-bit control byte cut the string short. Most of these return
+  /// the stream to ground. CSI (0x9B) starts a CSI sequence instead. The
+  /// introducers DCS (0x90), OSC (0x9D), APC (0x9F), SOS (0x98) and PM
+  /// (0x9E) start a new string on the same byte, which the stop reports
+  /// with a START flag as well. See TerminalWriteStop.reached.
+  ///
+  /// Inside an OSC, and inside a DCS once its header is complete, 8-bit
+  /// bytes are content. So this is only reported for an APC or for a DCS
+  /// still in its header.
+  ///
+  /// The terminal discards an aborted APC, just like a cancelled one.
+  aborted(3),
+
+  /// BEL (0x07) terminated the string. Only an OSC ends this way.
+  bel(4);
+
+  final int value;
+  const TerminalStringEnd(this.value);
+
+  static TerminalStringEnd fromValue(int value) => switch (value) {
+    0 => stEsc,
+    1 => stC1,
+    2 => cancelled,
+    3 => aborted,
+    4 => bel,
+    _ => throw ArgumentError('Unknown value for TerminalStringEnd: $value'),
+  };
+}
+
+/// How a control string started.
+///
+/// @ingroup terminal
+enum TerminalStringIntroducer {
+  /// ESC followed by `_`, `X`, `^`, `P` or `]`. The stop's `consumed`
+  /// count includes only the final byte, because the ESC may have arrived
+  /// in an earlier call.
+  esc(0),
+
+  /// A single 8-bit byte: 0x9F (APC), 0x98 (SOS), 0x9E (PM), 0x90 (DCS) or
+  /// 0x9D (OSC).
+  ///
+  /// When the stream is at ground, these bytes are decoded as UTF-8 and do
+  /// not start a string. They only start a string when they arrive while
+  /// the stream is already inside another escape sequence.
+  c1(1);
+
+  final int value;
+  const TerminalStringIntroducer(this.value);
+
+  static TerminalStringIntroducer fromValue(int value) => switch (value) {
+    0 => esc,
+    1 => c1,
+    _ => throw ArgumentError(
+      'Unknown value for TerminalStringIntroducer: $value',
+    ),
+  };
+}
+
+/// The kind of control string that started or ended.
+///
+/// @ingroup terminal
+enum TerminalStringKind {
+  /// An APC, SOS or PM string. TerminalWriteStop.byte at the start
+  /// of the string tells you which one it is:
+  ///
+  /// | Byte               | String |
+  /// |--------------------|--------|
+  /// | `_` (0x5F) or 0x9F | APC    |
+  /// | `X` (0x58) or 0x98 | SOS    |
+  /// | `^` (0x5E) or 0x9E | PM     |
+  apc(0),
+
+  /// A DCS string, started by `P` (0x50) after ESC or by 0x90.
+  dcs(1),
+
+  /// An OSC string, started by `]` (0x5D) after ESC or by 0x9D.
+  osc(2);
+
+  final int value;
+  const TerminalStringKind(this.value);
+
+  static TerminalStringKind fromValue(int value) => switch (value) {
+    0 => apc,
+    1 => dcs,
+    2 => osc,
+    _ => throw ArgumentError('Unknown value for TerminalStringKind: $value'),
+  };
+}
+
 /// The kind of unsupported sequence passed to a
 /// TerminalUnknownSequenceFn callback.
 ///
 /// New kinds may be added in later versions. Callbacks should ignore any
 /// tag they don't handle.
 ///
-/// @ingroup terminal
+/// @ingroup effects
 enum TerminalUnknownSequenceTag {
   /// Application Program Command (APC).
   apc(0),

@@ -57,6 +57,30 @@ void main() {
       });
     });
 
+    test('reads codepoint buffers after memory growth', () {
+      final harness = FaultExports();
+      final memory = Memory(harness.exports);
+      harness.object['ghostty_render_state_row_cells_get'] =
+          (JSNumber _, JSNumber key, JSNumber output) {
+            expect(key.toDartInt, RenderStateRowCellsData.graphemesBuf.value);
+            final buffer = output.toDartInt;
+            final data = memory.readU32(buffer + layout.bufferPtr);
+            final capacity = memory.readU32(buffer + layout.bufferCap);
+            expect(capacity, 3);
+            expect(memory.readU32(buffer + layout.bufferLen), 0);
+            harness.memory.grow(1);
+            memory.writeU32(data, 0x1f642);
+            memory.writeU32(data + 4, 0x301);
+            memory.writeU32(buffer + layout.bufferLen, 2);
+            return Result.success.value.toJS;
+          }.toJS;
+      final render = WasmRenderBindings(harness.exports, layout);
+      expect(
+        render.rowCellsGetGraphemes(const LibGhosttyHandle.fromAddress(64), 3),
+        [0x1f642, 0x301],
+      );
+    });
+
     group('raw cell and row transport', () {
       test(
         'all raw producers preserve exact bits through single and multi calls',

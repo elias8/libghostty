@@ -8,7 +8,9 @@ import 'package:ffi/ffi.dart';
 
 import 'package:libghostty/src/bindings/terminal/ffi.dart';
 import 'package:libghostty/src/bindings/types.dart';
+import 'package:libghostty/src/generated/libghostty.g.dart' as native;
 import 'package:libghostty/src/generated/libghostty_enums.g.dart';
+import 'package:libghostty/src/types/color.dart';
 import 'package:libghostty/src/types/exceptions.dart';
 import 'package:libghostty/src/types/geometry.dart';
 import 'package:libghostty/src/types/terminal.dart';
@@ -27,6 +29,37 @@ void main() {
       addTearDown(() => bindings.terminalFree(terminal));
       return terminal;
     }
+
+    test('distinguishes unlimited scrollback from the upstream reset', () {
+      final terminal = createTerminal();
+      bindings.terminalSetScrollbackMaxBytes(terminal, null);
+      expect(bindings.terminalGetScrollbackMaxBytes(terminal), isNull);
+      expect(
+        native.ghostty_terminal_set(
+          native.Terminal.fromAddress(terminal.value),
+          TerminalOption.scrollbackMaxBytes,
+          nullptr,
+        ),
+        Result.success,
+      );
+      expect(bindings.terminalGetScrollbackMaxBytes(terminal), 10000);
+      bindings.terminalSetScrollbackMaxBytes(terminal, null);
+      expect(bindings.terminalGetScrollbackMaxBytes(terminal), isNull);
+    });
+
+    test('reads packed cursor style and colors', () {
+      final terminal = createTerminal();
+      bindings.terminalVtWrite(
+        terminal,
+        Uint8List.fromList('\x1b[1;3;4:3;38;2;12;34;56m'.codeUnits),
+      );
+      final style = bindings.terminalGetCursorStyle(terminal);
+      expect(style.bold, isTrue);
+      expect(style.italic, isTrue);
+      expect(style.faint, isFalse);
+      expect(style.underline, SgrUnderline.curly);
+      expect(style.foreground, const RgbColor(12, 34, 56));
+    });
 
     test(
       'creates, queries, and resizes a terminal through the direct adapter',

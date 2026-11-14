@@ -97,6 +97,13 @@ class KittyImageCache {
     _requestedGenerations[image.id] = generation;
     try {
       _beginDecode(image, existing);
+    } on NoValueException {
+      _requestedGenerations.remove(image.id);
+      _requestTokens.remove(image.id);
+      _queuedRequests.remove(image.id);
+      return _entries[image.id] = existing is KittyImageReady
+          ? existing
+          : const KittyImagePending();
     } catch (_) {
       if (previousGeneration == null) {
         _requestedGenerations.remove(image.id);

@@ -16,6 +16,11 @@ void main() {
       });
     });
 
+    test('compile override remains available with a mismatched pin', () {
+      final input = createTestBuildInput(userDefines: {'source': 'compile'});
+      expect(LibraryProvider.resolve(input), isA<CompileFromSource>());
+    });
+
     group('subtypes', () {
       test('are exhaustive in pattern matching', () {
         expect(
@@ -47,6 +52,7 @@ void main() {
 BuildInput createTestBuildInput({
   OS os = OS.macOS,
   Architecture arch = Architecture.arm64,
+  Map<String, String> userDefines = const {},
 }) {
   final tmp = Directory.systemTemp.createTempSync('build_input_test_');
   addTearDown(() => tmp.deleteSync(recursive: true));
@@ -56,7 +62,12 @@ BuildInput createTestBuildInput({
     'package_root': tmp.path,
     'out_dir': '${tmp.path}/out',
     'out_dir_shared': '${tmp.path}/shared',
-    'user_defines': <String, String>{},
+    'user_defines': {
+      'workspace_pubspec': {
+        'base_path': '${tmp.path}/',
+        'defines': userDefines,
+      },
+    },
     'config': <String, dynamic>{
       'build_code_assets': true,
       'build_asset_types': <String>['code_assets/code'],

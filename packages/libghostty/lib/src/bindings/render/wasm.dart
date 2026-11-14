@@ -827,7 +827,6 @@ final class _WasmRenderRaw {
       final refPtr = frame.variableAddress(0, _layout.gridRefSize);
       final stylePtr = frame.variableAddress(1, _layout.styleSize);
       _writeGridRef(refPtr, ref);
-      _memory.writeU32(stylePtr, _layout.styleSize);
       final result = _exports.ghostty_grid_ref_style(refPtr, stylePtr);
       if (result != 0) return (.fromValue(result), const Style());
       return (.fromValue(result), _readStyle(stylePtr));
@@ -932,7 +931,7 @@ final class _WasmRenderRaw {
       final blinking = _memory.readU8(cursorPtr + _layout.cursorBlinking) != 0;
       final passwordInput =
           _memory.readU8(cursorPtr + _layout.cursorPasswordInput) != 0;
-      final visualStyle = RenderStateCursorVisualStyle.fromValue(
+      final visualStyle = CursorStyle.fromValue(
         _memory.readI32(cursorPtr + _layout.cursorVisualStyle),
       );
       return (
@@ -1213,18 +1212,23 @@ final class _WasmRenderRaw {
     final bufSize = len * 4;
     final frame = _scratch.acquire(const []);
     try {
-      final buf = frame.variableAddress(0, bufSize, alignment: 4);
+      final bufferPtr = frame.variableAddress(0, _layout.bufferSize);
+      final buf = frame.variableAddress(1, bufSize, alignment: 4);
+      _memory.writeU32(bufferPtr + _layout.bufferPtr, buf);
+      _memory.writeU32(bufferPtr + _layout.bufferCap, len);
+      _memory.writeU32(bufferPtr + _layout.bufferLen, 0);
       final result = Result.fromValue(
         _exports.ghostty_render_state_row_cells_get(
           cells,
           RenderStateRowCellsData.graphemesBuf.value,
-          buf,
+          bufferPtr,
         ),
       );
       if (result != .success) return (result, const []);
+      final written = _memory.readU32(bufferPtr + _layout.bufferLen);
       return (
         result,
-        [for (var i = 0; i < len; i++) _memory.readU32(buf + i * 4)],
+        [for (var i = 0; i < written; i++) _memory.readU32(buf + i * 4)],
       );
     } finally {
       frame.release();
@@ -1339,7 +1343,6 @@ final class _WasmRenderRaw {
     final frame = _scratch.acquire(const []);
     try {
       final stylePtr = frame.variableAddress(0, size);
-      _memory.writeU32(stylePtr, size);
       final result = Result.fromValue(
         _exports.ghostty_render_state_row_cells_get(
           cells,
@@ -1780,7 +1783,6 @@ final class _WasmRenderRaw {
       final pointPtr = frame.variableAddress(0, _layout.pointSize);
       final gridRefPtr = frame.variableAddress(1, _layout.gridRefSize);
       _writePoint(pointPtr, pointTag, position);
-      _memory.writeU32(gridRefPtr, _layout.gridRefSize);
       final result = _exports.ghostty_terminal_grid_ref(
         terminal,
         pointPtr,
@@ -1897,7 +1899,6 @@ final class _WasmRenderRaw {
     final frame = _scratch.acquire(const []);
     try {
       final gridRefPtr = frame.variableAddress(0, _layout.gridRefSize);
-      _memory.writeU32(gridRefPtr, _layout.gridRefSize);
       final result = Result.fromValue(
         _exports.ghostty_tracked_grid_ref_snapshot(ref, gridRefPtr),
       );
@@ -1992,7 +1993,7 @@ final class _WasmRenderRaw {
 
   RawColor _readRawColor(ByteData bytes, int addr) {
     return (
-      tag: StyleColorTag.fromValue(bytes.getUint32(addr, Endian.little)),
+      tag: StyleColorTag.fromValue(bytes.getUint8(addr)),
       palette: bytes.getUint8(addr + _layout.styleColorR),
       r: bytes.getUint8(addr + _layout.styleColorR),
       g: bytes.getUint8(addr + _layout.styleColorG),
@@ -2003,6 +2004,7 @@ final class _WasmRenderRaw {
   Style _readStyle(int stylePtr) {
     final bytes = _memory.view;
     final ulRaw = _readRawColor(bytes, stylePtr + _layout.styleUnderlineColor);
+    final flags = bytes.getUint16(stylePtr + _layout.styleFlags, Endian.little);
     return Style(
       foreground: cellColorFromRaw(
         _readRawColor(bytes, stylePtr + _layout.styleFg),
@@ -2014,17 +2016,15 @@ final class _WasmRenderRaw {
         .rgb || .palette => cellColorFromRaw(ulRaw),
         .none => null,
       },
-      bold: bytes.getUint8(stylePtr + _layout.styleBold) != 0,
-      italic: bytes.getUint8(stylePtr + _layout.styleItalic) != 0,
-      faint: bytes.getUint8(stylePtr + _layout.styleFaint) != 0,
-      blink: bytes.getUint8(stylePtr + _layout.styleBlink) != 0,
-      inverse: bytes.getUint8(stylePtr + _layout.styleInverse) != 0,
-      invisible: bytes.getUint8(stylePtr + _layout.styleInvisible) != 0,
-      strikethrough: bytes.getUint8(stylePtr + _layout.styleStrikethrough) != 0,
-      overline: bytes.getUint8(stylePtr + _layout.styleOverline) != 0,
-      underline: .fromValue(
-        bytes.getInt32(stylePtr + _layout.styleUnderline, Endian.little),
-      ),
+      bold: flags & (1 << 0) != 0,
+      italic: flags & (1 << 1) != 0,
+      faint: flags & (1 << 2) != 0,
+      blink: flags & (1 << 3) != 0,
+      inverse: flags & (1 << 4) != 0,
+      invisible: flags & (1 << 5) != 0,
+      strikethrough: flags & (1 << 6) != 0,
+      overline: flags & (1 << 7) != 0,
+      underline: .fromValue((flags >> 8) & 7),
     );
   }
 
@@ -2081,7 +2081,6 @@ final class _WasmRenderRaw {
   }
 
   void _writeGridRef(int ptr, RawGridRef ref) {
-    _memory.writeU32(ptr, _layout.gridRefSize);
     _memory.writeU32(ptr + _layout.gridRefNode, ref.node);
     _memory.writeU16(ptr + _layout.gridRefX, ref.x);
     _memory.writeU16(ptr + _layout.gridRefY, ref.y);

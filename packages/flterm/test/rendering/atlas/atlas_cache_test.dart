@@ -201,8 +201,8 @@ void main() {
     });
 
     test('shares decoration entries for matching styles', () {
-      final first = cache.addDecoration(UnderlineStyle.single) as AtlasEntry;
-      final second = cache.addDecoration(UnderlineStyle.single) as AtlasEntry;
+      final first = cache.addDecoration(SgrUnderline.single) as AtlasEntry;
+      final second = cache.addDecoration(SgrUnderline.single) as AtlasEntry;
 
       expect(second, same(first));
     });
@@ -222,7 +222,7 @@ void main() {
       final spriteBefore =
           cache.addCodepoint(0x2500, bold: false, italic: false) as AtlasEntry;
       final decorationBefore =
-          cache.addDecoration(UnderlineStyle.single) as AtlasEntry;
+          cache.addDecoration(SgrUnderline.single) as AtlasEntry;
       expect(cache.size, 3);
 
       cache.clear();
@@ -237,7 +237,7 @@ void main() {
         isNot(same(spriteBefore)),
       );
       expect(
-        cache.addDecoration(UnderlineStyle.single),
+        cache.addDecoration(SgrUnderline.single),
         isNot(same(decorationBefore)),
       );
     });
@@ -250,8 +250,7 @@ void main() {
           cache.addCodepoint(0x41, bold: true, italic: false) as AtlasEntry;
       final sprite =
           cache.addCodepoint(0x2500, bold: false, italic: false) as AtlasEntry;
-      final decoration =
-          cache.addDecoration(UnderlineStyle.single) as AtlasEntry;
+      final decoration = cache.addDecoration(SgrUnderline.single) as AtlasEntry;
 
       expect(ascii, isNotNull);
       expect(boldAscii, isNotNull);

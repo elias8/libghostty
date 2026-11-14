@@ -9,8 +9,8 @@ import 'package:libghostty/libghostty.dart'
         RenderRowId,
         RenderState,
         RowIterator,
+        RowSemanticPrompt,
         Selection,
-        SemanticPrompt,
         Terminal;
 import 'package:test/test.dart';
 
@@ -99,7 +99,7 @@ void main() {
         expect(rows.hasStyled, isFalse);
         expect(rows.hasHyperlink, isFalse);
         expect(rows.hasKittyVirtualPlaceholder, isFalse);
-        expect(rows.semanticPrompt, SemanticPrompt.none);
+        expect(rows.semanticPrompt, RowSemanticPrompt.none);
       });
 
       test('reports styled rows', () {

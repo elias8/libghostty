@@ -88,6 +88,36 @@ void main() {
         terminal.dispose();
       });
 
+      test('retries pixels after progressive snapshot restoration', () async {
+        terminal.write(transmitPixel(id: 7, rgb: [0xff, 0x00, 0x00]));
+        final decoder = SnapshotDecoder(terminal.encodeSnapshot());
+        addTearDown(decoder.dispose);
+        final restored = decoder.ready();
+        addTearDown(restored.dispose);
+        final callbacks = <ui.ImageDecoderCallback>[];
+        final cache = KittyImageCache(
+          onImageReady: () {},
+          decodeImage: (_, _, _, _, callback) => callbacks.add(callback),
+        );
+        addTearDown(cache.dispose);
+        final graphics = KittyGraphics.of(restored)!;
+        final pending = graphics.image(7)!;
+        final generation = pending.generation;
+
+        expect(cache.lookup(pending), isA<KittyImagePending>());
+        expect(cache.lookup(pending), isA<KittyImagePending>());
+        expect(callbacks, isEmpty);
+
+        while (decoder.next() != null) {}
+        final completed = graphics.image(7)!;
+        expect(completed.generation, generation);
+        expect(cache.lookup(completed), isA<KittyImagePending>());
+        expect(callbacks, hasLength(1));
+        final decoded = await testImage();
+        callbacks.single(decoded);
+        expect((cache.lookupById(7)! as KittyImageReady).image, same(decoded));
+      });
+
       test(
         'retains prior ready image during valid replacement decode',
         () async {

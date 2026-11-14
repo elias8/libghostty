@@ -100,7 +100,7 @@ final class ScrollInput {
 @internal
 final class TerminalInteractionState {
   final TerminalScreen activeScreen;
-  final MouseTracking mouseTracking;
+  final MouseTrackingMode mouseTracking;
   final bool alternateScroll;
 
   const TerminalInteractionState({

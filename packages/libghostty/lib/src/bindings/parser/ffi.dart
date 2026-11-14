@@ -23,14 +23,17 @@ final class FfiParserBindings implements ParserBindings {
   @override
   String? oscCommandWindowTitle(LibGhosttyHandle command) {
     return using((arena) {
-      final out = arena<Pointer<Char>>();
+      // The native side writes a String struct (pointer + length), so the
+      // output buffer must be a full String, not a bare pointer.
+      final out = arena<native.String>();
       final present = native.ghostty_osc_command_data(
         native.OscCommand.fromAddress(command.value),
         OscCommandData.changeWindowTitleStr,
         out.cast(),
       );
-      if (!present || out.value == nullptr) return null;
-      return out.value.cast<Utf8>().toDartString();
+      if (present == .noValue) return null;
+      checkResultCode(present.value, operation: 'ghostty_osc_command_data');
+      return out.ref.ptr.cast<Utf8>().toDartString(length: out.ref.len);
     });
   }
 
@@ -39,13 +42,16 @@ final class FfiParserBindings implements ParserBindings {
     return using((arena) {
       final nativeCommand = native.OscCommand.fromAddress(command.value);
       final content = arena<native.String>();
-      if (!native.ghostty_osc_command_data(
+      final contentResult = native.ghostty_osc_command_data(
         nativeCommand,
         OscCommandData.unknownContent,
         content.cast(),
-      )) {
-        return null;
-      }
+      );
+      if (contentResult == .noValue) return null;
+      checkResultCode(
+        contentResult.value,
+        operation: 'ghostty_osc_command_data',
+      );
       final truncated = arena<Bool>();
       final hasTruncated = native.ghostty_osc_command_data(
         nativeCommand,
@@ -58,7 +64,15 @@ final class FfiParserBindings implements ParserBindings {
         OscCommandData.unknownTerminator,
         terminator.cast(),
       );
-      if (!hasTruncated || !hasTerminator) return null;
+      if (hasTruncated == .noValue || hasTerminator == .noValue) return null;
+      checkResultCode(
+        hasTruncated.value,
+        operation: 'ghostty_osc_command_data',
+      );
+      checkResultCode(
+        hasTerminator.value,
+        operation: 'ghostty_osc_command_data',
+      );
       return (
         content: Uint8List.fromList(
           content.ref.ptr.asTypedList(content.ref.len),

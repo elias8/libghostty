@@ -188,7 +188,7 @@ final class CellIterator {
   }
 
   /// Semantic content type of the current cell.
-  SemanticContent get semanticContent {
+  CellSemanticContent get semanticContent {
     _ensureMetadata();
     if (_rawCellsAvailable) return _rawCellData.semanticContent;
     return bindings.render.cellGetSemanticContent(_fallbackCell!);
@@ -217,9 +217,9 @@ final class CellIterator {
     return _rawCellData.styleId;
   }
 
-  /// Cell width: [CellWidth.narrow], [CellWidth.wide], or
-  /// [CellWidth.spacerTail] (the second cell of a wide character).
-  CellWidth get wide {
+  /// Cell width: [CellWide.narrow], [CellWide.wide], or
+  /// [CellWide.spacerTail] (the second cell of a wide character).
+  CellWide get wide {
     _ensureMetadata();
     return _rawCellData.wide;
   }

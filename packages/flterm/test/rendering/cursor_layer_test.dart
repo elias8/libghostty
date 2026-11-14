@@ -28,7 +28,7 @@ void main() {
     }
 
     TerminalTheme cursorTheme(
-      CursorShape shape, {
+      CursorStyle shape, {
       Color? color,
       List<String>? fallback,
     }) {
@@ -125,7 +125,7 @@ void main() {
           tester,
           terminal,
           metrics,
-          cursorTheme(CursorShape.block),
+          cursorTheme(CursorStyle.block),
         );
         await expectLater(
           find.byType(TerminalRenderer),
@@ -138,7 +138,7 @@ void main() {
           tester,
           terminal,
           metrics,
-          cursorTheme(CursorShape.blockHollow),
+          cursorTheme(CursorStyle.blockHollow),
         );
         await expectLater(
           find.byType(TerminalRenderer),
@@ -151,7 +151,7 @@ void main() {
           tester,
           terminal,
           metrics,
-          cursorTheme(CursorShape.underline),
+          cursorTheme(CursorStyle.underline),
         );
         await expectLater(
           find.byType(TerminalRenderer),
@@ -164,7 +164,7 @@ void main() {
           tester,
           terminal,
           metrics,
-          cursorTheme(CursorShape.bar),
+          cursorTheme(CursorStyle.bar),
         );
         await expectLater(
           find.byType(TerminalRenderer),
@@ -177,7 +177,7 @@ void main() {
           tester,
           terminal,
           metrics,
-          cursorTheme(CursorShape.block, color: const Color(0xFF00FF88)),
+          cursorTheme(CursorStyle.block, color: const Color(0xFF00FF88)),
         );
         await expectLater(
           find.byType(TerminalRenderer),
@@ -191,7 +191,7 @@ void main() {
           tester,
           terminal,
           metrics,
-          cursorTheme(CursorShape.block),
+          cursorTheme(CursorStyle.block),
         );
         await expectLater(
           find.byType(TerminalRenderer),
@@ -224,7 +224,7 @@ void main() {
           tester,
           terminal,
           metrics,
-          cursorTheme(CursorShape.block),
+          cursorTheme(CursorStyle.block),
         );
         await expectLater(
           find.byType(TerminalRenderer),
@@ -241,7 +241,7 @@ void main() {
           tester,
           terminal,
           metrics,
-          cursorTheme(CursorShape.block),
+          cursorTheme(CursorStyle.block),
         );
         await expectLater(
           find.byType(TerminalRenderer),
@@ -285,7 +285,7 @@ void main() {
           tester,
           terminal,
           metrics,
-          cursorTheme(CursorShape.block, fallback: emojiFallback),
+          cursorTheme(CursorStyle.block, fallback: emojiFallback),
         );
         await expectLater(
           find.byType(TerminalRenderer),
@@ -302,7 +302,7 @@ void main() {
           tester,
           terminal,
           metrics,
-          cursorTheme(CursorShape.blockHollow, fallback: emojiFallback),
+          cursorTheme(CursorStyle.blockHollow, fallback: emojiFallback),
         );
         await expectLater(
           find.byType(TerminalRenderer),
@@ -326,7 +326,7 @@ void main() {
           tester,
           terminal,
           metrics,
-          cursorTheme(CursorShape.block, fallback: cjkFallback),
+          cursorTheme(CursorStyle.block, fallback: cjkFallback),
         );
         await expectLater(
           find.byType(TerminalRenderer),
@@ -343,7 +343,7 @@ void main() {
           tester,
           terminal,
           metrics,
-          cursorTheme(CursorShape.underline, fallback: emojiFallback),
+          cursorTheme(CursorStyle.underline, fallback: emojiFallback),
         );
         await expectLater(
           find.byType(TerminalRenderer),

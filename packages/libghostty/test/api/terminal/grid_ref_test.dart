@@ -1,7 +1,16 @@
 import 'dart:typed_data' show Uint8List;
 
 import 'package:libghostty/libghostty.dart'
-    show CellWidth, GridRef, InvalidValueException, Position, Style, Terminal;
+    show
+        CellWide,
+        GridRef,
+        InvalidValueException,
+        PaletteColor,
+        Position,
+        RgbColor,
+        SgrUnderline,
+        Style,
+        Terminal;
 import 'package:test/test.dart';
 
 import '../../helpers/setup.dart';
@@ -70,6 +79,24 @@ void main() {
         expect(result, isA<Style>());
       });
 
+      test('reads packed attributes and colors', () {
+        terminal.write(
+          Uint8List.fromList('\x1b[1;3;4;9;38;2;1;2;3;48;5;42mB'.codeUnits),
+        );
+        final style = GridRef.at(
+          terminal,
+          const Position(row: 0, col: 5),
+        ).style;
+
+        expect(style.bold, isTrue);
+        expect(style.italic, isTrue);
+        expect(style.strikethrough, isTrue);
+        expect(style.faint, isFalse);
+        expect(style.underline, SgrUnderline.single);
+        expect(style.foreground, const RgbColor(1, 2, 3));
+        expect(style.background, const PaletteColor(42));
+      });
+
       test('reflects bold text', () {
         terminal.write(Uint8List.fromList('\x1b[1mB'.codeUnits));
         final ref = GridRef.at(terminal, const Position(row: 0, col: 5));
@@ -106,7 +133,7 @@ void main() {
 
         final result = ref.wide;
 
-        expect(result, CellWidth.narrow);
+        expect(result, CellWide.narrow);
       });
 
       test('returns wide for a leading wide cell', () {
@@ -115,7 +142,7 @@ void main() {
 
         final result = ref.wide;
 
-        expect(result, CellWidth.wide);
+        expect(result, CellWide.wide);
       });
     });
 

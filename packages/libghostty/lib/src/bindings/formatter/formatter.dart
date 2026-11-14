@@ -7,6 +7,13 @@ abstract interface class FormatterBindings {
 
   void formatterFree(LibGhosttyHandle formatter);
 
+  /// The selection must be refreshed or cleared after any terminal mutation.
+  void formatterSetSelection(
+    LibGhosttyHandle formatter,
+    RawSelection? selection,
+  );
+
+  /// A supplied selection is valid only until the next terminal mutation.
   LibGhosttyHandle formatterTerminalNew(
     LibGhosttyHandle terminal,
     FormatterFormat format, {
@@ -15,4 +22,26 @@ abstract interface class FormatterBindings {
     FormatterExtra extra = const FormatterExtra(),
     RawSelection? selection,
   });
+}
+
+int formatterExtrasMask(FormatterExtra extra) {
+  final flags = [
+    extra.palette,
+    extra.modes,
+    extra.scrollingRegion,
+    extra.tabstops,
+    extra.pwd,
+    extra.keyboard,
+    extra.cursor,
+    extra.style,
+    extra.hyperlink,
+    extra.protection,
+    extra.kittyKeyboard,
+    extra.charsets,
+  ];
+  var mask = 0;
+  for (var i = 0; i < flags.length; i++) {
+    if (flags[i]) mask |= 1 << i;
+  }
+  return mask;
 }

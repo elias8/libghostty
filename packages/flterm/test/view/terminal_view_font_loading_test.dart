@@ -44,7 +44,7 @@ void main() {
           .widget<TerminalRenderer>(find.byType(TerminalRenderer))
           .metrics;
       final loader = FontLoader(family)
-        ..addFont(Future.value(ByteData.sublistView(bytes!)));
+        ..addFont(.syncValue(ByteData.sublistView(bytes!)));
       await tester.runAsync(loader.load);
       await tester.pump();
       await tester.pump();

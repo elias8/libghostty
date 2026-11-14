@@ -5,12 +5,12 @@ import 'dart:typed_data' show Uint8List;
 import 'package:libghostty/libghostty.dart'
     show
         CellIterator,
+        CellSemanticContent,
         GridRef,
         Position,
         RenderState,
         RowIterator,
         Selection,
-        SemanticContent,
         Terminal;
 import 'package:test/test.dart';
 
@@ -169,7 +169,7 @@ void main() {
 
         expect(cells.style.bold, isFalse);
         expect(cells.isProtected, isFalse);
-        expect(cells.semanticContent, SemanticContent.output);
+        expect(cells.semanticContent, CellSemanticContent.output);
         expect(cells.backgroundArgb, isNull);
         expect(cells.foregroundArgb, isNull);
       });

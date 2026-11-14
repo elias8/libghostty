@@ -24,13 +24,18 @@ extension type GhosttyExports(JSObject _) implements JSObject {
 
   /// Query a compile-time build configuration value.
   ///
-  /// The caller must pass a pointer to the correct output type for the
+  /// You must pass a pointer to the correct output type for the
   /// requested data (see GhosttyBuildInfo variants for types).
+  ///
+  /// @snippet c-vt-build-info/src/main.c build-info-query
+  ///
+  /// Full program: @ref c-vt-build-info/src/main.c
   ///
   /// @param data The build info field to query
   /// @param out Pointer to store the result (type depends on data parameter)
-  /// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if the
-  /// data type is invalid
+  /// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if `data` is
+  /// GHOSTTY_BUILD_INFO_INVALID or `out` is NULL, or GHOSTTY_UNSUPPORTED
+  /// if `data` is not known to this version of the library
   ///
   /// @ingroup build_info
   external int ghostty_build_info(int data, Pointer out);
@@ -45,13 +50,20 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// @param cell The cell value
   /// @param data The type of data to extract
   /// @param out Pointer to store the extracted data (type depends on data parameter)
-  /// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if the
-  /// data type is invalid
+  /// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if `data` is
+  /// GHOSTTY_CELL_DATA_INVALID or `out` is NULL, or GHOSTTY_UNSUPPORTED
+  /// if `data` is not known to this version of the library
   ///
   /// @ingroup screen
   external int ghostty_cell_get(JSBigInt cell, int data, Pointer out);
 
   /// Get multiple data fields from a cell in a single call.
+  ///
+  /// Use this when each call into the library is expensive, for example from
+  /// WebAssembly or from another language through its foreign function
+  /// interface. It reads every key in one call. From C in the same process it
+  /// costs the same as calling ghostty_cell_get() once per key, so use
+  /// whichever reads better.
   ///
   /// Each element in the keys array specifies a data kind, and the
   /// corresponding element in the values array receives the result.
@@ -67,7 +79,9 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// documented output type)
   /// @param[out] out_written On return, receives the number of values
   /// successfully written (may be NULL)
-  /// @return GHOSTTY_SUCCESS if all queries succeed
+  /// @return GHOSTTY_SUCCESS if every key succeeds. Otherwise the result of the
+  /// first key that failed, for example GHOSTTY_UNSUPPORTED for a key
+  /// that is not known to this version of the library.
   ///
   /// @ingroup screen
   external int ghostty_cell_get_multi(
@@ -83,8 +97,8 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// The contrast ratio is symmetric and ranges from 1.0 for identical
   /// colors to 21.0 for black and white.
   ///
-  /// @param a The first RGB color (must not be NULL)
-  /// @param b The second RGB color (must not be NULL)
+  /// @param a The first RGB color (NULL returns 0)
+  /// @param b The second RGB color (NULL returns 0)
   /// @return WCAG contrast ratio in the range 1.0 to 21.0
   ///
   /// @ingroup color
@@ -95,7 +109,7 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// Returns a normalized value from 0.0 for black to 1.0 for white.
   /// See https://www.w3.org/TR/WCAG20/#relativeluminancedef.
   ///
-  /// @param color The RGB color (must not be NULL)
+  /// @param color The RGB color (NULL returns 0)
   /// @return Relative luminance in the range 0.0 to 1.0
   ///
   /// @ingroup color
@@ -107,7 +121,7 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// 6x6x6 color cube, and the grayscale ramp.
   ///
   /// @param[out] out The output palette, an array of exactly 256
-  /// GhosttyColorRgb values
+  /// GhosttyColorRgb values (NULL does nothing)
   ///
   /// @ingroup color
   external void ghostty_color_palette_default(Pointer out);
@@ -130,12 +144,12 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// values, or NULL to use Ghostty's default palette
   /// @param skip The palette indices to preserve from @p base, or NULL for
   /// an empty mask
-  /// @param bg The terminal background color (must not be NULL)
-  /// @param fg The terminal foreground color (must not be NULL)
+  /// @param bg The terminal background color (NULL does nothing)
+  /// @param fg The terminal foreground color (NULL does nothing)
   /// @param harmonious Whether light themes keep background-to-foreground
   /// orientation
   /// @param[out] out The output palette, an array of exactly 256
-  /// GhosttyColorRgb values
+  /// GhosttyColorRgb values (NULL does nothing)
   ///
   /// @ingroup color
   external void ghostty_color_palette_generate(
@@ -151,15 +165,15 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   ///
   /// Accepts Ghostty's terminal color syntax: X11 color names, hex colors
   /// in 3-, 6-, 9-, or 12-digit form (the leading # is optional for 3- and
-  /// 6-digit values), and rgb:&lt;red&gt;/&lt;green&gt;/&lt;blue&gt; or
-  /// rgbi:&lt;red&gt;/&lt;green&gt;/&lt;blue&gt; specifications. Leading and trailing spaces
+  /// 6-digit values), and `rgb:&lt;red&gt;/&lt;green&gt;/&lt;blue&gt;` or
+  /// `rgbi:&lt;red&gt;/&lt;green&gt;/&lt;blue&gt;` specifications. Leading and trailing spaces
   /// and tabs are trimmed.
   ///
-  /// @param value The color value bytes (must not be NULL)
+  /// @param value The color value bytes (NULL returns GHOSTTY_INVALID_VALUE)
   /// @param len The length of @p value in bytes
-  /// @param[out] out The parsed RGB color
+  /// @param[out] out The parsed RGB color (NULL returns GHOSTTY_INVALID_VALUE)
   /// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if parsing
-  /// fails or @p value is NULL
+  /// fails or @p value or @p out is NULL
   ///
   /// @ingroup color
   external int ghostty_color_parse(Pointer value, int len, Pointer out);
@@ -171,10 +185,12 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// tabs around N and COLOR are ignored. COLOR accepts the same syntax as
   /// ghostty_color_parse().
   ///
-  /// @param value The palette entry bytes (must not be NULL)
+  /// @param value The palette entry bytes (NULL returns GHOSTTY_INVALID_VALUE)
   /// @param len The length of @p value in bytes
-  /// @param[out] out_index The parsed palette index
-  /// @param[out] out_rgb The parsed RGB color
+  /// @param[out] out_index The parsed palette index (NULL returns
+  /// GHOSTTY_INVALID_VALUE)
+  /// @param[out] out_rgb The parsed RGB color (NULL returns
+  /// GHOSTTY_INVALID_VALUE)
   /// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE on any
   /// failure, including index overflow
   ///
@@ -192,11 +208,11 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// Leading and trailing spaces and tabs are trimmed, and matching is
   /// ASCII case-insensitive. Hex values are not accepted by this function.
   ///
-  /// @param name The color name bytes (must not be NULL)
+  /// @param name The color name bytes (NULL returns GHOSTTY_INVALID_VALUE)
   /// @param len The length of @p name in bytes
-  /// @param[out] out The parsed RGB color
+  /// @param[out] out The parsed RGB color (NULL returns GHOSTTY_INVALID_VALUE)
   /// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if no color
-  /// matches or @p name is NULL
+  /// matches or @p name or @p out is NULL
   ///
   /// @ingroup color
   external int ghostty_color_parse_x11(Pointer name, int len, Pointer out);
@@ -208,7 +224,7 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// This is not the metric used internally by
   /// ghostty_color_palette_generate(), which uses CIELAB lightness.
   ///
-  /// @param color The RGB color (must not be NULL)
+  /// @param color The RGB color (NULL returns 0)
   /// @return Perceived luminance in the range 0.0 to 1.0
   ///
   /// @ingroup color
@@ -220,10 +236,10 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// from a GhosttyColorRgb value. Primarily useful in WebAssembly environments
   /// where accessing struct fields directly is difficult.
   ///
-  /// @param color Pointer to the RGB color value
-  /// @param r Pointer to store the red component (0-255)
-  /// @param g Pointer to store the green component (0-255)
-  /// @param b Pointer to store the blue component (0-255)
+  /// @param color Pointer to the RGB color value (NULL does nothing)
+  /// @param r Pointer to store the red component (0-255), or NULL to skip it
+  /// @param g Pointer to store the green component (0-255), or NULL to skip it
+  /// @param b Pointer to store the blue component (0-255), or NULL to skip it
   ///
   /// @ingroup color
   external void ghostty_color_rgb_get(
@@ -240,20 +256,23 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// The encoded bytes are identical to the terminal's internal CSI ? 996 n
   /// query response.
   ///
-  /// Hosts should gate unsolicited sends on GHOSTTY_MODE_COLOR_SCHEME_REPORT
-  /// (mode 2031) being set, which can be checked via the mode getters.
+  /// Hosts should gate unsolicited sends on GHOSTTY_MODE_REPORT_COLOR_SCHEME
+  /// (mode 2031) being set. Read it with ghostty_terminal_get() and
+  /// GHOSTTY_TERMINAL_DATA_MODE.
   ///
-  /// If the buffer is too small, the function returns GHOSTTY_OUT_OF_SPACE
-  /// and writes the required buffer size to @p out_written. The caller can
-  /// then retry with a sufficiently sized buffer.
+  /// If @p buf is too small, this returns GHOSTTY_OUT_OF_SPACE and sets
+  /// @p out_written to the size needed. The buffer may then hold part of the
+  /// sequence, which you should discard. To get the size without encoding
+  /// anything, pass NULL for @p buf and 0 for @p buf_len.
   ///
   /// @param scheme The color scheme to encode
-  /// @param buf Output buffer to write the encoded sequence into (may be NULL)
-  /// @param buf_len Size of the output buffer in bytes
-  /// @param[out] out_written On success, the number of bytes written. On
-  /// GHOSTTY_OUT_OF_SPACE, the required buffer size.
+  /// @param buf Buffer to write the sequence into. May be NULL if @p buf_len
+  /// is 0.
+  /// @param buf_len Size of @p buf in bytes
+  /// @param[out] out_written The number of bytes written, or the size needed
+  /// if the result is GHOSTTY_OUT_OF_SPACE
   /// @return GHOSTTY_SUCCESS on success, GHOSTTY_OUT_OF_SPACE if the buffer
-  /// is too small
+  /// is too small, or GHOSTTY_INVALID_VALUE if @p out_written is NULL
   external int ghostty_color_scheme_report_encode(
     int scheme,
     Pointer buf,
@@ -280,6 +299,9 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// exact supported spellings from rgb.txt; ghostty_color_parse_x11() also
   /// matches them case-insensitively.
   ///
+  /// A library built without the color feature returns an empty table, so its
+  /// first entry is the terminator and the loop below does nothing.
+  ///
   /// @code{.c}
   /// for (const GhosttyColorX11Entry* e = ghostty_color_x11_names();
   /// e->name != NULL;
@@ -298,17 +320,20 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// Encodes a focus gained (CSI I) or focus lost (CSI O) report into the
   /// provided buffer.
   ///
-  /// If the buffer is too small, the function returns GHOSTTY_OUT_OF_SPACE
-  /// and writes the required buffer size to @p out_written. The caller can
-  /// then retry with a sufficiently sized buffer.
+  /// If @p buf is too small, this returns GHOSTTY_OUT_OF_SPACE and sets
+  /// @p out_written to the size needed. The buffer may then hold part of the
+  /// sequence, which you should discard. To get the size without encoding
+  /// anything, pass NULL for @p buf and 0 for @p buf_len.
   ///
   /// @param event The focus event to encode
-  /// @param buf Output buffer to write the encoded sequence into (may be NULL)
-  /// @param buf_len Size of the output buffer in bytes
-  /// @param[out] out_written On success, the number of bytes written. On
-  /// GHOSTTY_OUT_OF_SPACE, the required buffer size.
+  /// @param buf Buffer to write the sequence into. May be NULL if @p buf_len
+  /// is 0.
+  /// @param buf_len Size of @p buf in bytes
+  /// @param[out] out_written The number of bytes written, or the size needed
+  /// if the result is GHOSTTY_OUT_OF_SPACE
   /// @return GHOSTTY_SUCCESS on success, GHOSTTY_OUT_OF_SPACE if the buffer
-  /// is too small
+  /// is too small, or GHOSTTY_INVALID_VALUE if @p event is not a known
+  /// focus event or @p out_written is NULL
   external int ghostty_focus_encode(
     int event,
     Pointer buf,
@@ -325,9 +350,9 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   ///
   /// If an error occurs, the writer may already contain a partial formatted
   /// output. The operation cannot be resumed from that partial output. This
-  /// function does not flush or make the caller's destination durable.
+  /// function does not flush or make your destination durable.
   ///
-  /// @param formatter The formatter handle (must not be NULL)
+  /// @param formatter The formatter handle (NULL returns GHOSTTY_INVALID_VALUE)
   /// @param writer Destination writer whose write callback must not be NULL
   /// @return GHOSTTY_SUCCESS on success, GHOSTTY_IO_ERROR if the writer rejects
   /// output, GHOSTTY_LIMIT_EXCEEDED if output accounting overflows, or
@@ -340,18 +365,20 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   ///
   /// Each call formats the current terminal state. The buffer is allocated
   /// using the provided allocator (or the default allocator if NULL).
-  /// The caller is responsible for freeing the returned buffer with
+  /// You are responsible for freeing the returned buffer with
   /// ghostty_free(), passing the same allocator (or NULL for the default)
   /// that was used for the allocation.
   /// Empty output returns GHOSTTY_SUCCESS with *out_ptr set to NULL and
   /// *out_len set to zero. This result can be passed to ghostty_free().
   ///
-  /// @param formatter The formatter handle (must not be NULL)
+  /// @param formatter The formatter handle (NULL returns GHOSTTY_INVALID_VALUE)
   /// @param allocator Pointer to allocator, or NULL to use the default allocator
-  /// @param out_ptr Pointer to receive the allocated buffer
-  /// @param out_len Pointer to receive the length of the output in bytes
+  /// @param out_ptr Pointer to receive the allocated buffer (NULL returns
+  /// GHOSTTY_INVALID_VALUE)
+  /// @param out_len Pointer to receive the length of the output in bytes (NULL
+  /// returns GHOSTTY_INVALID_VALUE)
   /// @return GHOSTTY_SUCCESS on success, GHOSTTY_OUT_OF_MEMORY on allocation
-  /// failure
+  /// failure, GHOSTTY_INVALID_VALUE if an output pointer is NULL
   ///
   /// @ingroup formatter
   external int ghostty_formatter_format_alloc(
@@ -361,22 +388,36 @@ extension type GhosttyExports(JSObject _) implements JSObject {
     Pointer out_len,
   );
 
-  /// Run the formatter and produce output into the caller-provided buffer.
+  /// Run the formatter and produce output into your buffer.
   ///
   /// Each call formats the current terminal state. Pass NULL for buf to
-  /// query the required buffer size without writing any output; in that case
-  /// out_written receives the required size and the return value is
-  /// GHOSTTY_OUT_OF_SPACE.
+  /// query the required buffer size without writing any output. out_written
+  /// receives the required size and the return value is GHOSTTY_OUT_OF_SPACE.
+  ///
+  /// Empty output needs no space, so that query returns GHOSTTY_SUCCESS with a
+  /// size of 0 instead. Handle both results:
+  ///
+  /// @code{.c}
+  /// size_t needed = 0;
+  /// GhosttyResult result = ghostty_formatter_format_buf(formatter, NULL, 0, &needed);
+  /// if (result == GHOSTTY_SUCCESS) return; // Nothing to format.
+  /// if (result != GHOSTTY_OUT_OF_SPACE) return; // A real error.
+  ///
+  /// uint8_t* buf = malloc(needed);
+  /// size_t written = 0;
+  /// result = ghostty_formatter_format_buf(formatter, buf, needed, &written);
+  /// @endcode
   ///
   /// If the buffer is too small, returns GHOSTTY_OUT_OF_SPACE and sets
-  /// out_written to the required size. The caller can then retry with a
+  /// out_written to the required size. You can then retry with a
   /// larger buffer.
   ///
-  /// @param formatter The formatter handle (must not be NULL)
+  /// @param formatter The formatter handle (NULL returns GHOSTTY_INVALID_VALUE)
   /// @param buf Pointer to the output buffer, or NULL to query size
   /// @param buf_len Length of the output buffer in bytes
   /// @param out_written Pointer to receive the number of bytes written,
-  /// or the required size on failure
+  /// or the required size on failure (NULL returns
+  /// GHOSTTY_INVALID_VALUE)
   /// @return GHOSTTY_SUCCESS on success, or an error code on failure
   ///
   /// @ingroup formatter
@@ -397,15 +438,73 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// @ingroup formatter
   external void ghostty_formatter_free(int formatter);
 
+  /// Read the current value of a formatter option.
+  ///
+  /// `out` points to a variable of the type listed on the option. On success
+  /// the formatter writes the option's value there.
+  ///
+  /// @code{.c}
+  /// bool trim;
+  /// ghostty_formatter_get(formatter, GHOSTTY_FORMATTER_OPT_TRIM, &trim);
+  /// @endcode
+  ///
+  /// @param formatter The formatter handle (NULL returns GHOSTTY_INVALID_VALUE)
+  /// @param option The option to read
+  /// @param out Pointer that receives the value (NULL returns GHOSTTY_INVALID_VALUE)
+  /// @return GHOSTTY_SUCCESS on success, GHOSTTY_NO_VALUE if the option is
+  /// not set (only possible for GHOSTTY_FORMATTER_OPT_SELECTION),
+  /// GHOSTTY_INVALID_VALUE if `formatter` or `out` is NULL, or
+  /// GHOSTTY_UNSUPPORTED if `option` is not known to this version of
+  /// the library
+  ///
+  /// @ingroup formatter
+  external int ghostty_formatter_get(int formatter, int option, Pointer out);
+
+  /// Set a formatter option.
+  ///
+  /// `value` points to the option's new value. Its type is listed on each
+  /// GhosttyFormatterOption. The formatter copies the value, so it only has
+  /// to be valid during the call. The change applies to every format call
+  /// after this one.
+  ///
+  /// Passing NULL for `value` puts the option back to its default, the same
+  /// value a new formatter starts with.
+  ///
+  /// @code{.c}
+  /// GhosttyFormatterFormat emit = GHOSTTY_FORMATTER_FORMAT_HTML;
+  /// ghostty_formatter_set(formatter, GHOSTTY_FORMATTER_OPT_EMIT, &emit);
+  ///
+  /// // Later, go back to the default (plain text).
+  /// ghostty_formatter_set(formatter, GHOSTTY_FORMATTER_OPT_EMIT, NULL);
+  /// @endcode
+  ///
+  /// If the call fails, the option keeps its previous value.
+  ///
+  /// @param formatter The formatter handle (NULL returns GHOSTTY_INVALID_VALUE)
+  /// @param option The option to set
+  /// @param value Pointer to the new value, or NULL to reset the option to its
+  /// default
+  /// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if `formatter`
+  /// is NULL or the value is not valid for the option (such as an
+  /// unknown format, an extras bit with no meaning, or a selection
+  /// with a zeroed grid reference), or GHOSTTY_UNSUPPORTED if
+  /// `option` is not known to this version of the library
+  ///
+  /// @ingroup formatter
+  external int ghostty_formatter_set(int formatter, int option, Pointer value);
+
   /// Create a formatter for a terminal's active screen.
   ///
   /// The terminal must outlive the formatter. The formatter stores a borrowed
   /// reference to the terminal and reads its current state on each format call.
   ///
+  /// The new formatter starts with the default for every option, as listed on
+  /// GhosttyFormatterOption. Change them with ghostty_formatter_set().
+  ///
   /// @param allocator Pointer to allocator, or NULL to use the default allocator
-  /// @param formatter Pointer to store the created formatter handle
-  /// @param terminal The terminal to format (must not be NULL)
-  /// @param options Formatting options
+  /// @param formatter Pointer to store the created formatter handle (NULL
+  /// returns GHOSTTY_INVALID_VALUE)
+  /// @param terminal The terminal to format (NULL returns GHOSTTY_INVALID_VALUE)
   /// @return GHOSTTY_SUCCESS on success, or an error code on failure
   ///
   /// @ingroup formatter
@@ -413,7 +512,6 @@ extension type GhosttyExports(JSObject _) implements JSObject {
     Pointer allocator,
     Pointer formatter,
     int terminal,
-    int options,
   );
 
   /// Free memory that was allocated by a libghostty-vt function.
@@ -422,13 +520,10 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// ghostty_formatter_format_alloc(). Pass the same allocator that was
   /// used for the allocation, or NULL if the default allocator was used.
   ///
-  /// On platforms where the library's internal allocator differs from the
-  /// consumer's C runtime (e.g. Windows, where Zig's libc and MSVC's CRT
-  /// maintain separate heaps), calling the standard C free() on memory
-  /// allocated by the library causes undefined behavior. This function
-  /// guarantees the correct allocator is used regardless of platform.
+  /// Use this instead of the C `free()`, which can use a different heap than
+  /// the library. See @ref memory-buffers for why.
   ///
-  /// It is safe to pass a NULL pointer; the call is a no-op in that case.
+  /// Passing a NULL `ptr` does nothing.
   ///
   /// @param allocator Pointer to the allocator that was used to allocate the
   /// memory, or NULL if the default allocator was used
@@ -441,7 +536,8 @@ extension type GhosttyExports(JSObject _) implements JSObject {
 
   /// Get the cell from a grid reference.
   ///
-  /// @param ref Pointer to the grid reference
+  /// @param ref Pointer to the grid reference (NULL returns
+  /// GHOSTTY_INVALID_VALUE)
   /// @param[out] out_cell On success, set to the cell at the ref's position (may be NULL)
   /// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if the ref's
   /// node is NULL
@@ -453,18 +549,41 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// position.
   ///
   /// Writes the full grapheme cluster (the cell's primary codepoint followed by
-  /// any combining codepoints) into the provided buffer. If the cell has no text,
-  /// out_len is set to 0 and GHOSTTY_SUCCESS is returned.
+  /// any combining codepoints) into the provided buffer. Both @p buf_len and
+  /// @p out_written count codepoints, not bytes.
   ///
-  /// If the buffer is too small (or NULL), the function returns
-  /// GHOSTTY_OUT_OF_SPACE and writes the required number of codepoints to
-  /// out_len. The caller can then retry with a sufficiently sized buffer.
+  /// If @p buf is too small, this returns GHOSTTY_OUT_OF_SPACE, sets
+  /// @p out_written to the number of codepoints needed, and leaves @p buf
+  /// unchanged. To get the count without copying anything, pass NULL for
+  /// @p buf and 0 for @p buf_len. A cell with no text returns GHOSTTY_SUCCESS
+  /// with @p out_written set to 0.
   ///
-  /// @param ref Pointer to the grid reference
-  /// @param buf Output buffer of uint32_t codepoints (may be NULL)
-  /// @param buf_len Number of uint32_t elements in the buffer
-  /// @param[out] out_len On success, the number of codepoints written. On
-  /// GHOSTTY_OUT_OF_SPACE, the required buffer size in codepoints.
+  /// Most cells hold a single codepoint, so a small fixed buffer usually
+  /// works. Fall back to a heap buffer for longer clusters:
+  ///
+  /// @code{.c}
+  /// uint32_t stack[8];
+  /// uint32_t *codepoints = stack;
+  /// size_t count = 0;
+  /// GhosttyResult result = ghostty_grid_ref_graphemes(&ref, stack, 8, &count);
+  /// if (result == GHOSTTY_OUT_OF_SPACE) {
+  /// codepoints = malloc(count * sizeof(uint32_t));
+  /// result = ghostty_grid_ref_graphemes(&ref, codepoints, count, &count);
+  /// }
+  /// if (result == GHOSTTY_SUCCESS) {
+  /// // codepoints[0] through codepoints[count - 1] hold the cluster
+  /// }
+  /// if (codepoints != stack) free(codepoints);
+  /// @endcode
+  ///
+  /// @param ref Pointer to the grid reference (NULL returns
+  /// GHOSTTY_INVALID_VALUE)
+  /// @param buf Buffer to write the codepoints into. May be NULL if @p buf_len
+  /// is 0.
+  /// @param buf_len Number of uint32_t elements @p buf can hold
+  /// @param[out] out_written The number of codepoints written, or the number
+  /// needed if the result is GHOSTTY_OUT_OF_SPACE (NULL returns
+  /// GHOSTTY_INVALID_VALUE)
   /// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if the ref's
   /// node is NULL, GHOSTTY_OUT_OF_SPACE if the buffer is too small
   ///
@@ -473,23 +592,40 @@ extension type GhosttyExports(JSObject _) implements JSObject {
     Pointer ref,
     Pointer buf,
     int buf_len,
-    Pointer out_len,
+    Pointer out_written,
   );
 
   /// Get the hyperlink URI for the cell at the grid reference's position.
   ///
-  /// Writes the URI bytes into the provided buffer. If the cell has no
-  /// hyperlink, out_len is set to 0 and GHOSTTY_SUCCESS is returned.
+  /// Writes the URI bytes into the provided buffer.
   ///
-  /// If the buffer is too small (or NULL), the function returns
-  /// GHOSTTY_OUT_OF_SPACE and writes the required number of bytes to
-  /// out_len. The caller can then retry with a sufficiently sized buffer.
+  /// The URI is not NUL-terminated.
   ///
-  /// @param ref Pointer to the grid reference
-  /// @param buf Output buffer for the URI bytes (may be NULL)
-  /// @param buf_len Size of the output buffer in bytes
-  /// @param[out] out_len On success, the number of bytes written. On
-  /// GHOSTTY_OUT_OF_SPACE, the required buffer size in bytes.
+  /// If @p buf is too small, this returns GHOSTTY_OUT_OF_SPACE, sets
+  /// @p out_written to the size needed, and leaves @p buf unchanged. To get
+  /// the size without copying anything, pass NULL for @p buf and 0 for
+  /// @p buf_len. A cell with no hyperlink returns GHOSTTY_SUCCESS with
+  /// @p out_written set to 0.
+  ///
+  /// URIs can be long, so asking for the size first is often simplest:
+  ///
+  /// @code{.c}
+  /// size_t len = 0;
+  /// if (ghostty_grid_ref_hyperlink_uri(&ref, NULL, 0, &len) == GHOSTTY_OUT_OF_SPACE) {
+  /// uint8_t *uri = malloc(len);
+  /// ghostty_grid_ref_hyperlink_uri(&ref, uri, len, &len);
+  /// // uri holds len bytes
+  /// free(uri);
+  /// }
+  /// @endcode
+  ///
+  /// @param ref Pointer to the grid reference (NULL returns
+  /// GHOSTTY_INVALID_VALUE)
+  /// @param buf Buffer to write the URI into. May be NULL if @p buf_len is 0.
+  /// @param buf_len Size of @p buf in bytes
+  /// @param[out] out_written The number of bytes written, or the size needed
+  /// if the result is GHOSTTY_OUT_OF_SPACE (NULL returns
+  /// GHOSTTY_INVALID_VALUE)
   /// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if the ref's
   /// node is NULL, GHOSTTY_OUT_OF_SPACE if the buffer is too small
   ///
@@ -498,12 +634,13 @@ extension type GhosttyExports(JSObject _) implements JSObject {
     Pointer ref,
     Pointer buf,
     int buf_len,
-    Pointer out_len,
+    Pointer out_written,
   );
 
   /// Get the row from a grid reference.
   ///
-  /// @param ref Pointer to the grid reference
+  /// @param ref Pointer to the grid reference (NULL returns
+  /// GHOSTTY_INVALID_VALUE)
   /// @param[out] out_row On success, set to the row at the ref's position (may be NULL)
   /// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if the ref's
   /// node is NULL
@@ -513,7 +650,8 @@ extension type GhosttyExports(JSObject _) implements JSObject {
 
   /// Get the style of the cell at the grid reference's position.
   ///
-  /// @param ref Pointer to the grid reference
+  /// @param ref Pointer to the grid reference (NULL returns
+  /// GHOSTTY_INVALID_VALUE)
   /// @param[out] out_style On success, set to the cell's style (may be NULL)
   /// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if the ref's
   /// node is NULL
@@ -527,30 +665,39 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// the encoder's current options. The sequence is written to the provided buffer.
   ///
   /// Not all key events produce output. For example, unmodified modifier keys
-  /// typically don't generate escape sequences. Check the out_len parameter to
-  /// determine if any data was written.
+  /// typically don't generate escape sequences. For those events this returns
+  /// GHOSTTY_SUCCESS with @p out_written set to 0.
   ///
-  /// If the output buffer is too small, this function returns GHOSTTY_OUT_OF_SPACE
-  /// and out_len will contain the required buffer size. The caller can then
-  /// allocate a larger buffer and call the function again.
+  /// If @p buf is too small, this returns GHOSTTY_OUT_OF_SPACE and sets
+  /// @p out_written to the size needed. The buffer may then hold part of the
+  /// sequence, which you should discard. To get the size without encoding
+  /// anything, pass NULL for @p buf and 0 for @p buf_len. An event with no
+  /// output still returns GHOSTTY_SUCCESS in that case, because it needs no
+  /// space.
   ///
-  /// @param encoder The encoder handle, must not be NULL
-  /// @param event The key event to encode, must not be NULL
-  /// @param out_buf Buffer to write the encoded sequence to
-  /// @param out_buf_size Size of the output buffer in bytes
-  /// @param out_len Pointer to store the number of bytes written (may be NULL)
+  /// @param encoder The encoder handle (NULL returns GHOSTTY_INVALID_VALUE)
+  /// @param event The key event to encode (NULL returns GHOSTTY_INVALID_VALUE)
+  /// @param buf Buffer to write the sequence into. May be NULL if @p buf_len
+  /// is 0.
+  /// @param buf_len Size of @p buf in bytes
+  /// @param[out] out_written The number of bytes written, or the size needed
+  /// if the result is GHOSTTY_OUT_OF_SPACE. NULL returns GHOSTTY_INVALID_VALUE.
   /// @return GHOSTTY_SUCCESS on success, GHOSTTY_OUT_OF_SPACE if buffer too small, or other error code
   ///
   /// ## Example: Calculate required buffer size
   ///
   /// @code{.c}
-  /// // Query the required size with a NULL buffer (always returns OUT_OF_SPACE)
+  /// // Query the required size with a NULL buffer
   /// size_t required = 0;
   /// GhosttyResult result = ghostty_key_encoder_encode(encoder, event, NULL, 0, &required);
+  /// if (result == GHOSTTY_SUCCESS) {
+  /// // This event produces no output, so there is nothing to send
+  /// return;
+  /// }
   /// assert(result == GHOSTTY_OUT_OF_SPACE);
   ///
   /// // Allocate buffer of required size
-  /// char *buf = malloc(required);
+  /// uint8_t *buf = malloc(required);
   ///
   /// // Encode with properly sized buffer
   /// size_t written = 0;
@@ -566,7 +713,7 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   ///
   /// @code{.c}
   /// // Most escape sequences are short, so a static buffer often suffices
-  /// char buf[128];
+  /// uint8_t buf[128];
   /// size_t written = 0;
   /// GhosttyResult result = ghostty_key_encoder_encode(encoder, event, buf, sizeof(buf), &written);
   ///
@@ -575,7 +722,7 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// write(pty_fd, buf, written);
   /// } else if (result == GHOSTTY_OUT_OF_SPACE) {
   /// // Buffer too small, written contains required size
-  /// char *dynamic_buf = malloc(written);
+  /// uint8_t *dynamic_buf = malloc(written);
   /// result = ghostty_key_encoder_encode(encoder, event, dynamic_buf, written, &written);
   /// assert(result == GHOSTTY_SUCCESS);
   /// write(pty_fd, dynamic_buf, written);
@@ -587,9 +734,9 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   external int ghostty_key_encoder_encode(
     int encoder,
     int event,
-    Pointer out_buf,
-    int out_buf_size,
-    Pointer out_len,
+    Pointer buf,
+    int buf_len,
+    Pointer out_written,
   );
 
   /// Free a key encoder instance.
@@ -605,11 +752,12 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// Create a new key encoder instance.
   ///
   /// Creates a new key encoder with default options. The encoder can be configured
-  /// using ghostty_key_encoder_setopt() and must be freed using
+  /// using ghostty_key_encoder_set() and must be freed using
   /// ghostty_key_encoder_free() when no longer needed.
   ///
   /// @param allocator Pointer to the allocator to use for memory management, or NULL to use the default allocator
-  /// @param encoder Pointer to store the created encoder handle
+  /// @param encoder Pointer to store the created encoder handle (NULL returns
+  /// GHOSTTY_INVALID_VALUE)
   /// @return GHOSTTY_SUCCESS on success, or an error code on failure
   ///
   /// @ingroup key
@@ -624,41 +772,53 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   ///
   /// If you are using a terminal instance, you can set the key encoding
   /// options based on the active terminal state (e.g. legacy vs Kitty mode
-  /// and associated flags) with ghostty_key_encoder_setopt_from_terminal().
+  /// and associated flags) with ghostty_key_encoder_set_from_terminal().
   ///
-  /// A null pointer value does nothing. It does not reset the value to the
-  /// default. The setopt call will do nothing.
+  /// Passing NULL for `value` resets the option to its default, the same
+  /// value a new encoder starts with. Each option's default is listed on
+  /// GhosttyKeyEncoderOption.
   ///
-  /// @param encoder The encoder handle, must not be NULL
+  /// @code{.c}
+  /// bool enabled = true;
+  /// ghostty_key_encoder_set(
+  /// encoder, GHOSTTY_KEY_ENCODER_OPT_CURSOR_KEY_APPLICATION, &enabled);
+  ///
+  /// // Later, put the option back to its default (false).
+  /// ghostty_key_encoder_set(
+  /// encoder, GHOSTTY_KEY_ENCODER_OPT_CURSOR_KEY_APPLICATION, NULL);
+  /// @endcode
+  ///
+  /// @param encoder The encoder handle (NULL returns GHOSTTY_INVALID_VALUE)
   /// @param option The option to set
-  /// @param value Pointer to the value to set (type depends on the option)
+  /// @param value Pointer to the value to set (type depends on the option), or
+  /// NULL to reset the option to its default
+  /// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if `encoder` is
+  /// NULL or the value is out of range (such as an unknown
+  /// GhosttyOptionAsAlt), or GHOSTTY_UNSUPPORTED if `option` is not
+  /// known to this version of the library
   ///
   /// @ingroup key
-  external void ghostty_key_encoder_setopt(
-    int encoder,
-    int option,
-    Pointer value,
-  );
+  external int ghostty_key_encoder_set(int encoder, int option, Pointer value);
 
   /// Set encoder options from a terminal's current state.
   ///
   /// Reads the terminal's current modes and flags and applies them to the
   /// encoder's options. This sets cursor key application mode, keypad mode,
-  /// alt escape prefix, modifyOtherKeys state, and Kitty keyboard protocol
-  /// flags from the terminal state.
+  /// backarrow key mode, ignore-keypad-with-numlock, alt escape prefix,
+  /// modifyOtherKeys state, and Kitty keyboard protocol flags from the terminal
+  /// state.
   ///
   /// Note that the `macos_option_as_alt` option cannot be determined from
   /// terminal state and is reset to `GHOSTTY_OPTION_AS_ALT_FALSE` by this
-  /// call. Use ghostty_key_encoder_setopt() to set it afterward if needed.
+  /// call. Use ghostty_key_encoder_set() to set it afterward if needed.
   ///
-  /// @param encoder The encoder handle, must not be NULL
-  /// @param terminal The terminal handle, must not be NULL
+  /// @param encoder The encoder handle
+  /// @param terminal The terminal handle
+  /// @return GHOSTTY_SUCCESS on success, or GHOSTTY_INVALID_VALUE if `encoder`
+  /// or `terminal` is NULL. On error the encoder is not changed.
   ///
   /// @ingroup key
-  external void ghostty_key_encoder_setopt_from_terminal(
-    int encoder,
-    int terminal,
-  );
+  external int ghostty_key_encoder_set_from_terminal(int encoder, int terminal);
 
   /// Free a key event instance.
   ///
@@ -672,62 +832,75 @@ extension type GhosttyExports(JSObject _) implements JSObject {
 
   /// Get the key action (press, release, repeat).
   ///
-  /// @param event The key event handle, must not be NULL
-  /// @return The key action
+  /// @param event The key event handle
+  /// @return The key action, or GHOSTTY_KEY_ACTION_RELEASE if `event` is NULL
   ///
   /// @ingroup key
   external int ghostty_key_event_get_action(int event);
 
   /// Get whether the key event is part of a composition sequence.
   ///
-  /// @param event The key event handle, must not be NULL
-  /// @return Whether the key event is part of a composition sequence
+  /// @param event The key event handle
+  /// @return Whether the key event is part of a composition sequence, or false
+  /// if `event` is NULL
   ///
   /// @ingroup key
   external int ghostty_key_event_get_composing(int event);
 
   /// Get the consumed modifiers bitmask.
   ///
-  /// @param event The key event handle, must not be NULL
-  /// @return The consumed modifiers bitmask
+  /// @param event The key event handle
+  /// @return The consumed modifiers bitmask, or 0 (no modifiers) if `event` is
+  /// NULL
   ///
   /// @ingroup key
   external int ghostty_key_event_get_consumed_mods(int event);
 
   /// Get the physical key code.
   ///
-  /// @param event The key event handle, must not be NULL
-  /// @return The physical key code
+  /// @param event The key event handle
+  /// @return The physical key code, or GHOSTTY_KEY_UNIDENTIFIED if `event` is
+  /// NULL
   ///
   /// @ingroup key
   external int ghostty_key_event_get_key(int event);
 
   /// Get the modifier keys bitmask.
   ///
-  /// @param event The key event handle, must not be NULL
-  /// @return The modifier keys bitmask
+  /// @param event The key event handle
+  /// @return The modifier keys bitmask, or 0 (no modifiers) if `event` is NULL
   ///
   /// @ingroup key
   external int ghostty_key_event_get_mods(int event);
 
   /// Get the unshifted Unicode codepoint.
   ///
-  /// @param event The key event handle, must not be NULL
-  /// @return The unshifted Unicode codepoint
+  /// @param event The key event handle
+  /// @return The unshifted Unicode codepoint, or 0 if `event` is NULL
   ///
   /// @ingroup key
   external int ghostty_key_event_get_unshifted_codepoint(int event);
 
   /// Get the UTF-8 text generated by the key event.
   ///
-  /// The returned pointer is valid until the event is freed or the UTF-8 text is modified.
+  /// The event does not copy its text, so the returned string points at the
+  /// same bytes that were passed to ghostty_key_event_set_utf8(). It stays
+  /// valid while those bytes do, until the event is freed or its text is set
+  /// again.
   ///
-  /// @param event The key event handle, must not be NULL
-  /// @param len Pointer to store the length of the UTF-8 text in bytes (may be NULL)
-  /// @return The UTF-8 text (or NULL for empty)
+  /// The bytes are not null-terminated. Always use the length:
+  ///
+  /// @code{.c}
+  /// GhosttyString text = ghostty_key_event_get_utf8(event);
+  /// printf("%.*s\n", (int)text.len, (const char *)text.ptr);
+  /// @endcode
+  ///
+  /// @param event The key event handle
+  /// @return The UTF-8 text. If the event has no text or `event` is NULL, the
+  /// string has a length of zero.
   ///
   /// @ingroup key
-  external Pointer ghostty_key_event_get_utf8(int event, Pointer len);
+  external void ghostty_key_event_get_utf8(Pointer sret, int event);
 
   /// Create a new key event instance.
   ///
@@ -735,7 +908,8 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// ghostty_key_event_free() when no longer needed.
   ///
   /// @param allocator Pointer to the allocator to use for memory management, or NULL to use the default allocator
-  /// @param event Pointer to store the created key event handle
+  /// @param event Pointer to store the created key event handle (NULL returns
+  /// GHOSTTY_INVALID_VALUE)
   /// @return GHOSTTY_SUCCESS on success, or an error code on failure
   ///
   /// @ingroup key
@@ -743,54 +917,68 @@ extension type GhosttyExports(JSObject _) implements JSObject {
 
   /// Set the key action (press, release, repeat).
   ///
-  /// @param event The key event handle, must not be NULL
+  /// @param event The key event handle
   /// @param action The action to set
+  /// @return GHOSTTY_SUCCESS on success, or GHOSTTY_INVALID_VALUE if `event` is
+  /// NULL or `action` is not a GhosttyKeyAction value this version of the
+  /// library knows. On error the event is not changed.
   ///
   /// @ingroup key
-  external void ghostty_key_event_set_action(int event, int action);
+  external int ghostty_key_event_set_action(int event, int action);
 
   /// Set whether the key event is part of a composition sequence.
   ///
-  /// @param event The key event handle, must not be NULL
+  /// @param event The key event handle
   /// @param composing Whether the key event is part of a composition sequence
+  /// @return GHOSTTY_SUCCESS on success, or GHOSTTY_INVALID_VALUE if `event`
+  /// is NULL. On error the event is not changed.
   ///
   /// @ingroup key
-  external void ghostty_key_event_set_composing(int event, int composing);
+  external int ghostty_key_event_set_composing(int event, int composing);
 
   /// Set the consumed modifiers bitmask.
   ///
-  /// @param event The key event handle, must not be NULL
+  /// @param event The key event handle
   /// @param consumed_mods The consumed modifiers bitmask to set
+  /// @return GHOSTTY_SUCCESS on success, or GHOSTTY_INVALID_VALUE if `event`
+  /// is NULL. On error the event is not changed.
   ///
   /// @ingroup key
-  external void ghostty_key_event_set_consumed_mods(
+  external int ghostty_key_event_set_consumed_mods(
     int event,
     int consumed_mods,
   );
 
   /// Set the physical key code.
   ///
-  /// @param event The key event handle, must not be NULL
+  /// @param event The key event handle
   /// @param key The physical key code to set
+  /// @return GHOSTTY_SUCCESS on success, or GHOSTTY_INVALID_VALUE if `event` is
+  /// NULL or `key` is not a GhosttyKey value this version of the
+  /// library knows. On error the event is not changed.
   ///
   /// @ingroup key
-  external void ghostty_key_event_set_key(int event, int key);
+  external int ghostty_key_event_set_key(int event, int key);
 
   /// Set the modifier keys bitmask.
   ///
-  /// @param event The key event handle, must not be NULL
+  /// @param event The key event handle
   /// @param mods The modifier keys bitmask to set
+  /// @return GHOSTTY_SUCCESS on success, or GHOSTTY_INVALID_VALUE if `event`
+  /// is NULL. On error the event is not changed.
   ///
   /// @ingroup key
-  external void ghostty_key_event_set_mods(int event, int mods);
+  external int ghostty_key_event_set_mods(int event, int mods);
 
   /// Set the unshifted Unicode codepoint.
   ///
-  /// @param event The key event handle, must not be NULL
+  /// @param event The key event handle
   /// @param codepoint The unshifted Unicode codepoint to set
+  /// @return GHOSTTY_SUCCESS on success, or GHOSTTY_INVALID_VALUE if `event`
+  /// is NULL. On error the event is not changed.
   ///
   /// @ingroup key
-  external void ghostty_key_event_set_unshifted_codepoint(
+  external int ghostty_key_event_set_unshifted_codepoint(
     int event,
     int codepoint,
   );
@@ -801,29 +989,92 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// The encoder derives modifier sequences from the logical key and mods
   /// bitmask, not from this text. Do not pass C0 control characters
   /// (U+0000-U+001F, U+007F) or platform function key codes (e.g. macOS PUA
-  /// U+F700-U+F8FF); pass NULL instead and let the encoder use the logical key.
+  /// U+F700-U+F8FF). For those keys, pass an empty string and the encoder will
+  /// use the logical key instead.
   ///
-  /// The key event does NOT take ownership of the text pointer. The caller
-  /// must ensure the string remains valid for the lifetime needed by the event.
+  /// A string with a length of zero clears the text. The library does not read
+  /// its pointer, so the pointer may be NULL.
   ///
-  /// @param event The key event handle, must not be NULL
-  /// @param utf8 The UTF-8 text to set (or NULL for empty)
-  /// @param len Length of the UTF-8 text in bytes
+  /// The key event does not copy the text. The bytes must stay valid until the
+  /// event is freed or its text is set again. String literals and buffers that
+  /// outlive the event are both fine.
+  ///
+  /// @code{.c}
+  /// // Set the text for a key that produced "a".
+  /// const char *text = "a";
+  /// GhosttyString utf8 = {
+  /// .ptr = (const uint8_t *)text,
+  /// .len = strlen(text),
+  /// };
+  /// GhosttyResult result = ghostty_key_event_set_utf8(event, utf8);
+  ///
+  /// // Clear the text, for example for a function key.
+  /// result = ghostty_key_event_set_utf8(event, (GhosttyString){0});
+  /// @endcode
+  ///
+  /// @param event The key event handle
+  /// @param utf8 The UTF-8 text to set. It does not need to be null-terminated.
+  /// @return GHOSTTY_SUCCESS on success, or GHOSTTY_INVALID_VALUE if `event`
+  /// is NULL. On error the event is not changed.
   ///
   /// @ingroup key
-  external void ghostty_key_event_set_utf8(int event, Pointer utf8, int len);
+  external int ghostty_key_event_set_utf8(int event, int utf8);
+
+  /// Advance playing animations and get the time of the next frame.
+  ///
+  /// Every playing animation moves to the frame that is due at `now_ms`.
+  /// An animation moves forward at most one frame per call. If calls
+  /// arrive late, playback slows down rather than skipping frames.
+  ///
+  /// Images that moved to a new frame get a new
+  /// @ref GHOSTTY_KITTY_GRAPHICS_IMAGE_DATA_GENERATION, and their
+  /// @ref GHOSTTY_KITTY_GRAPHICS_IMAGE_DATA_PIXELS returns the new frame's pixels.
+  ///
+  /// Time is measured in milliseconds on a clock you choose, such as the
+  /// time since your application started. The clock must only move
+  /// forward, and you must keep using the same clock with the same
+  /// starting point for as long as the terminal exists. The time written
+  /// to `next_ms` uses the same clock.
+  ///
+  /// This call changes the image storage. Like ghostty_terminal_vt_write(),
+  /// it invalidates any @ref GhosttyKittyGraphicsImage handles and image
+  /// data pointers you are holding, so look images up again afterwards.
+  /// The @ref GhosttyKittyGraphics handle itself stays valid.
+  ///
+  /// Call this once each time you prepare a frame to draw, not in a loop.
+  /// @ref guide-images-animation explains how to
+  /// schedule redraws with the returned time and includes an example.
+  ///
+  /// @param graphics The kitty graphics handle (NULL returns GHOSTTY_INVALID_VALUE)
+  /// @param now_ms The current time in milliseconds
+  /// @param[out] next_ms Set to the time the next frame is due, in
+  /// milliseconds on the same clock as `now_ms`. Only written when the
+  /// function returns GHOSTTY_SUCCESS.
+  /// @return GHOSTTY_SUCCESS if an animation is playing and `next_ms` was
+  /// set, GHOSTTY_NO_VALUE if nothing is playing, GHOSTTY_UNSUPPORTED if
+  /// Kitty graphics are disabled at build time, GHOSTTY_INVALID_VALUE if
+  /// `next_ms` is NULL
+  ///
+  /// @ingroup kitty_graphics
+  external int ghostty_kitty_graphics_animation_tick(
+    int graphics,
+    JSBigInt now_ms,
+    Pointer next_ms,
+  );
 
   /// Get data from a kitty graphics storage instance.
   ///
   /// The output pointer must be of the appropriate type for the requested
   /// data kind.
   ///
-  /// Returns GHOSTTY_NO_VALUE when Kitty graphics are disabled at build time.
+  /// Returns GHOSTTY_UNSUPPORTED when Kitty graphics are disabled at build time.
   ///
-  /// @param graphics The kitty graphics handle
+  /// @param graphics The kitty graphics handle (NULL returns GHOSTTY_INVALID_VALUE)
   /// @param data The type of data to extract
   /// @param[out] out Pointer to store the extracted data
-  /// @return GHOSTTY_SUCCESS on success
+  /// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if `out` is
+  /// NULL, or GHOSTTY_UNSUPPORTED if `data` is not known to this version
+  /// of the library or Kitty graphics are disabled at build time
   ///
   /// @ingroup kitty_graphics
   external int ghostty_kitty_graphics_get(int graphics, int data, Pointer out);
@@ -833,7 +1084,7 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// Returns NULL if no image with the given ID exists or if Kitty graphics
   /// are disabled at build time.
   ///
-  /// @param graphics The kitty graphics handle
+  /// @param graphics The kitty graphics handle (NULL returns NULL)
   /// @param image_id The image ID to look up
   /// @return An opaque image handle, or NULL if not found
   ///
@@ -848,7 +1099,9 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// @param image The image handle (NULL returns GHOSTTY_INVALID_VALUE)
   /// @param data The data kind to query
   /// @param[out] out Pointer to receive the queried value
-  /// @return GHOSTTY_SUCCESS on success
+  /// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if `out` is
+  /// NULL, or GHOSTTY_UNSUPPORTED if `data` is not known to this version
+  /// of the library or Kitty graphics are disabled at build time
   ///
   /// @ingroup kitty_graphics
   external int ghostty_kitty_graphics_image_get(
@@ -859,9 +1112,11 @@ extension type GhosttyExports(JSObject _) implements JSObject {
 
   /// Get multiple data fields from a Kitty graphics image in a single call.
   ///
-  /// This is an optimization over calling ghostty_kitty_graphics_image_get()
-  /// repeatedly, particularly useful in environments with high per-call
-  /// overhead such as FFI or Cgo.
+  /// Use this when each call into the library is expensive, for example from
+  /// WebAssembly or from another language through its foreign function
+  /// interface. It reads every key in one call. From C in the same process it
+  /// costs the same as calling ghostty_kitty_graphics_image_get() once per key,
+  /// so use whichever reads better.
   ///
   /// Each element in the keys array specifies a data kind, and the
   /// corresponding element in the values array receives the result.
@@ -879,7 +1134,9 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// documented output type)
   /// @param[out] out_written On return, receives the number of values
   /// successfully written (may be NULL)
-  /// @return GHOSTTY_SUCCESS if all queries succeed
+  /// @return GHOSTTY_SUCCESS if every key succeeds. Otherwise the result of the
+  /// first key that failed, for example GHOSTTY_UNSUPPORTED for a key
+  /// that is not known to this version of the library.
   ///
   /// @ingroup kitty_graphics
   external int ghostty_kitty_graphics_image_get_multi(
@@ -898,8 +1155,10 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// @param iterator The iterator handle (NULL returns GHOSTTY_INVALID_VALUE)
   /// @param data The data kind to query
   /// @param[out] out Pointer to receive the queried value
-  /// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if the
-  /// iterator is NULL or not positioned on a placement
+  /// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if the iterator is
+  /// NULL or not positioned on a placement or `out` is NULL, or
+  /// GHOSTTY_UNSUPPORTED if `data` is not known to this version of the
+  /// library
   ///
   /// @ingroup kitty_graphics
   external int ghostty_kitty_graphics_placement_get(
@@ -910,9 +1169,11 @@ extension type GhosttyExports(JSObject _) implements JSObject {
 
   /// Get multiple data fields from the current placement in a single call.
   ///
-  /// This is an optimization over calling ghostty_kitty_graphics_placement_get()
-  /// repeatedly, particularly useful in environments with high per-call
-  /// overhead such as FFI or Cgo.
+  /// Use this when each call into the library is expensive, for example from
+  /// WebAssembly or from another language through its foreign function
+  /// interface. It reads every key in one call. From C in the same process it
+  /// costs the same as calling ghostty_kitty_graphics_placement_get() once per
+  /// key, so use whichever reads better.
   ///
   /// Each element in the keys array specifies a data kind, and the
   /// corresponding element in the values array receives the result.
@@ -930,7 +1191,9 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// documented output type)
   /// @param[out] out_written On return, receives the number of values
   /// successfully written (may be NULL)
-  /// @return GHOSTTY_SUCCESS if all queries succeed
+  /// @return GHOSTTY_SUCCESS if every key succeeds. Otherwise the result of the
+  /// first key that failed, for example GHOSTTY_UNSUPPORTED for a key
+  /// that is not known to this version of the library.
   ///
   /// @ingroup kitty_graphics
   external int ghostty_kitty_graphics_placement_get_multi(
@@ -953,9 +1216,9 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// @param terminal The terminal handle
   /// @param[out] out_cols On success, receives the number of columns
   /// @param[out] out_rows On success, receives the number of rows
-  /// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if any handle
-  /// is NULL or the iterator is not positioned, GHOSTTY_NO_VALUE when
-  /// Kitty graphics are disabled
+  /// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if any handle or output pointer
+  /// is NULL or the iterator is not positioned, GHOSTTY_UNSUPPORTED
+  /// when Kitty graphics are disabled at build time
   ///
   /// @ingroup kitty_graphics
   external int ghostty_kitty_graphics_placement_grid_size(
@@ -982,7 +1245,7 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// @param allocator Pointer to allocator, or NULL to use the default allocator
   /// @param[out] out_iterator On success, receives the created iterator handle
   /// @return GHOSTTY_SUCCESS on success, GHOSTTY_OUT_OF_MEMORY on allocation
-  /// failure
+  /// failure, GHOSTTY_INVALID_VALUE if @p out_iterator is NULL
   ///
   /// @ingroup kitty_graphics
   external int ghostty_kitty_graphics_placement_iterator_new(
@@ -992,18 +1255,19 @@ extension type GhosttyExports(JSObject _) implements JSObject {
 
   /// Set an option on a placement iterator.
   ///
-  /// Use GHOSTTY_KITTY_GRAPHICS_PLACEMENT_ITERATOR_OPTION_LAYER with a
-  /// GhosttyKittyPlacementLayer value to filter placements by z-layer.
-  /// The filter is applied during iteration: ghostty_kitty_graphics_placement_next()
-  /// will skip placements that do not match the configured layer.
-  ///
-  /// The default layer is GHOSTTY_KITTY_PLACEMENT_LAYER_ALL (no filtering).
+  /// Use GHOSTTY_KITTY_GRAPHICS_PLACEMENT_ITERATOR_OPT_LAYER to visit only
+  /// the placements in some layers. ghostty_kitty_graphics_placement_next()
+  /// then skips every placement outside those layers. By default, the
+  /// iterator visits every placement.
   ///
   /// @param iterator The iterator handle (NULL returns GHOSTTY_INVALID_VALUE)
   /// @param option The option to set
-  /// @param value Pointer to the value (type depends on option; NULL returns
-  /// GHOSTTY_INVALID_VALUE)
-  /// @return GHOSTTY_SUCCESS on success
+  /// @param value Pointer to the value. Its type depends on the option. NULL
+  /// resets the option to its default.
+  /// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if the value is
+  /// out of range, or GHOSTTY_UNSUPPORTED if `option` is not known to
+  /// this version of the library or Kitty graphics are disabled at
+  /// build time
   ///
   /// @ingroup kitty_graphics
   external int ghostty_kitty_graphics_placement_iterator_set(
@@ -1035,9 +1299,9 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// @param terminal The terminal handle
   /// @param[out] out_width On success, receives the width in pixels
   /// @param[out] out_height On success, receives the height in pixels
-  /// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if any handle
-  /// is NULL or the iterator is not positioned, GHOSTTY_NO_VALUE when
-  /// Kitty graphics are disabled
+  /// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if any handle or output pointer
+  /// is NULL or the iterator is not positioned, GHOSTTY_UNSUPPORTED
+  /// when Kitty graphics are disabled at build time
   ///
   /// @ingroup kitty_graphics
   external int ghostty_kitty_graphics_placement_pixel_size(
@@ -1054,14 +1318,15 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// cell/pixel geometry to calculate the bounding rectangle. Virtual
   /// placements (unicode placeholders) return GHOSTTY_NO_VALUE.
   ///
-  /// @param terminal The terminal handle
-  /// @param image The image handle for this placement's image
   /// @param iterator The placement iterator positioned on a placement
+  /// @param image The image handle for this placement's image
+  /// @param terminal The terminal handle
   /// @param[out] out_selection On success, receives the bounding rectangle
   /// as a selection with rectangle=true
-  /// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if any handle
+  /// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if any handle or output pointer
   /// is NULL or the iterator is not positioned, GHOSTTY_NO_VALUE for
-  /// virtual placements or when Kitty graphics are disabled
+  /// virtual placements, GHOSTTY_UNSUPPORTED when Kitty graphics are
+  /// disabled at build time
   ///
   /// @ingroup kitty_graphics
   external int ghostty_kitty_graphics_placement_rect(
@@ -1071,21 +1336,30 @@ extension type GhosttyExports(JSObject _) implements JSObject {
     Pointer out_selection,
   );
 
-  /// Get all rendering geometry for a placement in a single call.
+  /// Get all of the geometry of the current placement in one call.
   ///
-  /// Combines pixel size, grid size, viewport position, and source
-  /// rectangle into one struct. Initialize with
-  /// GHOSTTY_INIT_SIZED(GhosttyKittyGraphicsPlacementRenderInfo).
+  /// This fills in a GhosttyKittyGraphicsPlacementRenderInfo with the pixel
+  /// size, grid size, viewport position and source rectangle. Set its
+  /// `size` with GHOSTTY_INIT_SIZED first.
   ///
-  /// When viewport_visible is false, the placement is fully off-screen
-  /// or is a virtual placement; viewport_col and viewport_row may
-  /// contain meaningless values in that case.
+  /// This is for inspecting the storage. To draw, use the render state's
+  /// image list instead. It gives the same values for every image on
+  /// screen, including virtual placements and placements relative to them.
+  /// If you draw from both, images are drawn twice. See
+  /// @ref guide-images-drawing.
   ///
-  /// @param iterator The iterator positioned on a placement
-  /// @param image The image handle for this placement's image
-  /// @param terminal The terminal handle
-  /// @param[out] out_info Pointer to receive the rendering geometry
-  /// @return GHOSTTY_SUCCESS on success
+  /// The call succeeds even when the placement isn't in the viewport.
+  /// Check `viewport_visible` before using `viewport_col` and
+  /// `viewport_row`.
+  ///
+  /// @param iterator The placement iterator, moved to a placement
+  /// @param image The image of this placement
+  /// @param terminal The terminal the storage belongs to
+  /// @param[out] out_info Receives the geometry
+  /// @return GHOSTTY_SUCCESS on success. GHOSTTY_INVALID_VALUE if any handle or output pointer or `out_info` is NULL, the iterator is not on a
+  /// placement, or `out_info->size` is too small.
+  /// GHOSTTY_UNSUPPORTED if Kitty graphics are disabled at build
+  /// time.
   ///
   /// @ingroup kitty_graphics
   external int ghostty_kitty_graphics_placement_render_info(
@@ -1108,8 +1382,7 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// @param[out] out_y Source rect y origin in pixels
   /// @param[out] out_width Source rect width in pixels
   /// @param[out] out_height Source rect height in pixels
-  /// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if any
-  /// handle is NULL or the iterator is not positioned
+  /// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if any handle or output pointer is NULL or the iterator is not positioned
   ///
   /// @ingroup kitty_graphics
   external int ghostty_kitty_graphics_placement_source_rect(
@@ -1121,37 +1394,33 @@ extension type GhosttyExports(JSObject _) implements JSObject {
     Pointer out_height,
   );
 
-  /// Get the viewport-relative grid position of the current placement.
+  /// Get the top-left cell of the current placement, relative to the
+  /// viewport.
   ///
-  /// Converts the placement's internal pin to viewport-relative column and
-  /// row coordinates. The returned coordinates represent the top-left
-  /// corner of the placement in the viewport's grid coordinate space.
+  /// This is for inspecting the storage. To draw, use the render state's
+  /// image list instead. It positions every image on screen, including
+  /// virtual placements and placements relative to them, and covers
+  /// overscan rows. If you draw from both, images are drawn twice. See
+  /// @ref guide-images-drawing.
   ///
-  /// The row value can be negative when the placement's origin has
-  /// scrolled above the top of the viewport. For example, a 4-row
-  /// image that has scrolled up by 2 rows returns row=-2, meaning
-  /// its top 2 rows are above the visible area but its bottom 2 rows
-  /// are still on screen. Embedders should use these coordinates
-  /// directly when computing the destination rectangle for rendering;
-  /// the embedder is responsible for clipping the portion of the image
-  /// that falls outside the viewport.
+  /// The row is negative when the top of the placement scrolled above the
+  /// viewport. For example, an image 4 rows tall that scrolled up by 2
+  /// rows has a row of -2. Its top 2 rows are above the viewport and its
+  /// bottom 2 rows are still visible.
   ///
-  /// Returns GHOSTTY_SUCCESS for any placement that is at least
-  /// partially visible in the viewport. Returns GHOSTTY_NO_VALUE when
-  /// the placement is completely outside the viewport (its bottom edge
-  /// is above the viewport or its top edge is at or below the last
-  /// viewport row), or when the placement is a virtual (unicode
-  /// placeholder) placement.
-  ///
-  /// @param iterator The placement iterator positioned on a placement
-  /// @param image The image handle for this placement's image
-  /// @param terminal The terminal handle
-  /// @param[out] out_col On success, receives the viewport-relative column
-  /// @param[out] out_row On success, receives the viewport-relative row
-  /// (may be negative for partially visible placements)
-  /// @return GHOSTTY_SUCCESS on success, GHOSTTY_NO_VALUE if fully
-  /// off-screen or virtual, GHOSTTY_INVALID_VALUE if any handle
-  /// is NULL or the iterator is not positioned
+  /// @param iterator The placement iterator, moved to a placement
+  /// @param image The image of this placement
+  /// @param terminal The terminal the storage belongs to
+  /// @param[out] out_col On success, receives the column
+  /// @param[out] out_row On success, receives the row, which can be
+  /// negative
+  /// @return GHOSTTY_SUCCESS if any part of the placement is in the
+  /// viewport. GHOSTTY_NO_VALUE if it is entirely outside the
+  /// viewport or if it is a virtual placement or relative to one.
+  /// GHOSTTY_UNSUPPORTED if Kitty graphics are disabled at build
+  /// time.
+  /// GHOSTTY_INVALID_VALUE if any handle or output pointer is NULL or the iterator is
+  /// not on a placement.
   ///
   /// @ingroup kitty_graphics
   external int ghostty_kitty_graphics_placement_viewport_pos(
@@ -1169,18 +1438,24 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// - DEC private mode: CSI ? Ps1 ; Ps2 $ y
   /// - ANSI mode:        CSI Ps1 ; Ps2 $ y
   ///
-  /// If the buffer is too small, the function returns GHOSTTY_OUT_OF_SPACE
-  /// and writes the required buffer size to @p out_written. The caller can
-  /// then retry with a sufficiently sized buffer.
+  /// If @p buf is too small, this returns GHOSTTY_OUT_OF_SPACE and sets
+  /// @p out_written to the size needed. The buffer may then hold part of the
+  /// sequence, which you should discard. To get the size without encoding
+  /// anything, pass NULL for @p buf and 0 for @p buf_len.
+  ///
+  /// @snippet c-vt-modes/src/main.c modes-decrpm
+  ///
+  /// Full program: @ref c-vt-modes/src/main.c
   ///
   /// @param mode The mode identifying the mode to report on
   /// @param state The report state for this mode
-  /// @param buf Output buffer to write the encoded sequence into (may be NULL)
-  /// @param buf_len Size of the output buffer in bytes
-  /// @param[out] out_written On success, the number of bytes written. On
-  /// GHOSTTY_OUT_OF_SPACE, the required buffer size.
+  /// @param buf Buffer to write the sequence into. May be NULL if @p buf_len
+  /// is 0.
+  /// @param buf_len Size of @p buf in bytes
+  /// @param[out] out_written The number of bytes written, or the size needed
+  /// if the result is GHOSTTY_OUT_OF_SPACE
   /// @return GHOSTTY_SUCCESS on success, GHOSTTY_OUT_OF_SPACE if the buffer
-  /// is too small
+  /// is too small, or GHOSTTY_INVALID_VALUE if @p out_written is NULL
   external int ghostty_mode_report_encode(
     int mode,
     int state,
@@ -1192,16 +1467,34 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// Encode a mouse event into a terminal escape sequence.
   ///
   /// Not all mouse events produce output. In such cases this returns
-  /// GHOSTTY_SUCCESS with out_len set to 0.
+  /// GHOSTTY_SUCCESS with @p out_written set to 0.
   ///
-  /// If the output buffer is too small, this returns GHOSTTY_OUT_OF_SPACE
-  /// and out_len contains the required size.
+  /// If @p buf is too small, this returns GHOSTTY_OUT_OF_SPACE and sets
+  /// @p out_written to the size needed. The buffer may then hold part of the
+  /// sequence, which you should discard. To get the size without encoding
+  /// anything, pass NULL for @p buf and 0 for @p buf_len. An event with no
+  /// output still returns GHOSTTY_SUCCESS in that case, because it needs no
+  /// space.
   ///
-  /// @param encoder The encoder handle, must not be NULL
-  /// @param event The mouse event to encode, must not be NULL
-  /// @param out_buf Buffer to write encoded bytes to, or NULL to query required size
-  /// @param out_buf_size Size of out_buf in bytes
-  /// @param out_len Pointer to store bytes written (or required bytes on failure)
+  /// A 128-byte buffer is enough for typical events:
+  ///
+  /// @code{.c}
+  /// uint8_t buf[128];
+  /// size_t written = 0;
+  /// if (ghostty_mouse_encoder_encode(encoder, event, buf, sizeof(buf),
+  /// &written) == GHOSTTY_SUCCESS &&
+  /// written > 0) {
+  /// write(pty_fd, buf, written);
+  /// }
+  /// @endcode
+  ///
+  /// @param encoder The encoder handle (NULL returns GHOSTTY_INVALID_VALUE)
+  /// @param event The mouse event to encode (NULL returns GHOSTTY_INVALID_VALUE)
+  /// @param buf Buffer to write the sequence into. May be NULL if @p buf_len
+  /// is 0.
+  /// @param buf_len Size of @p buf in bytes
+  /// @param[out] out_written The number of bytes written, or the size needed
+  /// if the result is GHOSTTY_OUT_OF_SPACE. NULL returns GHOSTTY_INVALID_VALUE.
   /// @return GHOSTTY_SUCCESS on success, GHOSTTY_OUT_OF_SPACE if buffer is too small,
   /// or another error code
   ///
@@ -1209,9 +1502,9 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   external int ghostty_mouse_encoder_encode(
     int encoder,
     int event,
-    Pointer out_buf,
-    int out_buf_size,
-    Pointer out_len,
+    Pointer buf,
+    int buf_len,
+    Pointer out_written,
   );
 
   /// Free a mouse encoder instance.
@@ -1224,7 +1517,8 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// Create a new mouse encoder instance.
   ///
   /// @param allocator Pointer to allocator, or NULL to use the default allocator
-  /// @param encoder Pointer to store the created encoder handle
+  /// @param encoder Pointer to store the created encoder handle (NULL returns
+  /// GHOSTTY_INVALID_VALUE)
   /// @return GHOSTTY_SUCCESS on success, or an error code on failure
   ///
   /// @ingroup mouse
@@ -1234,21 +1528,37 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   ///
   /// This clears motion deduplication state (last tracked cell).
   ///
-  /// @param encoder The encoder handle (may be NULL)
+  /// @param encoder The encoder handle
+  /// @return GHOSTTY_SUCCESS on success, or GHOSTTY_INVALID_VALUE if `encoder`
+  /// is NULL.
   ///
   /// @ingroup mouse
-  external void ghostty_mouse_encoder_reset(int encoder);
+  external int ghostty_mouse_encoder_reset(int encoder);
 
   /// Set an option on the mouse encoder.
   ///
-  /// A null pointer value does nothing. It does not reset to defaults.
+  /// Passing NULL for `value` resets the option to its default, the same
+  /// value a new encoder starts with. Each option's default is listed on
+  /// GhosttyMouseEncoderOption.
   ///
-  /// @param encoder The encoder handle, must not be NULL
+  /// @code{.c}
+  /// GhosttyMouseFormat format = GHOSTTY_MOUSE_FORMAT_SGR;
+  /// GhosttyResult result = ghostty_mouse_encoder_set(
+  /// encoder, GHOSTTY_MOUSE_ENCODER_OPT_FORMAT, &format);
+  /// @endcode
+  ///
+  /// @param encoder The encoder handle (NULL returns GHOSTTY_INVALID_VALUE)
   /// @param option The option to set
-  /// @param value Pointer to option value (type depends on option)
+  /// @param value Pointer to option value (type depends on option), or NULL to
+  /// reset the option to its default
+  /// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if `encoder` is
+  /// NULL or the value is not valid (an unknown tracking mode or
+  /// format, or a size that is too small or has a zero cell
+  /// dimension), or GHOSTTY_UNSUPPORTED if `option` is not known to
+  /// this version of the library
   ///
   /// @ingroup mouse
-  external void ghostty_mouse_encoder_setopt(
+  external int ghostty_mouse_encoder_set(
     int encoder,
     int option,
     Pointer value,
@@ -1257,13 +1567,17 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// Set encoder options from a terminal's current state.
   ///
   /// This sets tracking mode and output format from terminal state.
+  /// It also clears the last-cell state, as ghostty_mouse_encoder_reset() does,
+  /// so the next motion event isn't dropped as a repeat of the last cell.
   /// It does not modify size or any-button state.
   ///
-  /// @param encoder The encoder handle, must not be NULL
-  /// @param terminal The terminal handle, must not be NULL
+  /// @param encoder The encoder handle
+  /// @param terminal The terminal handle
+  /// @return GHOSTTY_SUCCESS on success, or GHOSTTY_INVALID_VALUE if `encoder`
+  /// or `terminal` is NULL. On error the encoder is not changed.
   ///
   /// @ingroup mouse
-  external void ghostty_mouse_encoder_setopt_from_terminal(
+  external int ghostty_mouse_encoder_set_from_terminal(
     int encoder,
     int terminal,
   );
@@ -1272,10 +1586,12 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   ///
   /// This sets the event button to "none".
   ///
-  /// @param event The event handle, must not be NULL
+  /// @param event The event handle
+  /// @return GHOSTTY_SUCCESS on success, or GHOSTTY_INVALID_VALUE if `event`
+  /// is NULL. On error the event is not changed.
   ///
   /// @ingroup mouse
-  external void ghostty_mouse_event_clear_button(int event);
+  external int ghostty_mouse_event_clear_button(int event);
 
   /// Free a mouse event instance.
   ///
@@ -1286,33 +1602,55 @@ extension type GhosttyExports(JSObject _) implements JSObject {
 
   /// Get the event action.
   ///
-  /// @param event The event handle, must not be NULL
-  /// @return The event action
+  /// @param event The event handle
+  /// @return The event action, or GHOSTTY_MOUSE_ACTION_PRESS if `event` is NULL
   ///
   /// @ingroup mouse
   external int ghostty_mouse_event_get_action(int event);
 
   /// Get the event button.
   ///
-  /// @param event The event handle, must not be NULL
-  /// @param out_button Output pointer for the button value (may be NULL)
-  /// @return true if a button is set, false if no button is set
+  /// A new event has no button, and ghostty_mouse_event_clear_button() removes
+  /// the button from an event. Having no button is normal, for example when
+  /// the mouse moves with no button held. It is not an error, so check for
+  /// GHOSTTY_NO_VALUE separately:
+  ///
+  /// @code{.c}
+  /// GhosttyMouseButton button;
+  /// switch (ghostty_mouse_event_get_button(event, &button)) {
+  /// case GHOSTTY_SUCCESS:
+  /// // `button` holds the event's button.
+  /// break;
+  /// case GHOSTTY_NO_VALUE:
+  /// // The event has no button. `button` was not written.
+  /// break;
+  /// default:
+  /// // `event` or the output pointer was NULL.
+  /// break;
+  /// }
+  /// @endcode
+  ///
+  /// @param event The event handle
+  /// @param out_button Where to write the button. NULL returns GHOSTTY_INVALID_VALUE.
+  /// @return GHOSTTY_SUCCESS if the event has a button, GHOSTTY_NO_VALUE if it
+  /// has none, or GHOSTTY_INVALID_VALUE if `event` or `out_button` is
+  /// NULL. `out_button` is written only on GHOSTTY_SUCCESS.
   ///
   /// @ingroup mouse
   external int ghostty_mouse_event_get_button(int event, Pointer out_button);
 
   /// Get keyboard modifiers held during the event.
   ///
-  /// @param event The event handle, must not be NULL
-  /// @return Modifier bitmask
+  /// @param event The event handle
+  /// @return Modifier bitmask, or 0 (no modifiers) if `event` is NULL
   ///
   /// @ingroup mouse
   external int ghostty_mouse_event_get_mods(int event);
 
   /// Get the event position in surface-space pixels.
   ///
-  /// @param event The event handle, must not be NULL
-  /// @return The current event position
+  /// @param event The event handle
+  /// @return The current event position, or (0, 0) if `event` is NULL
   ///
   /// @ingroup mouse
   external void ghostty_mouse_event_get_position(Pointer sret, int event);
@@ -1320,7 +1658,8 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// Create a new mouse event instance.
   ///
   /// @param allocator Pointer to allocator, or NULL to use the default allocator
-  /// @param event Pointer to store the created event handle
+  /// @param event Pointer to store the created event handle (NULL returns
+  /// GHOSTTY_INVALID_VALUE)
   /// @return GHOSTTY_SUCCESS on success, or an error code on failure
   ///
   /// @ingroup mouse
@@ -1328,11 +1667,14 @@ extension type GhosttyExports(JSObject _) implements JSObject {
 
   /// Set the event action.
   ///
-  /// @param event The event handle, must not be NULL
+  /// @param event The event handle
   /// @param action The action to set
+  /// @return GHOSTTY_SUCCESS on success, or GHOSTTY_INVALID_VALUE if `event` is
+  /// NULL or `action` is not a GhosttyMouseAction value this version of the
+  /// library knows. On error the event is not changed.
   ///
   /// @ingroup mouse
-  external void ghostty_mouse_event_set_action(int event, int action);
+  external int ghostty_mouse_event_set_action(int event, int action);
 
   /// Set the event button.
   ///
@@ -1340,27 +1682,34 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// To represent "no button" (for motion events), use
   /// ghostty_mouse_event_clear_button().
   ///
-  /// @param event The event handle, must not be NULL
+  /// @param event The event handle
   /// @param button The button to set
+  /// @return GHOSTTY_SUCCESS on success, or GHOSTTY_INVALID_VALUE if `event` is
+  /// NULL or `button` is not a GhosttyMouseButton value this version of the
+  /// library knows. On error the event is not changed.
   ///
   /// @ingroup mouse
-  external void ghostty_mouse_event_set_button(int event, int button);
+  external int ghostty_mouse_event_set_button(int event, int button);
 
   /// Set keyboard modifiers held during the event.
   ///
-  /// @param event The event handle, must not be NULL
+  /// @param event The event handle
   /// @param mods Modifier bitmask
+  /// @return GHOSTTY_SUCCESS on success, or GHOSTTY_INVALID_VALUE if `event`
+  /// is NULL. On error the event is not changed.
   ///
   /// @ingroup mouse
-  external void ghostty_mouse_event_set_mods(int event, int mods);
+  external int ghostty_mouse_event_set_mods(int event, int mods);
 
   /// Set the event position in surface-space pixels.
   ///
-  /// @param event The event handle, must not be NULL
+  /// @param event The event handle
   /// @param position The position to set
+  /// @return GHOSTTY_SUCCESS on success, or GHOSTTY_INVALID_VALUE if `event`
+  /// is NULL. On error the event is not changed.
   ///
   /// @ingroup mouse
-  external void ghostty_mouse_event_set_position(int event, int position);
+  external int ghostty_mouse_event_set_position(int event, int position);
 
   /// Extract data from an OSC command.
   ///
@@ -1369,10 +1718,30 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// requested data kind. Valid command types, output types, and memory
   /// safety information are documented in the `GhosttyOscCommandData` enum.
   ///
-  /// @param command The OSC command handle to query (may be NULL)
+  /// Only GHOSTTY_SUCCESS writes to `out`. Every other result leaves it
+  /// unchanged.
+  ///
+  /// @code{.c}
+  /// GhosttyString title;
+  /// if (ghostty_osc_command_data(command,
+  /// GHOSTTY_OSC_DATA_CHANGE_WINDOW_TITLE_STR,
+  /// &title) == GHOSTTY_SUCCESS) {
+  /// printf("title: %.*s\n", (int)title.len, (const char *)title.ptr);
+  /// }
+  /// @endcode
+  ///
+  /// @param command The OSC command handle to query (NULL returns
+  /// GHOSTTY_INVALID_VALUE)
   /// @param data The type of data to extract
   /// @param out Pointer to store the extracted data (type depends on data parameter)
-  /// @return true if data extraction was successful, false otherwise
+  /// @return
+  /// - GHOSTTY_SUCCESS if the data was written to `out`.
+  /// - GHOSTTY_NO_VALUE if the command has no data of this kind, for
+  /// example asking a window title command for unknown content.
+  /// - GHOSTTY_INVALID_VALUE if `command` or `out` is NULL, or `data` is
+  /// GHOSTTY_OSC_DATA_INVALID.
+  /// - GHOSTTY_UNSUPPORTED if `data` is not known to this version of the
+  /// library.
   ///
   /// @ingroup osc
   external int ghostty_osc_command_data(int command, int data, Pointer out);
@@ -1406,13 +1775,26 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// If the program cancelled the sequence with CAN (0x18) or SUB (0x1A),
   /// pass that byte as the terminator. The sequence is then discarded and
   /// this returns NULL, whatever command it contained. This matches xterm.
-  /// The "Ending a Sequence" section of the overview has an example.
+  ///
+  /// @code{.c}
+  /// // The program sent "ESC ] 2 ; hello" to set the window title, then
+  /// // sent CAN instead of a terminator.
+  /// const char* input = "2;hello";
+  /// for (size_t i = 0; input[i] != '\0'; i++) {
+  /// ghostty_osc_next(parser, (uint8_t)input[i]);
+  /// }
+  ///
+  /// GhosttyOscCommand command = ghostty_osc_end(parser, 0x18);
+  /// // command is NULL, so the window title does not change.
+  ///
+  /// ghostty_osc_reset(parser);
+  /// @endcode
   ///
   /// The returned command handle is valid until the next call to any
   /// `ghostty_osc_*` function with the same parser instance with the exception
   /// of command introspection functions such as `ghostty_osc_command_type`.
   ///
-  /// @param parser The parser handle, must not be null.
+  /// @param parser The parser handle (NULL returns NULL)
   /// @param terminator The byte that ended the OSC sequence: 0x07 for BEL,
   /// 0x5C for ST, or 0x18 (CAN) or 0x1A (SUB) if it was cancelled
   /// @return Handle to the parsed OSC command, or NULL if the sequence is not
@@ -1434,11 +1816,12 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// Create a new OSC parser instance.
   ///
   /// Creates a new OSC (Operating System Command) parser using the provided
-  /// allocator. The parser must be freed using ghostty_vt_osc_free() when
+  /// allocator. The parser must be freed using ghostty_osc_free() when
   /// no longer needed.
   ///
   /// @param allocator Pointer to the allocator to use for memory management, or NULL to use the default allocator
-  /// @param parser Pointer to store the created parser handle
+  /// @param parser Pointer to store the created parser handle (NULL returns
+  /// GHOSTTY_INVALID_VALUE)
   /// @return GHOSTTY_SUCCESS on success, or an error code on failure
   ///
   /// @ingroup osc
@@ -1453,7 +1836,7 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// When finished pumping the parser with bytes, call ghostty_osc_end
   /// to get the final result.
   ///
-  /// @param parser The parser handle, must not be null.
+  /// @param parser The parser handle (NULL does nothing)
   /// @param byte The next byte to parse
   ///
   /// @ingroup osc
@@ -1465,7 +1848,7 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// and returning the parser to its initial state. This is useful for
   /// reusing a parser instance or recovering from parse errors.
   ///
-  /// @param parser The parser handle to reset, must not be null.
+  /// @param parser The parser handle to reset (NULL does nothing)
   ///
   /// @ingroup osc
   external void ghostty_osc_reset(int parser);
@@ -1483,8 +1866,9 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// @param parser The parser handle
   /// @param option The option to set
   /// @param value Pointer to the new value, or NULL to restore the default
-  /// @return GHOSTTY_SUCCESS on success, or GHOSTTY_INVALID_VALUE if the parser
-  /// is NULL
+  /// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if the parser is
+  /// NULL, or GHOSTTY_UNSUPPORTED if `option` is not known to this
+  /// version of the library
   ///
   /// @ingroup osc
   external int ghostty_osc_set(int parser, int option, Pointer value);
@@ -1501,9 +1885,29 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// encoded result (potentially with bracketed paste prefix/suffix) is
   /// written to the output buffer.
   ///
-  /// If the output buffer is too small, the function returns
-  /// GHOSTTY_OUT_OF_SPACE and sets the required size in @p out_written.
-  /// The caller can then retry with a sufficiently sized buffer.
+  /// If @p buf is too small, this returns GHOSTTY_OUT_OF_SPACE, sets
+  /// @p out_written to the size needed, and leaves @p buf unchanged. To get
+  /// the size first, pass NULL for @p buf and 0 for @p buf_len. An empty
+  /// result needs no space, so empty input with @p bracketed false returns
+  /// GHOSTTY_SUCCESS with @p out_written set to 0.
+  ///
+  /// The function modifies @p data even when it returns GHOSTTY_OUT_OF_SPACE.
+  /// Encoding the modified data again gives the same result, so you can retry
+  /// with the same @p data and a larger buffer:
+  ///
+  /// @code{.c}
+  /// size_t needed = 0;
+  /// GhosttyResult result = ghostty_paste_encode(data, data_len, bracketed,
+  /// NULL, 0, &needed);
+  /// if (result == GHOSTTY_OUT_OF_SPACE) {
+  /// uint8_t *buf = malloc(needed);
+  /// size_t written = 0;
+  /// result = ghostty_paste_encode(data, data_len, bracketed, buf, needed,
+  /// &written);
+  /// if (result == GHOSTTY_SUCCESS) write(pty_fd, buf, written);
+  /// free(buf);
+  /// }
+  /// @endcode
   ///
   /// This is the encoder ghostty_terminal_paste() uses for a text paste;
   /// use it directly when there is no terminal to paste into.
@@ -1511,12 +1915,13 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// @param data The paste data to encode (modified in place, may be NULL)
   /// @param data_len The length of the input data in bytes
   /// @param bracketed Whether bracketed paste mode is active
-  /// @param buf Output buffer to write the encoded result into (may be NULL)
-  /// @param buf_len Size of the output buffer in bytes
-  /// @param[out] out_written On success, the number of bytes written. On
-  /// GHOSTTY_OUT_OF_SPACE, the required buffer size.
+  /// @param buf Buffer to write the encoded result into. May be NULL if
+  /// @p buf_len is 0.
+  /// @param buf_len Size of @p buf in bytes
+  /// @param[out] out_written The number of bytes written, or the size needed
+  /// if the result is GHOSTTY_OUT_OF_SPACE
   /// @return GHOSTTY_SUCCESS on success, GHOSTTY_OUT_OF_SPACE if the buffer
-  /// is too small
+  /// is too small, or GHOSTTY_INVALID_VALUE if @p out_written is NULL
   external int ghostty_paste_encode(
     Pointer data,
     int data_len,
@@ -1529,16 +1934,18 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// Check if paste data is safe to paste into the terminal.
   ///
   /// Data is considered unsafe if it contains:
-  /// - Newlines (`\n`) which can inject commands
+  /// - Line terminators (`\n` or `\r`) which can inject commands. A
+  /// carriage return is what the Enter key sends, so it is as dangerous
+  /// as a newline on an unbracketed paste.
   /// - The bracketed paste end sequence (`\x1b[201~`) which can be used
   /// to exit bracketed paste mode and inject commands
   ///
   /// This check is conservative and considers data unsafe regardless of
   /// current terminal state. ghostty_terminal_paste() applies the
-  /// terminal-state-aware rule itself (newlines are safe inside a
+  /// terminal-state-aware rule itself (line terminators are safe inside a
   /// bracketed paste); use this to apply the stricter rule on top.
   ///
-  /// @param data The paste data to check (must not be NULL)
+  /// @param data The paste data to check (NULL is the same as empty data)
   /// @param len The length of the data in bytes
   /// @return true if the data is safe to paste, false otherwise
   external int ghostty_paste_is_safe(Pointer data, int len);
@@ -1557,7 +1964,7 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   ///
   /// Work that doesn't require terminal access may be deferred to the end phase
   /// to keep this call (and therefore lock hold time) as short as possible.
-  /// Callers must treat the render state as incomplete until
+  /// You must treat the render state as incomplete until
   /// ghostty_render_state_end_update is called.
   ///
   /// This consumes terminal/screen dirty state in the same way as the internal
@@ -1619,14 +2026,22 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// @param state The render state handle (NULL returns GHOSTTY_INVALID_VALUE)
   /// @param data The data kind to query
   /// @param[out] out Pointer to receive the queried value
-  /// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if `state` or
-  /// `out` is NULL, `data` is not a recognized enum value, or a sized
-  /// output struct is smaller than `sizeof(size_t)`
+  /// @return GHOSTTY_SUCCESS on success, GHOSTTY_NO_VALUE if `data` has no
+  /// value right now, GHOSTTY_INVALID_VALUE if `state` or `out` is NULL
+  /// or a sized output struct is smaller than its base layout, or
+  /// GHOSTTY_UNSUPPORTED if `data` is not known to this version of the
+  /// library
   ///
   /// @ingroup render
   external int ghostty_render_state_get(int state, int data, Pointer out);
 
   /// Get multiple data fields from a render state in a single call.
+  ///
+  /// Use this when each call into the library is expensive, for example from
+  /// WebAssembly or from another language through its foreign function
+  /// interface. It reads every key in one call. From C in the same process it
+  /// costs the same as calling ghostty_render_state_get() once per key, so use
+  /// whichever reads better.
   ///
   /// Each element in the keys array specifies a data kind, and the
   /// corresponding element in the values array receives the result.
@@ -1642,7 +2057,9 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// documented output type)
   /// @param[out] out_written On return, receives the number of values
   /// successfully written (may be NULL)
-  /// @return GHOSTTY_SUCCESS if all queries succeed
+  /// @return GHOSTTY_SUCCESS if every key succeeds. Otherwise the result of the
+  /// first key that failed, for example GHOSTTY_UNSUPPORTED for a key
+  /// that is not known to this version of the library.
   ///
   /// @ingroup render
   external int ghostty_render_state_get_multi(
@@ -1653,10 +2070,115 @@ extension type GhosttyExports(JSObject _) implements JSObject {
     Pointer out_written,
   );
 
+  /// Read one value from the current placement of an image iterator.
+  ///
+  /// The `out` pointer must point to a value of the type listed for `data`
+  /// in GhosttyRenderStateImageData. To read several values at once, use
+  /// ghostty_render_state_image_get_multi().
+  ///
+  /// @param iterator The iterator handle, moved to a placement with
+  /// ghostty_render_state_image_iterator_next()
+  /// @param data The value to read
+  /// @param[out] out Pointer that receives the value
+  /// @return GHOSTTY_SUCCESS on success. GHOSTTY_NO_VALUE if `data` only applies
+  /// to another protocol. GHOSTTY_INVALID_VALUE if the iterator is NULL
+  /// or is not on a placement. GHOSTTY_UNSUPPORTED if `data` is not known
+  /// to this version of the library.
+  ///
+  /// @ingroup render
+  external int ghostty_render_state_image_get(
+    int iterator,
+    int data,
+    Pointer out,
+  );
+
+  /// Read several values from the current placement of an image iterator in
+  /// one call.
+  ///
+  /// Use this when each call into the library is expensive, for example from
+  /// WebAssembly or from another language through its foreign function
+  /// interface. It reads every key in one call. From C in the same process it
+  /// costs the same as calling ghostty_render_state_image_get() once per key,
+  /// so use whichever reads better.
+  ///
+  /// `values[i]` receives the value for `keys[i]`. The keys are read in
+  /// order, and reading stops at the first error.
+  ///
+  /// @param iterator The iterator handle, moved to a placement with
+  /// ghostty_render_state_image_iterator_next()
+  /// @param count The number of keys and values
+  /// @param keys The values to read
+  /// @param values Output pointers, one for each key
+  /// @param[out] out_written If not NULL, receives the number of values
+  /// written before any error
+  /// @return GHOSTTY_SUCCESS if every key succeeds. Otherwise the result of the
+  /// first key that failed, for example GHOSTTY_UNSUPPORTED for a key
+  /// that is not known to this version of the library.
+  ///
+  /// @ingroup render
+  external int ghostty_render_state_image_get_multi(
+    int iterator,
+    int count,
+    Pointer keys,
+    Pointer values,
+    Pointer out_written,
+  );
+
+  /// Free an image iterator.
+  ///
+  /// @param iterator The iterator handle to free (may be NULL)
+  ///
+  /// @ingroup render
+  external void ghostty_render_state_image_iterator_free(int iterator);
+
+  /// Create a new image iterator.
+  ///
+  /// The iterator starts out empty. Fill it from a render state with
+  /// ghostty_render_state_get() and GHOSTTY_RENDER_STATE_DATA_IMAGE_ITERATOR.
+  /// You can keep one iterator for the lifetime of your renderer and fill it
+  /// again after every update. See @ref guide-images-drawing for a complete
+  /// example.
+  ///
+  /// @param allocator Pointer to allocator, or NULL to use the default allocator
+  /// @param[out] out_iterator On success, receives the created iterator handle
+  /// @return GHOSTTY_SUCCESS on success, GHOSTTY_OUT_OF_MEMORY on allocation
+  /// failure, GHOSTTY_INVALID_VALUE if @p out_iterator is NULL
+  ///
+  /// @ingroup render
+  external int ghostty_render_state_image_iterator_new(
+    Pointer allocator,
+    Pointer out_iterator,
+  );
+
+  /// Move an image iterator to the next image placement.
+  ///
+  /// Call this before reading the first placement, and keep calling it
+  /// until it returns false.
+  ///
+  /// The order of placements is not the order to draw them in. Sort them
+  /// by layer (GHOSTTY_RENDER_STATE_IMAGE_DATA_LAYER) and then by z-index
+  /// (GHOSTTY_RENDER_STATE_IMAGE_DATA_Z) first.
+  ///
+  /// Only placements with something to draw are returned. For example,
+  /// placements of an image the terminal hasn't fully received yet are
+  /// skipped.
+  ///
+  /// The iterator reads from the render state that filled it. After the
+  /// next update of that render state, fill the iterator again before
+  /// using it.
+  ///
+  /// @param iterator The iterator handle (NULL returns false)
+  /// @return true if the iterator moved to a placement, false if there are
+  /// no more placements
+  ///
+  /// @ingroup render
+  external int ghostty_render_state_image_iterator_next(int iterator);
+
   /// Create a new render state instance.
   ///
   /// @param allocator Pointer to allocator, or NULL to use the default allocator
-  /// @param state Pointer to store the created render state handle
+  /// @param state Pointer to store the created render state handle (NULL returns
+  /// GHOSTTY_INVALID_VALUE)
   /// @return GHOSTTY_SUCCESS on success, GHOSTTY_OUT_OF_MEMORY on allocation
   /// failure
   ///
@@ -1681,8 +2203,10 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// @param cells The row cells handle to query (NULL returns GHOSTTY_INVALID_VALUE)
   /// @param data The data kind to query
   /// @param[out] out Pointer to receive the queried value
-  /// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if
-  /// `cells` is NULL or the iterator is not positioned on a cell
+  /// @return GHOSTTY_SUCCESS on success, GHOSTTY_NO_VALUE if the cell has no
+  /// value for `data`, GHOSTTY_INVALID_VALUE if `cells` is NULL or the
+  /// iterator is not positioned on a cell, or GHOSTTY_UNSUPPORTED if
+  /// `data` is not known to this version of the library
   ///
   /// @ingroup render
   external int ghostty_render_state_row_cells_get(
@@ -1692,6 +2216,12 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   );
 
   /// Get multiple data fields from the current cell in a single call.
+  ///
+  /// Use this when each call into the library is expensive, for example from
+  /// WebAssembly or from another language through its foreign function
+  /// interface. It reads every key in one call. From C in the same process it
+  /// costs the same as calling ghostty_render_state_row_cells_get() once per
+  /// key, so use whichever reads better.
   ///
   /// Each element in the keys array specifies a data kind, and the
   /// corresponding element in the values array receives the result.
@@ -1707,7 +2237,9 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// documented output type)
   /// @param[out] out_written On return, receives the number of values
   /// successfully written (may be NULL)
-  /// @return GHOSTTY_SUCCESS if all queries succeed
+  /// @return GHOSTTY_SUCCESS if every key succeeds. Otherwise the result of the
+  /// first key that failed, for example GHOSTTY_UNSUPPORTED for a key
+  /// that is not known to this version of the library.
   ///
   /// @ingroup render
   external int ghostty_render_state_row_cells_get_multi(
@@ -1730,7 +2262,7 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// @param allocator Pointer to allocator, or NULL to use the default allocator
   /// @param[out] out_cells On success, receives the created row cells handle
   /// @return GHOSTTY_SUCCESS on success, GHOSTTY_OUT_OF_MEMORY on allocation
-  /// failure
+  /// failure, GHOSTTY_INVALID_VALUE if @p out_cells is NULL
   ///
   /// @ingroup render
   external int ghostty_render_state_row_cells_new(
@@ -1775,8 +2307,10 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// @param iterator The iterator handle to query (NULL returns GHOSTTY_INVALID_VALUE)
   /// @param data The data kind to query
   /// @param[out] out Pointer to receive the queried value
-  /// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if
-  /// `iterator` is NULL or the iterator is not positioned on a row
+  /// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if `iterator` or
+  /// `out` is NULL or the iterator is not positioned on a row, or
+  /// GHOSTTY_UNSUPPORTED if `data` is not known to this version of the
+  /// library
   ///
   /// @ingroup render
   external int ghostty_render_state_row_get(
@@ -1786,6 +2320,12 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   );
 
   /// Get multiple data fields from the current row in a single call.
+  ///
+  /// Use this when each call into the library is expensive, for example from
+  /// WebAssembly or from another language through its foreign function
+  /// interface. It reads every key in one call. From C in the same process it
+  /// costs the same as calling ghostty_render_state_row_get() once per key, so
+  /// use whichever reads better.
   ///
   /// Each element in the keys array specifies a data kind, and the
   /// corresponding element in the values array receives the result.
@@ -1801,7 +2341,9 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// documented output type)
   /// @param[out] out_written On return, receives the number of values
   /// successfully written (may be NULL)
-  /// @return GHOSTTY_SUCCESS if all queries succeed
+  /// @return GHOSTTY_SUCCESS if every key succeeds. Otherwise the result of the
+  /// first key that failed, for example GHOSTTY_UNSUPPORTED for a key
+  /// that is not known to this version of the library.
   ///
   /// @ingroup render
   external int ghostty_render_state_row_get_multi(
@@ -1828,7 +2370,7 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// @param allocator Pointer to allocator, or NULL to use the default allocator
   /// @param[out] out_iterator On success, receives the created iterator handle
   /// @return GHOSTTY_SUCCESS on success, GHOSTTY_OUT_OF_MEMORY on allocation
-  /// failure
+  /// failure, GHOSTTY_INVALID_VALUE if @p out_iterator is NULL
   ///
   /// @ingroup render
   external int ghostty_render_state_row_iterator_new(
@@ -1841,7 +2383,7 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// Rows are visited in order from top to bottom with no gaps. Without
   /// overscan, the first row is the top row of the viewport. With overscan,
   /// the first row is the highest captured row above the viewport (see
-  /// GHOSTTY_RENDER_STATE_OPTION_OVERSCAN). Returns true if the iterator
+  /// GHOSTTY_RENDER_STATE_OPT_OVERSCAN). Returns true if the iterator
   /// moved successfully and row data is available to read at the new
   /// position.
   ///
@@ -1888,10 +2430,12 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   ///
   /// @param iterator The iterator handle to update (NULL returns GHOSTTY_INVALID_VALUE)
   /// @param option The option to set
-  /// @param[in] value Pointer to the value to set (NULL returns
-  /// GHOSTTY_INVALID_VALUE)
-  /// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if
-  /// `iterator` is NULL or the iterator is not positioned on a row
+  /// @param[in] value Pointer to the value to set. Row options have no
+  /// default to restore, so NULL returns GHOSTTY_INVALID_VALUE.
+  /// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if `iterator` or
+  /// `value` is NULL or the iterator is not positioned on a row, or
+  /// GHOSTTY_UNSUPPORTED if `option` is not known to this version of the
+  /// library
   ///
   /// @ingroup render
   external int ghostty_render_state_row_set(
@@ -1905,12 +2449,27 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// The `value` pointer must point to a value of the type corresponding to the
   /// requested option kind (see GhosttyRenderStateOption).
   ///
+  /// Passing NULL for `value` restores the option's default. Options that
+  /// have no default, such as GHOSTTY_RENDER_STATE_OPT_DIRTY, return
+  /// GHOSTTY_INVALID_VALUE for NULL instead.
+  ///
+  /// @code{.c}
+  /// GhosttyRenderStateOverscan overscan = { .above = 4, .below = 4 };
+  /// ghostty_render_state_set(state, GHOSTTY_RENDER_STATE_OPT_OVERSCAN,
+  /// &overscan);
+  ///
+  /// // Later, go back to capturing only the viewport.
+  /// ghostty_render_state_set(state, GHOSTTY_RENDER_STATE_OPT_OVERSCAN, NULL);
+  /// @endcode
+  ///
   /// @param state The render state handle (NULL returns GHOSTTY_INVALID_VALUE)
   /// @param option The option to set
-  /// @param[in] value Pointer to the value to set (NULL returns
-  /// GHOSTTY_INVALID_VALUE)
-  /// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if `state` or
-  /// `value` is NULL
+  /// @param[in] value Pointer to the value to set, or NULL to restore the
+  /// option's default
+  /// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if `state` is
+  /// NULL, `value` is out of range, or `value` is NULL for an option
+  /// with no default, or GHOSTTY_UNSUPPORTED if `option` is not known
+  /// to this version of the library
   ///
   /// @ingroup render
   external int ghostty_render_state_set(int state, int option, Pointer value);
@@ -1945,13 +2504,20 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// @param row The row value
   /// @param data The type of data to extract
   /// @param out Pointer to store the extracted data (type depends on data parameter)
-  /// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if the
-  /// data type is invalid
+  /// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if `data` is
+  /// GHOSTTY_ROW_DATA_INVALID or `out` is NULL, or GHOSTTY_UNSUPPORTED
+  /// if `data` is not known to this version of the library
   ///
   /// @ingroup screen
   external int ghostty_row_get(JSBigInt row, int data, Pointer out);
 
   /// Get multiple data fields from a row in a single call.
+  ///
+  /// Use this when each call into the library is expensive, for example from
+  /// WebAssembly or from another language through its foreign function
+  /// interface. It reads every key in one call. From C in the same process it
+  /// costs the same as calling ghostty_row_get() once per key, so use whichever
+  /// reads better.
   ///
   /// Each element in the keys array specifies a data kind, and the
   /// corresponding element in the values array receives the result.
@@ -1967,7 +2533,9 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// documented output type)
   /// @param[out] out_written On return, receives the number of values
   /// successfully written (may be NULL)
-  /// @return GHOSTTY_SUCCESS if all queries succeed
+  /// @return GHOSTTY_SUCCESS if every key succeeds. Otherwise the result of the
+  /// first key that failed, for example GHOSTTY_UNSUPPORTED for a key
+  /// that is not known to this version of the library.
   ///
   /// @ingroup screen
   external int ghostty_row_get_multi(
@@ -1988,7 +2556,7 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// learns about terminal changes, so keep feeding periodically while
   /// the search is in use, even after it reports complete.
   ///
-  /// This reads the terminal, so the caller must serialize it with all
+  /// This reads the terminal, so you must serialize it with all
   /// other access to the same terminal. Each call does a bounded amount
   /// of work so that any caller-held terminal lock is held only briefly.
   ///
@@ -2002,7 +2570,7 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// Free a search.
   ///
   /// If the bound terminal is still alive, this releases tracked state
-  /// the search holds within it, so the caller must serialize this call
+  /// the search holds within it, so you must serialize this call
   /// with all other access to the same terminal. If the terminal was
   /// already freed, the search has been detached and this releases only
   /// search-owned memory. Passing NULL is allowed and is a no-op.
@@ -2023,20 +2591,26 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// @param search Search handle (NULL returns GHOSTTY_INVALID_VALUE)
   /// @param data Data field to read
   /// @param value Output pointer whose type depends on data
-  /// @return GHOSTTY_SUCCESS on success, GHOSTTY_NO_VALUE if the
-  /// requested data has no value, GHOSTTY_OUT_OF_SPACE if a
-  /// provided GhosttySelectionBuffer is too small (required
-  /// capacity in its len), GHOSTTY_OUT_OF_MEMORY if collecting
-  /// viewport matches fails, or GHOSTTY_INVALID_VALUE if search,
-  /// data, or value is invalid
+  /// @return GHOSTTY_SUCCESS on success, GHOSTTY_NO_VALUE if the requested data
+  /// has no value, GHOSTTY_OUT_OF_SPACE if a provided
+  /// GhosttySelectionBuffer is too small (required capacity in its len),
+  /// GHOSTTY_OUT_OF_MEMORY if collecting viewport matches fails,
+  /// GHOSTTY_INVALID_VALUE if `search` or `value` is invalid, or
+  /// GHOSTTY_UNSUPPORTED if `data` is not known to this version of the
+  /// library
   ///
   /// @ingroup search
   external int ghostty_search_get(int search, int data, Pointer value);
 
   /// Read multiple data fields from a search in a single call.
   ///
-  /// This is an optimization over calling ghostty_search_get() multiple
-  /// times. Each entry in values must point to storage of the type
+  /// Use this when each call into the library is expensive, for example from
+  /// WebAssembly or from another language through its foreign function
+  /// interface. It reads every key in one call. From C in the same process it
+  /// costs the same as calling ghostty_search_get() once per key, so use
+  /// whichever reads better.
+  ///
+  /// Each entry in values must point to storage of the type
   /// documented by the corresponding GhosttySearchData key.
   ///
   /// If any individual read fails, the function returns that error and
@@ -2049,12 +2623,13 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   ///
   /// @param search Search handle (NULL returns GHOSTTY_INVALID_VALUE)
   /// @param count Number of data fields to read
-  /// @param keys Data fields to read (must not be NULL)
-  /// @param values Output pointers corresponding to keys (must not be NULL)
+  /// @param keys Data fields to read (NULL returns GHOSTTY_INVALID_VALUE)
+  /// @param values Output pointers corresponding to keys (NULL returns GHOSTTY_INVALID_VALUE)
   /// @param out_written Optional number of fields read, or failing index
   /// on error
-  /// @return GHOSTTY_SUCCESS on success, or the first failing read's
-  /// result
+  /// @return GHOSTTY_SUCCESS if every key succeeds. Otherwise the result of the
+  /// first key that failed, for example GHOSTTY_UNSUPPORTED for a key
+  /// that is not known to this version of the library.
   ///
   /// @ingroup search
   external int ghostty_search_get_multi(
@@ -2076,7 +2651,7 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   ///
   /// Creation is cheap and does not read terminal contents, but it
   /// registers the search with the terminal so the two can be freed in
-  /// any order. The caller must serialize this call with all other
+  /// any order. You must serialize this call with all other
   /// access to the same terminal.
   ///
   /// @param allocator Allocator, or NULL for the default allocator
@@ -2102,7 +2677,7 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// scrollback can take a while, so interactive embedders should drive
   /// ghostty_search_tick() and ghostty_search_feed() themselves.
   ///
-  /// This reads the terminal for the entire call, so the caller must
+  /// This reads the terminal for the entire call, so you must
   /// serialize it with all other access to the same terminal.
   ///
   /// @param search Search handle (NULL returns GHOSTTY_INVALID_VALUE)
@@ -2112,23 +2687,74 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// @ingroup search
   external int ghostty_search_run(int search);
 
+  /// Select the next match, moving toward older content.
+  ///
+  /// "Next" goes from the bottom of the screen upward into history, the
+  /// direction a search from the prompt usually wants. After the oldest
+  /// match, selection wraps around to the newest one.
+  ///
+  /// You can call this at any time, even if the terminal changed since the
+  /// last feed, because it first brings the search up to date with the
+  /// terminal. The viewport then scrolls to the selected match as set by
+  /// GHOSTTY_SEARCH_OPT_SELECT_SCROLL. This reads the terminal, so
+  /// you must serialize it with all other access to the same terminal.
+  ///
+  /// A find bar typically calls this when the user presses Enter, then reads
+  /// the selected match to highlight it:
+  ///
+  /// @code{.c}
+  /// if (ghostty_search_select_next(search) == GHOSTTY_SUCCESS) {
+  /// GhosttySelection match = {0};
+  /// ghostty_search_get(search, GHOSTTY_SEARCH_DATA_SELECTED_MATCH, &match);
+  /// // Highlight `match` and show its position in the find bar.
+  /// }
+  /// @endcode
+  ///
+  /// @param search Search handle (NULL returns GHOSTTY_INVALID_VALUE)
+  /// @return GHOSTTY_SUCCESS if a match is now selected, GHOSTTY_NO_VALUE if
+  /// there are no matches, GHOSTTY_OUT_OF_MEMORY if allocation fails,
+  /// or GHOSTTY_INVALID_VALUE if `search` is NULL or the terminal was
+  /// freed
+  ///
+  /// @ingroup search
+  external int ghostty_search_select_next(int search);
+
+  /// Select the previous match, moving toward newer content.
+  ///
+  /// This is the opposite direction of ghostty_search_select_next(). After
+  /// the newest match, selection wraps around to the oldest one. Everything
+  /// else, including scrolling and thread safety, works the same as
+  /// ghostty_search_select_next().
+  ///
+  /// @param search Search handle (NULL returns GHOSTTY_INVALID_VALUE)
+  /// @return GHOSTTY_SUCCESS if a match is now selected, GHOSTTY_NO_VALUE if
+  /// there are no matches, GHOSTTY_OUT_OF_MEMORY if allocation fails,
+  /// or GHOSTTY_INVALID_VALUE if `search` is NULL or the terminal was
+  /// freed
+  ///
+  /// @ingroup search
+  external int ghostty_search_select_prev(int search);
+
   /// Write an option to a search.
   ///
   /// The value type, and what a NULL value means, depends on the option
-  /// and is documented by GhosttySearchOption. The needle and select
-  /// options touch the terminal, so the caller must serialize those
-  /// calls with all other access to the same terminal.
-  /// GHOSTTY_SEARCH_OPT_SELECT_SCROLL only modifies search-owned state.
+  /// and is documented by GhosttySearchOption. GHOSTTY_SEARCH_OPT_NEEDLE
+  /// touches the terminal, so you must serialize it with all other
+  /// access to the same terminal. GHOSTTY_SEARCH_OPT_SELECT_SCROLL only
+  /// modifies search-owned state.
+  ///
+  /// To move between matches, use ghostty_search_select_next() and
+  /// ghostty_search_select_prev().
   ///
   /// @param search Search handle (NULL returns GHOSTTY_INVALID_VALUE)
   /// @param option Option to write
   /// @param value Pointer to the input value for the option. The meaning
   /// of NULL is documented per option.
-  /// @return GHOSTTY_SUCCESS on success, GHOSTTY_NO_VALUE if a select
-  /// option found no matches, GHOSTTY_OUT_OF_MEMORY if
-  /// allocation fails, or GHOSTTY_INVALID_VALUE if search,
-  /// option, or value is invalid or the option needs a terminal
-  /// that was already freed
+  /// @return GHOSTTY_SUCCESS on success, GHOSTTY_OUT_OF_MEMORY if allocation
+  /// fails, GHOSTTY_INVALID_VALUE if `search` or `value` is invalid or the
+  /// option needs a terminal that was already freed, or
+  /// GHOSTTY_UNSUPPORTED if `option` is not known to this version of the
+  /// library
   ///
   /// @ingroup search
   external int ghostty_search_set(int search, int option, Pointer value);
@@ -2174,6 +2800,15 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// GHOSTTY_SELECTION_GESTURE_EVENT_OPT_GEOMETRY are required. Position,
   /// rectangle, and word-boundary codepoints are optional and use initialized
   /// defaults when unset or cleared.
+  ///
+  /// An autoscroll tick scrolls the viewport exactly one row in the direction
+  /// GHOSTTY_SELECTION_GESTURE_DATA_AUTOSCROLL reports, then continues the drag at
+  /// the viewport coordinate. The gesture has no timer of its own. While that
+  /// direction is up or down, send ticks from a timer you run. The interval is up
+  /// to you, and ticking faster scrolls faster. A tick returns GHOSTTY_NO_VALUE
+  /// and scrolls nothing if there's no direction to scroll in. If the cell of the
+  /// original press is no longer on the active screen, it also resets the gesture
+  /// and leaves any existing terminal selection alone, so stop your timer.
   ///
   /// For GHOSTTY_SELECTION_GESTURE_EVENT_TYPE_DEEP_PRESS, only
   /// GHOSTTY_SELECTION_GESTURE_EVENT_OPT_WORD_BOUNDARY_CODEPOINTS is valid. It is
@@ -2233,8 +2868,9 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// @param option Event option to set or clear
   /// @param value Pointer to the input value for option, or NULL to clear
   /// @return GHOSTTY_SUCCESS on success, GHOSTTY_OUT_OF_MEMORY if copying
-  /// event-owned data fails, or GHOSTTY_INVALID_VALUE if event, option, or
-  /// value is invalid
+  /// event-owned data fails, GHOSTTY_INVALID_VALUE if `event` or `value`
+  /// is invalid, or GHOSTTY_UNSUPPORTED if `option` is not known to this
+  /// version of the library
   ///
   /// @ingroup selection
   external int ghostty_selection_gesture_event_set(
@@ -2275,8 +2911,9 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// @param data Data field to read
   /// @param value Output pointer whose type depends on data
   /// @return GHOSTTY_SUCCESS on success, GHOSTTY_NO_VALUE if the requested data
-  /// has no value, or GHOSTTY_INVALID_VALUE if gesture, terminal, data, or
-  /// value is invalid
+  /// has no value, GHOSTTY_INVALID_VALUE if `gesture`, `terminal`, or
+  /// `out` is invalid, or GHOSTTY_UNSUPPORTED if `data` is not known to
+  /// this version of the library
   ///
   /// @ingroup selection
   external int ghostty_selection_gesture_get(
@@ -2288,8 +2925,13 @@ extension type GhosttyExports(JSObject _) implements JSObject {
 
   /// Read multiple data fields from a selection gesture in a single call.
   ///
-  /// This is an optimization over calling ghostty_selection_gesture_get() multiple
-  /// times. Each entry in values must point to storage of the type documented by
+  /// Use this when each call into the library is expensive, for example from
+  /// WebAssembly or from another language through its foreign function
+  /// interface. It reads every key in one call. From C in the same process it
+  /// costs the same as calling ghostty_selection_gesture_get() once per key, so
+  /// use whichever reads better.
+  ///
+  /// Each entry in values must point to storage of the type documented by
   /// the corresponding GhosttySelectionGestureData key.
   ///
   /// If any individual read fails, the function returns that error and writes the
@@ -2299,12 +2941,12 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// @param gesture Selection gesture handle (NULL returns GHOSTTY_INVALID_VALUE)
   /// @param terminal Terminal used to validate terminal-backed gesture state
   /// @param count Number of data fields to read
-  /// @param keys Data fields to read (must not be NULL)
-  /// @param values Output pointers corresponding to keys (must not be NULL)
+  /// @param keys Data fields to read (NULL returns GHOSTTY_INVALID_VALUE)
+  /// @param values Output pointers corresponding to keys (NULL returns GHOSTTY_INVALID_VALUE)
   /// @param out_written Optional number of fields read, or failing index on error
-  /// @return GHOSTTY_SUCCESS on success, GHOSTTY_NO_VALUE if a requested data
-  /// field has no value, or GHOSTTY_INVALID_VALUE if gesture, terminal,
-  /// keys, values, or a value pointer is invalid
+  /// @return GHOSTTY_SUCCESS if every key succeeds. Otherwise the result of the
+  /// first key that failed, for example GHOSTTY_UNSUPPORTED for a key
+  /// that is not known to this version of the library.
   ///
   /// @ingroup selection
   external int ghostty_selection_gesture_get_multi(
@@ -2351,11 +2993,11 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// this is. Primarily useful in WebAssembly environments where accessing
   /// struct fields directly is difficult.
   ///
-  /// @param attr The SGR attribute
-  /// @return The attribute tag
+  /// @param attr Pointer to the SGR attribute (may be NULL)
+  /// @return The attribute tag, or GHOSTTY_SGR_ATTR_UNSET if `attr` is NULL
   ///
   /// @ingroup sgr
-  external int ghostty_sgr_attribute_tag(int attr);
+  external int ghostty_sgr_attribute_tag(Pointer attr);
 
   /// Get the value from an SGR attribute.
   ///
@@ -2363,7 +3005,7 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// the tag to determine which field of the union is valid. Primarily useful in
   /// WebAssembly environments where accessing struct fields directly is difficult.
   ///
-  /// @param attr Pointer to the SGR attribute
+  /// @param attr Pointer to the SGR attribute (NULL returns NULL)
   /// @return Pointer to the attribute value union
   ///
   /// @ingroup sgr
@@ -2388,7 +3030,8 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   ///
   /// @param allocator Pointer to the allocator to use for memory management, or
   /// NULL to use the default allocator
-  /// @param parser Pointer to store the created parser handle
+  /// @param parser Pointer to store the created parser handle (NULL returns
+  /// GHOSTTY_INVALID_VALUE)
   /// @return GHOSTTY_SUCCESS on success, or an error code on failure
   ///
   /// @ingroup sgr
@@ -2400,8 +3043,8 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// Call this function repeatedly until it returns false to process
   /// all attributes in the sequence.
   ///
-  /// @param parser The parser handle, must not be NULL
-  /// @param attr Pointer to store the next attribute
+  /// @param parser The parser handle (NULL returns false)
+  /// @param attr Pointer to store the next attribute (NULL returns false)
   /// @return true if an attribute was returned, false if no more attributes
   ///
   /// @ingroup sgr
@@ -2413,7 +3056,7 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// After calling this, ghostty_sgr_next() will start from the beginning
   /// of the parameter list again.
   ///
-  /// @param parser The parser handle to reset, must not be NULL
+  /// @param parser The parser handle to reset (NULL does nothing)
   ///
   /// @ingroup sgr
   external void ghostty_sgr_reset(int parser);
@@ -2433,13 +3076,14 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// If separators is NULL, all parameters are assumed to be semicolon-separated.
   ///
   /// This function makes an internal copy of the parameter and separator data,
-  /// so the caller can safely free or modify the input arrays after this call.
+  /// so you can safely free or modify the input arrays after this call.
   ///
   /// After calling this function, the parser is automatically reset and ready
   /// to iterate from the beginning.
   ///
-  /// @param parser The parser handle, must not be NULL
-  /// @param params Array of SGR parameter values
+  /// @param parser The parser handle (NULL returns GHOSTTY_INVALID_VALUE)
+  /// @param params Array of SGR parameter values (NULL returns
+  /// GHOSTTY_INVALID_VALUE)
   /// @param separators Optional array of separator characters (';' or ':'), or
   /// NULL
   /// @param len Number of parameters (and separators if provided)
@@ -2484,25 +3128,50 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// Encodes a size report in the format specified by @p style into the
   /// provided buffer.
   ///
-  /// If the buffer is too small, the function returns GHOSTTY_OUT_OF_SPACE
-  /// and writes the required buffer size to @p out_written. The caller can
-  /// then retry with a sufficiently sized buffer.
+  /// If @p buf is too small, this returns GHOSTTY_OUT_OF_SPACE and sets
+  /// @p out_written to the size needed. The buffer may then hold part of the
+  /// sequence, which you should discard. To get the size without encoding
+  /// anything, pass NULL for @p buf and 0 for @p buf_len.
   ///
   /// @param style The size report format to encode
   /// @param size Terminal size information
-  /// @param buf Output buffer to write the encoded sequence into (may be NULL)
-  /// @param buf_len Size of the output buffer in bytes
-  /// @param[out] out_written On success, the number of bytes written. On
-  /// GHOSTTY_OUT_OF_SPACE, the required buffer size.
+  /// @param buf Buffer to write the sequence into. May be NULL if @p buf_len
+  /// is 0.
+  /// @param buf_len Size of @p buf in bytes
+  /// @param[out] out_written The number of bytes written, or the size needed
+  /// if the result is GHOSTTY_OUT_OF_SPACE
   /// @return GHOSTTY_SUCCESS on success, GHOSTTY_OUT_OF_SPACE if the buffer
-  /// is too small
+  /// is too small, or GHOSTTY_INVALID_VALUE if @p size or
+  /// @p out_written is NULL
   external int ghostty_size_report_encode(
     int style,
-    int size,
+    Pointer size,
     Pointer buf,
     int buf_len,
     Pointer out_written,
   );
+
+  /// Initialize a sized struct at runtime.
+  ///
+  /// This does the same thing as GHOSTTY_INIT_SIZED(). It sets every byte of
+  /// the struct to zero and then stores `size` in the struct's `size` field.
+  /// It is meant for language bindings that cannot use a C macro. Pass the
+  /// size of the struct as your binding lays it out, which is `sizeof` of the
+  /// struct in the header the binding was built from. See @ref sized-structs.
+  ///
+  /// @code{.c}
+  /// GhosttyRenderStateCursor cursor;
+  /// ghostty_sized_init(&cursor, sizeof(cursor));
+  /// @endcode
+  ///
+  /// If `ptr` is NULL, or `size` is too small to hold the `size` field
+  /// itself, this function does nothing.
+  ///
+  /// @param ptr The struct to initialize, or NULL
+  /// @param size The size of the struct in bytes
+  ///
+  /// @ingroup core_types
+  external void ghostty_sized_init(Pointer ptr, int size);
 
   /// Decode and validate one complete snapshot.
   ///
@@ -2524,8 +3193,8 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// lifecycle error detected before the operation consumes input does not
   /// poison it.
   ///
-  /// @param decoder Decoder handle (must not be NULL)
-  /// @param[out] terminal Pointer to receive the terminal (must not be NULL)
+  /// @param decoder Decoder handle (NULL returns GHOSTTY_INVALID_VALUE)
+  /// @param[out] terminal Pointer to receive the terminal (NULL returns GHOSTTY_INVALID_VALUE)
   /// @return GHOSTTY_SUCCESS on success, or an error code on failure
   ///
   /// @ingroup snapshot
@@ -2533,7 +3202,7 @@ extension type GhosttyExports(JSObject _) implements JSObject {
 
   /// Free a snapshot decoder.
   ///
-  /// This does not release the caller's ownership of a terminal returned by
+  /// This does not release your ownership of a terminal returned by
   /// ready or decode. Abandoning an incremental decode leaves that terminal
   /// usable with whatever history had already been restored.
   ///
@@ -2547,16 +3216,23 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// The output pointer must have the type documented by data. A phase-dependent
   /// value that is not currently available returns GHOSTTY_NO_VALUE.
   ///
-  /// @param decoder Decoder handle (must not be NULL)
+  /// @param decoder Decoder handle (NULL returns GHOSTTY_INVALID_VALUE)
   /// @param data Data kind to query
-  /// @param[out] out Pointer to receive the value (must not be NULL)
+  /// @param[out] out Pointer to receive the value (NULL returns GHOSTTY_INVALID_VALUE)
   /// @return GHOSTTY_SUCCESS on success, GHOSTTY_NO_VALUE if the requested data
-  /// is unavailable, or another error code on failure
+  /// is unavailable, GHOSTTY_UNSUPPORTED if `data` is not known to this
+  /// version of the library, or another error code on failure
   ///
   /// @ingroup snapshot
   external int ghostty_snapshot_decoder_get(int decoder, int data, Pointer out);
 
   /// Get multiple snapshot decoder data fields in a single call.
+  ///
+  /// Use this when each call into the library is expensive, for example from
+  /// WebAssembly or from another language through its foreign function
+  /// interface. It reads every key in one call. From C in the same process it
+  /// costs the same as calling ghostty_snapshot_decoder_get() once per key, so
+  /// use whichever reads better.
   ///
   /// Each keys element selects a data kind and the corresponding values element
   /// points to storage of the documented output type. Processing stops at the
@@ -2564,12 +3240,14 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// the number of values written before the failing key. Invalid array arguments
   /// report zero values written.
   ///
-  /// @param decoder Decoder handle (must not be NULL)
+  /// @param decoder Decoder handle (NULL returns GHOSTTY_INVALID_VALUE)
   /// @param count Number of key/value pairs
   /// @param keys Array of data kinds to query
   /// @param values Array of output pointers corresponding to keys
   /// @param[out] out_written Number of successfully written values (may be NULL)
-  /// @return GHOSTTY_SUCCESS if every query succeeds, or the first error
+  /// @return GHOSTTY_SUCCESS if every key succeeds. Otherwise the result of the
+  /// first key that failed, for example GHOSTTY_UNSUPPORTED for a key
+  /// that is not known to this version of the library.
   ///
   /// @ingroup snapshot
   external int ghostty_snapshot_decoder_get_multi(
@@ -2595,7 +3273,7 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   ///
   /// @param allocator Allocator for decoder and decoded terminal state, or NULL
   /// for the default allocator
-  /// @param decoder Pointer to receive the decoder handle (must not be NULL)
+  /// @param decoder Pointer to receive the decoder handle (NULL returns GHOSTTY_INVALID_VALUE)
   /// @param reader Snapshot source reader
   /// @return GHOSTTY_SUCCESS on success, or an error code on failure
   ///
@@ -2614,7 +3292,7 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   ///
   /// @param allocator Allocator for decoder and decoded terminal state, or NULL
   /// for the default allocator
-  /// @param decoder Pointer to receive the decoder handle (must not be NULL)
+  /// @param decoder Pointer to receive the decoder handle (NULL returns GHOSTTY_INVALID_VALUE)
   /// @param ptr Snapshot source bytes
   /// @param len Number of source bytes
   /// @return GHOSTTY_SUCCESS on success, or an error code on failure
@@ -2627,17 +3305,61 @@ extension type GhosttyExports(JSObject _) implements JSObject {
     int len,
   );
 
-  /// Decode one history page into the terminal returned by READY.
+  /// Decode one history page, or the pixels of one Kitty graphics image, into
+  /// the terminal returned by READY.
   ///
-  /// Each GHOSTTY_SUCCESS consumes and validates one PAGE record. Query the
-  /// GHOSTTY_SNAPSHOT_DECODER_DATA_PROGRESS_* values before calling next again.
+  /// Each GHOSTTY_SUCCESS consumes and validates one record: a history page
+  /// together with the Kitty graphics placements pinned to it, or the pixels
+  /// of one image or animation frame. Pixels may arrive at any point, even
+  /// between history pages. Query GHOSTTY_SNAPSHOT_DECODER_DATA_PROGRESS_KIND
+  /// and the progress values for that kind before calling next again.
   /// GHOSTTY_NO_VALUE means FINISH was validated; repeated calls after FINISH
   /// also return GHOSTTY_NO_VALUE.
   ///
+  /// @code{.c}
+  /// // How many image bytes the primary screen is waiting for, to show
+  /// // progress while they arrive.
+  /// uint64_t pending = 0;
+  /// ghostty_snapshot_decoder_get(
+  /// decoder, GHOSTTY_SNAPSHOT_DECODER_DATA_KITTY_PENDING_BYTES_PRIMARY,
+  /// &pending);
+  /// uint64_t received = 0;
+  ///
+  /// GhosttyResult result;
+  /// while ((result = ghostty_snapshot_decoder_next(decoder)) == GHOSTTY_SUCCESS) {
+  /// GhosttySnapshotDecoderProgressKind kind;
+  /// ghostty_snapshot_decoder_get(
+  /// decoder, GHOSTTY_SNAPSHOT_DECODER_DATA_PROGRESS_KIND, &kind);
+  ///
+  /// if (kind == GHOSTTY_SNAPSHOT_DECODER_PROGRESS_KIND_PAGE) {
+  /// // Scrollback grew by this many rows.
+  /// size_t rows = 0;
+  /// ghostty_snapshot_decoder_get(
+  /// decoder, GHOSTTY_SNAPSHOT_DECODER_DATA_PROGRESS_ROWS, &rows);
+  /// continue;
+  /// }
+  ///
+  /// // An image's pixels arrived.
+  /// GhosttyTerminalScreen screen;
+  /// size_t bytes = 0;
+  /// ghostty_snapshot_decoder_get(
+  /// decoder, GHOSTTY_SNAPSHOT_DECODER_DATA_PROGRESS_SCREEN, &screen);
+  /// ghostty_snapshot_decoder_get(
+  /// decoder, GHOSTTY_SNAPSHOT_DECODER_DATA_PROGRESS_IMAGE_BYTES, &bytes);
+  /// if (screen == GHOSTTY_TERMINAL_SCREEN_PRIMARY) received += bytes;
+  /// }
+  ///
+  /// // GHOSTTY_NO_VALUE means the snapshot is complete. Dropped pixels report
+  /// // zero bytes, so received can end up below pending.
+  /// @endcode
+  ///
   /// The terminal may be rendered, resized, and fed live PTY input between calls.
   /// If a history page can no longer be applied safely, it is still consumed and
-  /// validated and progress reports zero rows. The decoder applies history
-  /// to the caller-owned terminal produced by its READY operation.
+  /// validated and progress reports zero rows. Image pixels work the same way:
+  /// if live input deleted the image, or sent a new image with the same ID, the
+  /// pixels are consumed and validated and progress reports zero bytes. The
+  /// decoder applies history and pixels to your terminal produced
+  /// by its READY operation.
   ///
   /// If GHOSTTY_SNAPSHOT_DECODER_OPT_COMPRESS_HISTORY is true, the page is
   /// compressed before this function returns, unless it is visible in the
@@ -2647,9 +3369,9 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// remains caller-owned and usable with its already-restored history, but only
   /// ghostty_snapshot_decoder_free() may subsequently be called on the decoder.
   ///
-  /// @param decoder Decoder handle (must not be NULL)
-  /// @return GHOSTTY_SUCCESS for one page, GHOSTTY_NO_VALUE after FINISH, or an
-  /// error code on failure
+  /// @param decoder Decoder handle (NULL returns GHOSTTY_INVALID_VALUE)
+  /// @return GHOSTTY_SUCCESS for one page or image, GHOSTTY_NO_VALUE after
+  /// FINISH, or an error code on failure
   ///
   /// @ingroup snapshot
   external int ghostty_snapshot_decoder_next(int decoder);
@@ -2672,7 +3394,7 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// GHOSTTY_TERMINAL_OPT_CONTINUATION_MAX_BYTES to zero after export and before
   /// writing any post-snapshot bytes, because later input may change it.
   ///
-  /// The caller must keep the returned terminal alive until FINISH validates or
+  /// You must keep the returned terminal alive until FINISH validates or
   /// the decoder is freed. The decoder borrows this terminal handle while it
   /// restores history; ghostty_snapshot_decoder_next() uses it automatically.
   ///
@@ -2682,8 +3404,8 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// must be freed. An invalid argument or lifecycle error detected before the
   /// operation consumes input does not poison it.
   ///
-  /// @param decoder Decoder handle (must not be NULL)
-  /// @param[out] terminal Pointer to receive the terminal (must not be NULL)
+  /// @param decoder Decoder handle (NULL returns GHOSTTY_INVALID_VALUE)
+  /// @param[out] terminal Pointer to receive the terminal (NULL returns GHOSTTY_INVALID_VALUE)
   /// @return GHOSTTY_SUCCESS on success, or an error code on failure
   ///
   /// @ingroup snapshot
@@ -2691,14 +3413,30 @@ extension type GhosttyExports(JSObject _) implements JSObject {
 
   /// Set a snapshot decoder option.
   ///
-  /// The value pointer must have the type documented by option. Options may only
-  /// be changed before decoding starts.
+  /// The value pointer must have the type documented by option. Passing NULL
+  /// for `value` restores the option's default, which each
+  /// GhosttySnapshotDecoderOption value documents. Options can only be
+  /// changed before decoding starts.
   ///
-  /// @param decoder Decoder handle (must not be NULL)
+  /// @code{.c}
+  /// bool retain = true;
+  /// ghostty_snapshot_decoder_set(
+  /// decoder, GHOSTTY_SNAPSHOT_DECODER_OPT_RETAIN_CONTINUATION, &retain);
+  ///
+  /// // Changed our mind: go back to the default (false).
+  /// ghostty_snapshot_decoder_set(
+  /// decoder, GHOSTTY_SNAPSHOT_DECODER_OPT_RETAIN_CONTINUATION, NULL);
+  /// @endcode
+  ///
+  /// @param decoder Decoder handle (NULL returns GHOSTTY_INVALID_VALUE)
   /// @param option Option to change
-  /// @param value Pointer to the option value (must not be NULL)
+  /// @param value Pointer to the option value, or NULL to restore the default
   /// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if decoding has
-  /// started or an argument is invalid, or another error code on failure
+  /// started or an argument is invalid, GHOSTTY_UNSUPPORTED if `option`
+  /// is not known to this version of the library, or another error code
+  /// on failure. An unknown `option` always returns
+  /// GHOSTTY_UNSUPPORTED, even after decoding has started, so it is
+  /// safe to use for checking whether the library knows an option.
   ///
   /// @ingroup snapshot
   external int ghostty_snapshot_decoder_set(
@@ -2710,7 +3448,7 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// Encode a complete terminal snapshot to a writer.
   ///
   /// The terminal's persistent VT stream supplies the continuation bytes needed
-  /// to reconstruct unfinished parser state. The caller must prevent concurrent
+  /// to reconstruct unfinished parser state. You must prevent concurrent
   /// writes or other terminal mutation for the duration of this call. The writer
   /// callback must not call terminal APIs with the same terminal handle.
   /// A terminal can be encoded with tracking disabled when its VT parser and
@@ -2721,9 +3459,9 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// Encoding begins at the writer's current position. If an error occurs, the
   /// writer may contain a partial snapshot without a valid FINISH marker.
   /// Calls to the writer are synchronous; this function does not flush or make
-  /// the caller's destination durable.
+  /// your destination durable.
   ///
-  /// @param terminal Terminal to encode (must not be NULL)
+  /// @param terminal Terminal to encode (NULL returns GHOSTTY_INVALID_VALUE)
   /// @param writer Destination writer whose write callback must not be NULL
   /// @return GHOSTTY_SUCCESS on success, GHOSTTY_IO_ERROR if the writer rejects
   /// output, GHOSTTY_LIMIT_EXCEEDED if output accounting overflows, or
@@ -2735,7 +3473,7 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// Encode a complete terminal snapshot to an allocated buffer.
   ///
   /// The returned buffer is allocated with allocator, or the default allocator
-  /// when allocator is NULL. The caller must release it with ghostty_free(),
+  /// when allocator is NULL. You must release it with ghostty_free(),
   /// passing the same allocator used here.
   ///
   /// A terminal can be encoded with tracking disabled when its VT parser and
@@ -2743,10 +3481,10 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// have been enabled before the input that produced that state was written;
   /// otherwise this returns GHOSTTY_INVALID_VALUE.
   ///
-  /// @param terminal Terminal to encode (must not be NULL)
+  /// @param terminal Terminal to encode (NULL returns GHOSTTY_INVALID_VALUE)
   /// @param allocator Allocator for the output, or NULL for the default allocator
-  /// @param[out] out_ptr Allocated snapshot bytes (must not be NULL)
-  /// @param[out] out_len Number of allocated snapshot bytes (must not be NULL)
+  /// @param[out] out_ptr Allocated snapshot bytes (NULL returns GHOSTTY_INVALID_VALUE)
+  /// @param[out] out_len Number of allocated snapshot bytes (NULL returns GHOSTTY_INVALID_VALUE)
   /// @return GHOSTTY_SUCCESS on success, or an error code on failure
   ///
   /// @ingroup snapshot
@@ -2770,11 +3508,11 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// have been enabled before the input that produced that state was written;
   /// otherwise this returns GHOSTTY_INVALID_VALUE.
   ///
-  /// @param terminal Terminal to encode (must not be NULL)
+  /// @param terminal Terminal to encode (NULL returns GHOSTTY_INVALID_VALUE)
   /// @param buf Destination buffer, or NULL when buf_len is zero
   /// @param buf_len Destination buffer capacity in bytes
   /// @param[out] out_written Bytes written, or required capacity on
-  /// GHOSTTY_OUT_OF_SPACE (must not be NULL)
+  /// GHOSTTY_OUT_OF_SPACE (NULL returns GHOSTTY_INVALID_VALUE)
   /// @return GHOSTTY_SUCCESS on success, or an error code on failure
   ///
   /// @ingroup snapshot
@@ -2788,17 +3526,19 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// Get the default style.
   ///
   /// Initializes the style to the default values (no colors, no flags).
+  /// The default style is all zero bytes.
   ///
-  /// @param style Pointer to the style to initialize
+  /// @param style Pointer to the style to initialize (NULL does nothing)
   ///
   /// @ingroup style
   external void ghostty_style_default(Pointer style);
 
   /// Check if a style is the default style.
   ///
-  /// Returns true if all colors are unset and all flags are off.
+  /// Returns true if all colors are unset and all flags are off. Reserved
+  /// bits are ignored.
   ///
-  /// @param style Pointer to the style to check
+  /// @param style Pointer to the style to check (NULL returns false)
   /// @return true if the style is the default style
   ///
   /// @ingroup style
@@ -2830,8 +3570,8 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// @param option The option to set
   /// @param value  Pointer to the value (type depends on the option),
   /// or NULL to clear it
-  /// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if the
-  /// option is not recognized
+  /// @return GHOSTTY_SUCCESS on success, or GHOSTTY_UNSUPPORTED if the
+  /// option is not known to this build (see GhosttyResult)
   external int ghostty_sys_set(int option, Pointer value);
 
   /// Compress eligible terminal scrollback.
@@ -2849,7 +3589,7 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// Accessing compressed history restores it transparently.
   ///
   /// This function is not thread-safe with other operations on the same
-  /// terminal. The caller must serialize it with writes, rendering, searches,
+  /// terminal. You must serialize it with writes, rendering, searches,
   /// and other terminal access.
   ///
   /// @param terminal The terminal handle (NULL returns GHOSTTY_INVALID_VALUE)
@@ -2889,7 +3629,7 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// Return an allocated copy of the terminal's replay-safe VT continuation.
   ///
   /// The returned bytes are allocated with allocator, or the default allocator
-  /// when allocator is NULL. The caller must release them with ghostty_free(),
+  /// when allocator is NULL. You must release them with ghostty_free(),
   /// passing the same allocator and returned length. An empty continuation is a
   /// successful result with *out_ptr set to NULL and *out_len set to zero,
   /// which can also be passed to ghostty_free().
@@ -2897,13 +3637,13 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// GHOSTTY_TERMINAL_OPT_CONTINUATION_MAX_BYTES to a nonzero value before the
   /// input that produced the continuation was written.
   ///
-  /// The caller must serialize this operation with all other access to the same
+  /// You must serialize this operation with all other access to the same
   /// terminal.
   ///
-  /// @param terminal Terminal to read from (must not be NULL)
+  /// @param terminal Terminal to read from (NULL returns GHOSTTY_INVALID_VALUE)
   /// @param allocator Allocator for the output, or NULL for the default allocator
-  /// @param[out] out_ptr Allocated continuation bytes (must not be NULL)
-  /// @param[out] out_len Number of continuation bytes (must not be NULL)
+  /// @param[out] out_ptr Allocated continuation bytes (NULL returns GHOSTTY_INVALID_VALUE)
+  /// @param[out] out_len Number of continuation bytes (NULL returns GHOSTTY_INVALID_VALUE)
   /// @return GHOSTTY_SUCCESS on success, GHOSTTY_OUT_OF_MEMORY on allocation
   /// failure, or GHOSTTY_INVALID_VALUE if an argument is invalid,
   /// tracking is disabled, or the current continuation is unavailable
@@ -2918,26 +3658,30 @@ extension type GhosttyExports(JSObject _) implements JSObject {
 
   /// Copy the terminal's replay-safe VT continuation into a caller buffer.
   ///
-  /// Pass NULL for buf with buf_len zero to query the required size. A size query
-  /// returns GHOSTTY_OUT_OF_SPACE and stores the required size in out_written,
-  /// including zero when the stream is at ground. If a non-NULL buffer is too
-  /// small, the function has the same result and reports the full required size.
+  /// If @p buf is too small, this returns GHOSTTY_OUT_OF_SPACE and sets
+  /// @p out_written to the size needed. To get the size first, pass NULL for
+  /// @p buf and 0 for @p buf_len. When no escape sequence or UTF-8 character
+  /// is left unfinished, the continuation is empty and needs no space, so this
+  /// returns GHOSTTY_SUCCESS with @p out_written set to 0, even for a size
+  /// query.
+  ///
   /// Continuation tracking must have been enabled by setting
   /// GHOSTTY_TERMINAL_OPT_CONTINUATION_MAX_BYTES to a nonzero value before the
   /// input that produced the continuation was written.
   ///
-  /// The caller must serialize this operation with all other access to the same
+  /// You must serialize this operation with all other access to the same
   /// terminal.
   ///
-  /// @param terminal Terminal to read from (must not be NULL)
-  /// @param buf Destination buffer, or NULL when buf_len is zero
-  /// @param buf_len Destination buffer capacity in bytes
-  /// @param[out] out_written Bytes written, or required size on
-  /// GHOSTTY_OUT_OF_SPACE (must not be NULL)
-  /// @return GHOSTTY_SUCCESS on success, GHOSTTY_OUT_OF_SPACE for a size query or
-  /// insufficient buffer, or GHOSTTY_INVALID_VALUE if an argument is
-  /// invalid, tracking is disabled, or the current continuation is
-  /// unavailable
+  /// @param terminal Terminal to read from (NULL returns GHOSTTY_INVALID_VALUE)
+  /// @param buf Buffer to write the continuation into. May be NULL if
+  /// @p buf_len is 0.
+  /// @param buf_len Size of @p buf in bytes
+  /// @param[out] out_written The number of bytes written, or the size needed
+  /// if the result is GHOSTTY_OUT_OF_SPACE. NULL returns GHOSTTY_INVALID_VALUE.
+  /// @return GHOSTTY_SUCCESS on success, GHOSTTY_OUT_OF_SPACE if the
+  /// continuation does not fit in @p buf, or GHOSTTY_INVALID_VALUE if an
+  /// argument is invalid, tracking is disabled, or the current
+  /// continuation is unavailable
   ///
   /// @ingroup terminal
   external int ghostty_terminal_continuation_buf(
@@ -2959,10 +3703,10 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// GHOSTTY_TERMINAL_OPT_CONTINUATION_MAX_BYTES to a nonzero value before the
   /// input that produced the continuation was written.
   ///
-  /// The caller must serialize this operation with both VT write functions and
+  /// You must serialize this operation with both VT write functions and
   /// all other access to the same terminal.
   ///
-  /// @param terminal Terminal to read from (must not be NULL)
+  /// @param terminal Terminal to read from (NULL returns GHOSTTY_INVALID_VALUE)
   /// @param writer Destination writer whose write callback must not be NULL
   /// @return GHOSTTY_SUCCESS on success, GHOSTTY_IO_ERROR if the callback rejects
   /// a write, GHOSTTY_LIMIT_EXCEEDED if output accounting overflows, or
@@ -2992,17 +3736,21 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// @param terminal The terminal handle (may be NULL)
   /// @param data The type of data to extract
   /// @param out Pointer to store the extracted data (type depends on data parameter)
-  /// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if the terminal
-  /// is NULL or the data type is invalid
+  /// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if the terminal is
+  /// NULL or `data` is GHOSTTY_TERMINAL_DATA_INVALID, or
+  /// GHOSTTY_UNSUPPORTED if `data` is not known to this version of the
+  /// library
   ///
   /// @ingroup terminal
   external int ghostty_terminal_get(int terminal, int data, Pointer out);
 
   /// Get multiple data fields from a terminal in a single call.
   ///
-  /// This is an optimization over calling ghostty_terminal_get()
-  /// repeatedly, particularly useful in environments with high per-call
-  /// overhead such as FFI or Cgo.
+  /// Use this when each call into the library is expensive, for example from
+  /// WebAssembly or from another language through its foreign function
+  /// interface. It reads every key in one call. From C in the same process it
+  /// costs the same as calling ghostty_terminal_get() once per key, so use
+  /// whichever reads better.
   ///
   /// Each element in the keys array specifies a data kind, and the
   /// corresponding element in the values array receives the result.
@@ -3020,7 +3768,9 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// documented output type)
   /// @param[out] out_written On return, receives the number of values
   /// successfully written (may be NULL)
-  /// @return GHOSTTY_SUCCESS if all queries succeed
+  /// @return GHOSTTY_SUCCESS if every key succeeds. Otherwise the result of the
+  /// first key that failed, for example GHOSTTY_UNSUPPORTED for a key
+  /// that is not known to this version of the library.
   ///
   /// @ingroup terminal
   external int ghostty_terminal_get_multi(
@@ -3099,7 +3849,8 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// prior to using the terminal.
   ///
   /// @param allocator Pointer to allocator, or NULL to use the default allocator
-  /// @param terminal Pointer to store the created terminal handle
+  /// @param terminal Pointer to store the created terminal handle (NULL returns
+  /// GHOSTTY_INVALID_VALUE)
   /// @param cols Terminal width in cells (must be greater than zero)
   /// @param rows Terminal height in cells (must be greater than zero)
   /// @return GHOSTTY_SUCCESS on success, or an error code on failure
@@ -3115,9 +3866,9 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// Paste into the terminal according to its current state: a Kitty
   /// clipboard protocol paste event if mode 5522 is enabled and a
   /// clipboard_read callback is installed, otherwise the text framed per
-  /// mode 2004. See the group documentation for the full behavior. Output
+  /// mode 2004. See @ref guide-input-paste for the full behavior. Output
   /// streams through the write_pty callback in chunks. The viewport is not
-  /// scrolled; that is up to the embedder, as for key input.
+  /// scrolled; that is up to you, as for key input.
   ///
   /// A paste event records a session grant for its one-time password only
   /// once the event is written; a failed call never leaves a grant for an
@@ -3125,23 +3876,25 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   ///
   /// @param terminal The terminal handle
   /// @param paste The paste request, borrowed for the duration of the call
-  /// @param[out] out_written On success, whether anything was written to
+  /// @param[out] out_pasted On success, whether anything was written to
   /// the pty (the encoded text or a paste event). False means
   /// there was nothing to paste: no non-empty text
   /// representation. May be NULL.
-  /// @return GHOSTTY_SUCCESS on success (see @p out_written);
+  /// @return GHOSTTY_SUCCESS on success (see @p out_pasted).
   /// GHOSTTY_REJECTED if the text could inject commands and
-  /// GhosttyPaste::allow_unsafe is false (nothing was written);
-  /// GHOSTTY_INVALID_VALUE for a NULL terminal or paste, MIME
-  /// types without a reader, or when no write_pty callback is
-  /// installed; GHOSTTY_OUT_OF_MEMORY; GHOSTTY_IO_ERROR if the
-  /// reader failed or there is no secure entropy source to mint a
-  /// paste event password (wasm32-freestanding without
-  /// GHOSTTY_SYS_OPT_RANDOM_SECURE set). Errors write nothing.
+  /// GhosttyPaste::allow_unsafe is false.
+  /// GHOSTTY_INVALID_VALUE for a NULL terminal or paste, an unknown
+  /// GhosttyPaste::source, MIME types without a reader, or when no
+  /// write_pty callback is installed.
+  /// GHOSTTY_OUT_OF_MEMORY if an allocation fails.
+  /// GHOSTTY_IO_ERROR if the reader failed or there is no secure
+  /// entropy source to create a paste event password
+  /// (wasm32-freestanding without GHOSTTY_SYS_OPT_RANDOM_SECURE set).
+  /// Errors write nothing.
   external int ghostty_terminal_paste(
     int terminal,
     Pointer paste,
-    Pointer out_written,
+    Pointer out_pasted,
   );
 
   /// Convert a grid reference back to a point in the given coordinate system.
@@ -3161,7 +3914,8 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// GHOSTTY_NO_VALUE.
   ///
   /// @param terminal The terminal handle (NULL returns GHOSTTY_INVALID_VALUE)
-  /// @param ref Pointer to the grid reference to convert
+  /// @param ref Pointer to the grid reference to convert (NULL returns
+  /// GHOSTTY_INVALID_VALUE)
   /// @param tag The target coordinate system
   /// @param[out] out On success, set to the coordinate in the requested system (may be NULL)
   /// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if the terminal
@@ -3224,21 +3978,33 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// Scroll the terminal viewport.
   ///
   /// Scrolls the terminal's viewport according to the given behavior.
-  /// When using GHOSTTY_SCROLL_VIEWPORT_DELTA, set the delta field in
+  /// When using GHOSTTY_TERMINAL_SCROLL_VIEWPORT_DELTA, set the delta field in
   /// the value union to specify the number of rows to scroll (negative
-  /// for up, positive for down). When using GHOSTTY_SCROLL_VIEWPORT_ROW,
+  /// for up, positive for down). When using GHOSTTY_TERMINAL_SCROLL_VIEWPORT_ROW,
   /// set the row field to the absolute row offset from the top of the
   /// scrollable area (the same row space as the offset field of
   /// GhosttyTerminalScrollbar). When using
-  /// GHOSTTY_SCROLL_VIEWPORT_DELTA_PROMPT, set delta_prompt to the signed
-  /// number of prompts to move. See GHOSTTY_SCROLL_VIEWPORT_DELTA_PROMPT for
-  /// the navigation behavior. For other behaviors, the value is ignored.
+  /// GHOSTTY_TERMINAL_SCROLL_VIEWPORT_DELTA_PROMPT, set delta_prompt to the
+  /// signed number of prompts to move. See
+  /// GHOSTTY_TERMINAL_SCROLL_VIEWPORT_DELTA_PROMPT for the navigation behavior. For other behaviors, the value is ignored.
   ///
-  /// @param terminal The terminal handle (may be NULL, in which case this is a no-op)
+  /// @code{.c}
+  /// GhosttyTerminalScrollViewport behavior = {
+  /// .tag = GHOSTTY_TERMINAL_SCROLL_VIEWPORT_DELTA,
+  /// .value = { .delta = -5 },
+  /// };
+  /// ghostty_terminal_scroll_viewport(terminal, behavior); // up 5 rows
+  /// @endcode
+  ///
+  /// @param terminal The terminal handle (NULL returns GHOSTTY_INVALID_VALUE)
   /// @param behavior The scroll behavior as a tagged union
+  /// @return GHOSTTY_SUCCESS on success, or GHOSTTY_INVALID_VALUE if
+  /// `terminal` is NULL or `behavior.tag` is not a
+  /// GhosttyTerminalScrollViewportTag value known to this version of
+  /// the library. The viewport does not move on failure.
   ///
   /// @ingroup terminal
-  external void ghostty_terminal_scroll_viewport(int terminal, int behavior);
+  external int ghostty_terminal_scroll_viewport(int terminal, int behavior);
 
   /// Derive a selection snapshot covering all selectable terminal content.
   ///
@@ -3279,8 +4045,19 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// The returned selection is not installed as the terminal's current
   /// selection. It is a snapshot with the same lifetime rules as GhosttySelection.
   ///
+  /// @code{.c}
+  /// GhosttyGridRef ref = {0};
+  /// ghostty_terminal_grid_ref(terminal, point, &ref);
+  ///
+  /// GhosttySelection selection = {0};
+  /// if (ghostty_terminal_select_output(terminal, &ref, &selection) == GHOSTTY_SUCCESS) {
+  /// ghostty_terminal_set(terminal, GHOSTTY_TERMINAL_OPT_SELECTION, &selection);
+  /// }
+  /// @endcode
+  ///
   /// @param terminal The terminal handle (NULL returns GHOSTTY_INVALID_VALUE)
-  /// @param ref Grid reference within command output to select
+  /// @param ref Grid reference within command output to select (NULL returns
+  /// GHOSTTY_INVALID_VALUE)
   /// @param[out] out_selection On success, receives the derived selection
   /// @return GHOSTTY_SUCCESS on success, GHOSTTY_NO_VALUE if the valid ref is
   /// not selectable command output, or GHOSTTY_INVALID_VALUE if the
@@ -3289,7 +4066,7 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// @ingroup selection
   external int ghostty_terminal_select_output(
     int terminal,
-    int ref,
+    Pointer ref,
     Pointer out_selection,
   );
 
@@ -3328,6 +4105,8 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   ///
   /// @snippet c-vt-selection/src/main.c selection-word-between
   ///
+  /// Full program: @ref c-vt-selection/src/main.c
+  ///
   /// The returned selection is not installed as the terminal's current
   /// selection. It is a snapshot with the same lifetime rules as GhosttySelection.
   ///
@@ -3348,7 +4127,7 @@ extension type GhosttyExports(JSObject _) implements JSObject {
 
   /// Adjust a selection snapshot using terminal selection semantics.
   ///
-  /// This mutates the caller-provided GhosttySelection in place. The logical end
+  /// This mutates your GhosttySelection in place. The logical end
   /// endpoint is always moved, regardless of whether the selection is forward or
   /// reversed visually. The input selection remains a snapshot: after adjustment,
   /// call ghostty_terminal_set() with GHOSTTY_TERMINAL_OPT_SELECTION to install it
@@ -3432,74 +4211,6 @@ extension type GhosttyExports(JSObject _) implements JSObject {
     Pointer out_equal,
   );
 
-  /// Format a terminal selection into an allocated buffer.
-  ///
-  /// This is a one-shot convenience API for formatting either the terminal's
-  /// active selection or a caller-provided GhosttySelection without explicitly
-  /// creating a GhosttyFormatter.
-  ///
-  /// The returned buffer is allocated using allocator, or the default allocator
-  /// if NULL is passed. The caller owns the returned buffer and must free it with
-  /// ghostty_free(), passing the same allocator and returned length.
-  /// Empty output returns GHOSTTY_SUCCESS with *out_ptr set to NULL and
-  /// *out_len set to zero. This result can be passed to ghostty_free().
-  ///
-  /// The returned bytes are not NUL-terminated. This supports plain text, VT, and
-  /// HTML uniformly as byte output.
-  ///
-  /// If options.selection is NULL and the terminal has no active selection, the
-  /// function returns GHOSTTY_NO_VALUE and leaves out_ptr as NULL and out_len as 0.
-  ///
-  /// @param terminal The terminal to read from (must not be NULL)
-  /// @param allocator Allocator used for the returned buffer, or NULL for the default allocator
-  /// @param options Selection formatting options
-  /// @param out_ptr Receives the allocated output buffer (must not be NULL)
-  /// @param out_len Receives the output length in bytes (must not be NULL)
-  /// @return GHOSTTY_SUCCESS on success, or an error code on failure
-  ///
-  /// @ingroup selection
-  external int ghostty_terminal_selection_format_alloc(
-    int terminal,
-    Pointer allocator,
-    int options,
-    Pointer out_ptr,
-    Pointer out_len,
-  );
-
-  /// Format a terminal selection into a caller-provided buffer.
-  ///
-  /// This is a one-shot convenience API for formatting either the terminal's
-  /// active selection or a caller-provided GhosttySelection without explicitly
-  /// creating a GhosttyFormatter.
-  ///
-  /// Pass NULL for buf to query the required output size. In that case,
-  /// out_written receives the required size and the function returns
-  /// GHOSTTY_OUT_OF_SPACE.
-  ///
-  /// If buf is too small, the function returns GHOSTTY_OUT_OF_SPACE and writes
-  /// the required size to out_written. The caller can then retry with a larger
-  /// buffer.
-  ///
-  /// If options.selection is NULL and the terminal has no active selection, the
-  /// function returns GHOSTTY_NO_VALUE.
-  ///
-  /// @param terminal The terminal to read from (must not be NULL)
-  /// @param options Selection formatting options
-  /// @param buf Output buffer, or NULL to query required size
-  /// @param buf_len Length of buf in bytes
-  /// @param out_written Number of bytes written, or required size on
-  /// GHOSTTY_OUT_OF_SPACE (must not be NULL)
-  /// @return GHOSTTY_SUCCESS on success, or an error code on failure
-  ///
-  /// @ingroup selection
-  external int ghostty_terminal_selection_format_buf(
-    int terminal,
-    int options,
-    Pointer buf,
-    int buf_len,
-    Pointer out_written,
-  );
-
   /// Get the current endpoint ordering of a selection snapshot.
   ///
   /// The selection's start and end grid refs must both be valid untracked
@@ -3560,18 +4271,40 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// write_pty callback and userdata pointer. The value is passed
   /// directly for pointer types (callbacks, userdata) or as a pointer
   /// to the value for non-pointer types (e.g. GhosttyString*).
-  /// The behavior of a NULL value is specific to each option and is
-  /// documented by the corresponding GhosttyTerminalOption value.
+  ///
+  /// Passing NULL for `value` restores the option's default, the same value
+  /// a new terminal starts with. Each GhosttyTerminalOption value documents
+  /// its default. Callbacks and the userdata pointer default to NULL, so
+  /// passing NULL removes them. GHOSTTY_TERMINAL_OPT_MODE and
+  /// GHOSTTY_TERMINAL_OPT_MODE_DEFAULT have no default to restore, so they
+  /// return GHOSTTY_INVALID_VALUE for NULL.
+  ///
+  /// @code{.c}
+  /// bool enabled = true;
+  /// ghostty_terminal_set(terminal, GHOSTTY_TERMINAL_OPT_GLYPH_PROTOCOL,
+  /// &enabled);
+  ///
+  /// // Later, turn it back off by restoring the default.
+  /// ghostty_terminal_set(terminal, GHOSTTY_TERMINAL_OPT_GLYPH_PROTOCOL, NULL);
+  /// @endcode
   ///
   /// Callbacks are invoked synchronously during VT writes. Callbacks must not
   /// call ghostty_terminal_vt_write() or
-  /// ghostty_terminal_vt_write_until_ground() on the same terminal
-  /// (no reentrancy).
+  /// ghostty_terminal_vt_write_until() on the same terminal. The terminal is
+  /// not reentrant, and nothing checks for this or reports an error. The
+  /// bytes go into the parser in the middle of the sequence that called you,
+  /// so they can be lost or make that sequence run a second time. See
+  /// @ref guide-effects-rules.
   ///
-  /// @param terminal The terminal handle (may be NULL, in which case this is a no-op)
+  /// @param terminal The terminal handle (NULL returns GHOSTTY_INVALID_VALUE)
   /// @param option The option to set
   /// @param value Pointer to the value to set (type depends on the option),
-  /// or NULL to clear the option
+  /// or NULL to restore the option's default
+  /// @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if `terminal`
+  /// is NULL or the value is invalid for the option,
+  /// GHOSTTY_OUT_OF_MEMORY if copying the value fails, or
+  /// GHOSTTY_UNSUPPORTED if `option` is not known to this version of
+  /// the library
   ///
   /// @ingroup terminal
   external int ghostty_terminal_set(int terminal, int option, Pointer value);
@@ -3590,42 +4323,61 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// source; so the primary goal is to keep the terminal state consistent and
   /// not allow malformed input to corrupt or crash.
   ///
-  /// @param terminal The terminal handle
-  /// @param data Pointer to the data to write
+  /// @param terminal The terminal handle (NULL does nothing)
+  /// @param data Pointer to the data to write (NULL does nothing)
   /// @param len Length of the data in bytes
   ///
   /// @ingroup terminal
   external void ghostty_terminal_vt_write(int terminal, Pointer data, int len);
 
-  /// Write VT-encoded data, but only the shortest prefix needed to reach ground.
+  /// Write VT-encoded data to the terminal, stopping right after the first
+  /// byte that reaches one of the requested boundaries.
   ///
-  /// Ground is when the stream isn't in the middle of any type of sequence:
-  /// UTF-8, ESC, CSI, OSC, etc. It is the stateless point of the stream.
+  /// This works like ghostty_terminal_vt_write(), but it can pause at points
+  /// you care about. It tells you exactly where a control string starts or
+  /// ends, using the same parse that updates the terminal. For example, a
+  /// program that sits between a shell and a terminal can use it to:
   ///
-  /// This is useful to know because it is a point at which you can
-  /// safely insert out-of-band VT sequences. For example, while reading
-  /// from a pty if you want to make your own changes, you can wait until
-  /// the pty input reaches ground, then write yours.
+  /// - Find the exact bytes of each APC, DCS or OSC string, such as a Kitty
+  /// graphics command, a tmux control mode message or a clipboard write,
+  /// so it can forward, rewrite or drop that string.
+  /// - Wait until the stream is at ground before inserting its own
+  /// sequences, so it never splits a sequence from the program.
   ///
-  /// If the stream is already at ground then this consumes nothing and returns
-  /// GHOSTTY_SUCCESS. On success, out_consumed is the number of bytes consumed
-  /// before reaching ground, including the byte that reaches it.
-  /// GHOSTTY_NO_VALUE means the full slice was consumed without reaching ground.
+  /// Pass the boundaries to stop at as GhosttyTerminalBoundary flags. The
+  /// call consumes input up to and including the first byte that reaches one
+  /// of them, and reports that point in `out`. The terminal only processes
+  /// the consumed bytes, and callbacks only run for those bytes. Pass the
+  /// remaining bytes in your next call.
   ///
-  /// @param terminal The terminal handle (must not be NULL)
+  /// Every byte you pass is eventually consumed in order, so the terminal
+  /// ends up in the same state as if you had called
+  /// ghostty_terminal_vt_write() with all of it.
+  ///
+  /// See @ref guide-custom-sequences-write-until for how to find string
+  /// content, the cases that need care, and waiting for ground.
+  ///
+  /// @param terminal The terminal handle (NULL returns GHOSTTY_INVALID_VALUE)
   /// @param data Pointer to the data to write, or NULL when len is zero
   /// @param len Length of the data in bytes
-  /// @param[out] out_consumed Number of bytes consumed (must not be NULL)
-  /// @return GHOSTTY_SUCCESS if ground was reached, GHOSTTY_NO_VALUE if all input
-  /// was consumed without reaching ground, or GHOSTTY_INVALID_VALUE if
-  /// an argument is invalid
+  /// @param boundaries GhosttyTerminalBoundary flags to stop at. Must be
+  /// nonzero and contain only defined flags.
+  /// @param[out] out Where the call stopped. NULL returns GHOSTTY_INVALID_VALUE. Its `size`
+  /// must be set with GHOSTTY_INIT_SIZED().
+  /// @return GHOSTTY_SUCCESS if a boundary was reached.
+  /// GHOSTTY_NO_VALUE if all input was consumed without reaching a
+  /// boundary. In that case `out->consumed` is `len` and
+  /// `out->reached` is 0.
+  /// GHOSTTY_INVALID_VALUE if an argument is invalid. No input is
+  /// consumed.
   ///
   /// @ingroup terminal
-  external int ghostty_terminal_vt_write_until_ground(
+  external int ghostty_terminal_vt_write_until(
     int terminal,
     Pointer data,
     int len,
-    Pointer out_consumed,
+    int boundaries,
+    Pointer out,
   );
 
   /// Free a tracked grid reference.
@@ -3738,6 +4490,25 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// describe the current linked build and are not a cross-version stability
   /// promise.
   ///
+  /// Every key enum also has a `keys` object. A key enum is the enum that a
+  /// `_get`, `_set` or `_get_multi` function takes to pick a value, such as
+  /// GhosttyTerminalData or GhosttyTerminalOption. Each key lists its
+  /// `direction` and the `type` that its `void *` value points at:
+  ///
+  /// - An `"out"` key is read. Pass a pointer to storage of `type`, and the
+  /// library writes the value there.
+  /// - An `"in"` key is set. Pass a pointer to a value of `type`, and the
+  /// library reads it. ghostty_formatter_get() also takes these keys, and
+  /// writes a value of the same `type`.
+  /// - A `type` of `opaque` is an untyped pointer, such as userdata. Pass the
+  /// pointer itself.
+  /// - A `type` that names a `callback` descriptor sets a callback. Pass the
+  /// function pointer itself, not a pointer to it.
+  ///
+  /// Callback descriptors, such as GhosttyTerminalBellFn, describe a function
+  /// pointer typedef. `params` lists the parameter types in order and `return`
+  /// gives the return type. Both use the same type references as struct fields.
+  ///
   /// The formal format is defined by the
   /// <a href="types.schema.json">libghostty-vt ABI manifest JSON Schema</a>.
   ///
@@ -3754,14 +4525,26 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// "GhosttyRenderStateData": {
   /// "kind": "enum", "size": 4, "align": 4,
   /// "underlying": "i32", "prefix": "GHOSTTY_RENDER_STATE_DATA_",
-  /// "values": { "INVALID": 0, "DIRTY": 3, "MAX_VALUE": 2147483647 }
+  /// "values": { "INVALID": 0, "DIRTY": 3, "MAX_VALUE": 2147483647 },
+  /// "keys": {
+  /// "DIRTY": { "direction": "out", "type": "GhosttyRenderStateDirty" }
+  /// }
+  /// },
+  /// "GhosttyTerminalBellFn": {
+  /// "kind": "callback", "size": 4, "align": 4,
+  /// "params": [
+  /// { "type": "GhosttyTerminal" },
+  /// { "type": "pointer", "elem": "opaque", "const": false,
+  /// "nullable": true }
+  /// ],
+  /// "return": { "type": "void" }
   /// },
   /// "GhosttyStyleColor": {
-  /// "kind": "struct", "size": 16, "align": 8,
+  /// "kind": "struct", "size": 4, "align": 1,
   /// "fields": {
-  /// "tag": { "offset": 0, "size": 4,
+  /// "tag": { "offset": 0, "size": 1,
   /// "type": "GhosttyStyleColorTag" },
-  /// "value": { "offset": 8, "size": 8,
+  /// "value": { "offset": 1, "size": 3,
   /// "type": "GhosttyStyleColorValue", "tag": "tag",
   /// "arms": { "NONE": null, "PALETTE": "palette",
   /// "RGB": "rgb" } }
@@ -3774,6 +4557,8 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// The returned pointer is valid for the lifetime of the process.
   ///
   /// @return Pointer to the null-terminated JSON string.
+  ///
+  /// @ingroup core_types
   external Pointer ghostty_type_json();
 
   /// Returns the terminal display width of a Unicode codepoint in
@@ -3884,6 +4669,32 @@ extension type GhosttyExports(JSObject _) implements JSObject {
     Pointer width,
   );
 
+  /// Get the full version of the library as a string.
+  ///
+  /// This is the version of the library your program loaded, which can
+  /// differ from the GHOSTTY_VT_VERSION of the headers it was compiled
+  /// against. See @ref version "Version" for when that matters.
+  ///
+  /// A release returns its version, such as "1.0.0". A development build
+  /// also has a pre-release and build suffix, such as "1.1.0-dev+abc1234".
+  ///
+  /// This returns the same text as GHOSTTY_BUILD_INFO_VERSION_STRING, but
+  /// as a null-terminated string that you can pass straight to `printf` or
+  /// to other languages. To get the version as numbers, use
+  /// ghostty_build_info() with GHOSTTY_BUILD_INFO_VERSION_MAJOR and the
+  /// values that follow it.
+  ///
+  /// @code
+  /// printf("Using libghostty-vt %s\n", ghostty_version());
+  /// @endcode
+  ///
+  /// @return The version string. It is never NULL, is owned by the
+  /// library, and stays valid for as long as the library is
+  /// loaded. Do not free it.
+  ///
+  /// @ingroup build_info
+  external Pointer ghostty_version();
+
   /// Allocate caller-owned storage for a Wasm ABI value or scratch buffer.
   ///
   /// The returned address is aligned to the target's maximum C ABI alignment,
@@ -3891,7 +4702,24 @@ extension type GhosttyExports(JSObject _) implements JSObject {
   /// uninitialized. A zero-length request returns NULL.
   ///
   /// The returned pointer must be released with ghostty_wasm_free() using the
-  /// exact same length.
+  /// exact same length. Do not mix allocation families: buffers returned by
+  /// libghostty-vt allocating APIs must still be released with ghostty_free(),
+  /// and opaque handles must be released with their type-specific destructor.
+  ///
+  /// This always uses the default allocator. If you need a custom allocation
+  /// strategy, allocate types manually with your own allocator. That's very rare
+  /// in WebAssembly, so these are optimized for simplicity.
+  ///
+  /// Dynamic-language hosts can use ghostty_type_json() to discover pointer and
+  /// size_t widths, maximum alignment, byte order, and the size and alignment of
+  /// public C structs.
+  ///
+  /// An exported function may grow Wasm linear memory when it allocates. Numeric
+  /// pointers and handles remain valid, but JavaScript ArrayBuffer, DataView, and
+  /// typed-array objects created before the growth may no longer cover the live
+  /// memory. Reacquire `exports.memory.buffer` immediately before every host-side
+  /// memory access. A host that caches views should recreate them whenever either
+  /// the buffer identity or its byte length changes.
   ///
   /// @param len Number of bytes to allocate
   /// @return Pointer to allocated storage, or NULL if len is zero or allocation

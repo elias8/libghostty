@@ -393,6 +393,35 @@ void main() {
 
         expect(terminal.scrollbackMaxBytes, 1024);
       });
+
+      test('switches between the default, zero, and unlimited', () {
+        final defaultLimit = terminal.scrollbackMaxBytes;
+        expect(defaultLimit, 10000);
+
+        terminal.scrollbackMaxBytes = 0;
+        expect(terminal.scrollbackMaxBytes, 0);
+        terminal.scrollbackMaxBytes = null;
+        expect(terminal.scrollbackMaxBytes, isNull);
+        terminal.scrollbackMaxBytes = defaultLimit;
+        expect(terminal.scrollbackMaxBytes, defaultLimit);
+        terminal.scrollbackMaxBytes = null;
+        expect(terminal.scrollbackMaxBytes, isNull);
+      });
+
+      test('unlimited retains history beyond the default byte limit', () {
+        final limited = Terminal(cols: 80, rows: 24);
+        addTearDown(limited.dispose);
+        terminal.scrollbackMaxBytes = null;
+        final data = Uint8List.fromList(
+          utf8.encode('scrollback line\r\n' * 5000),
+        );
+
+        limited.write(data);
+        terminal.write(data);
+
+        expect(terminal.scrollbackRows, 5000 - 23);
+        expect(limited.scrollbackRows, lessThan(terminal.scrollbackRows));
+      });
     });
 
     group('continuationMaxBytes', () {
@@ -1018,11 +1047,11 @@ void main() {
           Uint8List.fromList([0xE6, 0x97, 0xA5, ...('A'.codeUnits)]),
         );
         final cell0 = readCellAt(terminal, 0, 0);
-        expect(cell0.wide, CellWidth.wide);
+        expect(cell0.wide, CellWide.wide);
         final cell1 = readCellAt(terminal, 0, 1);
-        expect(cell1.wide, CellWidth.spacerTail);
+        expect(cell1.wide, CellWide.spacerTail);
         final cell2 = readCellAt(terminal, 0, 2);
-        expect(cell2.wide, CellWidth.narrow);
+        expect(cell2.wide, CellWide.narrow);
       });
 
       test('wraps long lines across rows', () {
@@ -1099,29 +1128,29 @@ void main() {
 
       group('mouseTracking', () {
         test('default is none', () {
-          expect(terminal.mouseTracking, MouseTracking.none);
+          expect(terminal.mouseTracking, MouseTrackingMode.none);
         });
 
         test('tracks DECSET tracking modes', () {
           terminal.write(Uint8List.fromList('\x1b[?9h'.codeUnits));
-          expect(terminal.mouseTracking, MouseTracking.x10);
+          expect(terminal.mouseTracking, MouseTrackingMode.x10);
 
           terminal.write(Uint8List.fromList('\x1b[?1000h'.codeUnits));
-          expect(terminal.mouseTracking, MouseTracking.normal);
+          expect(terminal.mouseTracking, MouseTrackingMode.normal);
 
           terminal.write(Uint8List.fromList('\x1b[?1002h'.codeUnits));
-          expect(terminal.mouseTracking, MouseTracking.button);
+          expect(terminal.mouseTracking, MouseTrackingMode.button);
 
           terminal.write(Uint8List.fromList('\x1b[?1003h'.codeUnits));
-          expect(terminal.mouseTracking, MouseTracking.any);
+          expect(terminal.mouseTracking, MouseTrackingMode.any);
         });
 
         test('DECRST disables mouse tracking', () {
           terminal.write(Uint8List.fromList('\x1b[?1000h'.codeUnits));
-          expect(terminal.mouseTracking, MouseTracking.normal);
+          expect(terminal.mouseTracking, MouseTrackingMode.normal);
 
           terminal.write(Uint8List.fromList('\x1b[?1000l'.codeUnits));
-          expect(terminal.mouseTracking, MouseTracking.none);
+          expect(terminal.mouseTracking, MouseTrackingMode.none);
         });
       });
     });
@@ -1211,10 +1240,15 @@ void main() {
     });
 
     group('compress', () {
-      test('completes full compression on supported targets', () {
+      test('reports the compression result for the target', () {
         final result = terminal.compress(mode: .full);
 
-        expect(result, TerminalCompressionResult.complete);
+        expect(
+          result,
+          isBrowser
+              ? TerminalCompressionResult.unsupported
+              : TerminalCompressionResult.complete,
+        );
       }, testOn: 'windows || linux || mac-os || android || ios');
     });
 

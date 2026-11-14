@@ -96,7 +96,9 @@ final class CompileFromSource extends LibraryProvider {
     final os = input.config.code.targetOS;
     final arch = input.config.code.targetArchitecture;
     final ios = os == .iOS ? input.config.code.iOS.targetSdk : null;
-    final iOSVersion = os == .iOS ? input.config.code.iOS.targetVersion : null;
+    final iOSVersion = os == .iOS
+        ? input.config.code.iOS.deploymentVersion.major
+        : null;
 
     final installDir = target.parent.parent.uri;
     final zig = zigTarget(os, arch, iOSSdk: ios, iOSVersion: iOSVersion);
@@ -108,7 +110,6 @@ final class CompileFromSource extends LibraryProvider {
       '-p',
       Directory.fromUri(installDir).path,
       '--release=fast',
-      if (zigCacheDir != null) ...['--global-cache-dir', zigCacheDir],
       // Pass -Dtarget so source-compiled libraries use the target CPU baseline
       // instead of the build machine's CPU.
       '-Dtarget=$zig',
@@ -227,6 +228,17 @@ final class DownloadPrebuilt extends LibraryProvider {
 
   @override
   Future<void> provide(File target) async {
+    final commit = pinnedCommit(input.packageRoot);
+    if (commit != prebuiltGhosttyCommit) {
+      throw StateError(
+        'Prebuilt binaries for $releaseTag were built from Ghostty commit '
+        '$prebuiltGhosttyCommit, but ghostty.version pins $commit. '
+        'Set hooks.user_defines.libghostty.source to compile in the workspace '
+        'pubspec.yaml and install Zig, or update the prebuilt binaries and '
+        'their generated metadata.',
+      );
+    }
+
     final os = input.config.code.targetOS;
     final targetTriple = input.targetTriple();
     if (targetTriple == null) {

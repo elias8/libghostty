@@ -52,6 +52,17 @@ void main() {
         );
       });
 
+      test('maps unsupported with operation context', () {
+        expect(
+          () => checkResultCode(Result.unsupported.value, operation: 'test'),
+          throwsA(
+            isA<UnsupportedException>()
+                .having((error) => error.code, 'code', -8)
+                .having((error) => error.operation, 'operation', 'test'),
+          ),
+        );
+      });
+
       test('retains known code and operation context', () {
         const error = InvalidValueException(operation: 'ghostty_terminal_set');
 
@@ -127,6 +138,13 @@ void main() {
     group('optional output', () {
       test('returns false for no value', () {
         expect(checkOptionalCode(Result.noValue.value), isFalse);
+      });
+
+      test('throws for unsupported optional output', () {
+        expect(
+          () => checkOptionalCode(Result.unsupported.value),
+          throwsA(isA<UnsupportedException>()),
+        );
       });
 
       test('returns true after successful status', () {

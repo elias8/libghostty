@@ -54,7 +54,7 @@ void main() {
       });
 
       test('returns SGR sequence with manual tracking and format', () {
-        encoder.setTrackingMode(MouseTracking.normal);
+        encoder.setTrackingMode(MouseTrackingMode.normal);
         encoder.setFormat(MouseFormat.sgr);
         encoder.setSize(
           const MouseEncoderSize(
@@ -97,7 +97,7 @@ void main() {
     group('reset', () {
       test('clears motion deduplication and preserves configured options', () {
         encoder
-          ..setTrackingMode(MouseTracking.any)
+          ..setTrackingMode(MouseTrackingMode.any)
           ..setFormat(MouseFormat.sgr)
           ..setSize(
             const MouseEncoderSize(
@@ -154,7 +154,7 @@ void main() {
           throwsStateError,
         );
         expect(
-          () => encoder.setTrackingMode(MouseTracking.normal),
+          () => encoder.setTrackingMode(MouseTrackingMode.normal),
           throwsStateError,
         );
         expect(() => encoder.setTrackLastCell(enabled: true), throwsStateError);

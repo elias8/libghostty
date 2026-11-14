@@ -4,6 +4,7 @@ import '../../generated/libghostty_enums.g.dart';
 import '../../types/types.dart';
 
 abstract interface class UtilityBindings {
+  String version();
   int buildInfo(BuildInfo data);
   bool buildInfoBool(BuildInfo data);
   String buildInfoString(BuildInfo data);
@@ -44,3 +45,14 @@ abstract interface class UtilityBindings {
   int unicodeCodepointWidth(int codepoint);
   ({int consumed, int width}) unicodeGraphemeWidth(List<int> codepoints);
 }
+
+int styleFlags(Style style) =>
+    (style.bold ? 1 << 0 : 0) |
+    (style.italic ? 1 << 1 : 0) |
+    (style.faint ? 1 << 2 : 0) |
+    (style.blink ? 1 << 3 : 0) |
+    (style.inverse ? 1 << 4 : 0) |
+    (style.invisible ? 1 << 5 : 0) |
+    (style.strikethrough ? 1 << 6 : 0) |
+    (style.overline ? 1 << 7 : 0) |
+    (style.underline.value << 8);

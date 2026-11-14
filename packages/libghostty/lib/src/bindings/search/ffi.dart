@@ -49,9 +49,6 @@ final class FfiSearchBindings implements SearchBindings {
       final capacity = buffer.ref.len;
       if (capacity == 0) return const <RawSelection>[];
       final values = arena<native.Selection>(capacity);
-      for (var i = 0; i < capacity; i++) {
-        values[i].size = sizeOf<native.Selection>();
-      }
       buffer.ref
         ..ptr = values
         ..cap = capacity
@@ -101,8 +98,7 @@ final class FfiSearchBindings implements SearchBindings {
   @override
   RawSelection? searchGetSelectedMatch(LibGhosttyHandle search) {
     return using((arena) {
-      final out = arena<native.Selection>()
-        ..ref.size = sizeOf<native.Selection>();
+      final out = arena<native.Selection>();
       final result = native.ghostty_search_get(
         .fromAddress(search.value),
         .selectedMatch,
@@ -180,12 +176,22 @@ final class FfiSearchBindings implements SearchBindings {
 
   @override
   void searchSelectNext(LibGhosttyHandle search) {
-    _select(search, .selectNext);
+    final result = native.ghostty_search_select_next(
+      .fromAddress(search.value),
+    );
+    if (result != .noValue) {
+      checkResultCode(result.value, operation: 'ghostty_search_select_next');
+    }
   }
 
   @override
   void searchSelectPrevious(LibGhosttyHandle search) {
-    _select(search, .selectPrev);
+    final result = native.ghostty_search_select_prev(
+      .fromAddress(search.value),
+    );
+    if (result != .noValue) {
+      checkResultCode(result.value, operation: 'ghostty_search_select_prev');
+    }
   }
 
   @override
@@ -226,16 +232,6 @@ final class FfiSearchBindings implements SearchBindings {
       checkResultCode(result.value, operation: 'ghostty_search_tick');
       return SearchStatus.fromValue(out.value);
     });
-  }
-
-  void _select(LibGhosttyHandle search, SearchOption option) {
-    final result = native.ghostty_search_set(
-      .fromAddress(search.value),
-      option,
-      nullptr.cast(),
-    );
-    if (result == .noValue) return;
-    checkResultCode(result.value, operation: 'ghostty_search_set');
   }
 
   static Pointer<Void> _allocateString(Arena arena, String value) {

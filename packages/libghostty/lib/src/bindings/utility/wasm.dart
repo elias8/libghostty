@@ -438,8 +438,7 @@ final class WasmUtilityBindings implements UtilityBindings {
   Style styleDefault() {
     final frame = _scratch.acquire(const []);
     try {
-      final pointer = frame.variableAddress(0, _layout.styleSize);
-      _memory.writeU32(pointer, _layout.styleSize);
+      final pointer = frame.variableAddress(0, 16);
       _exports.ghostty_style_default(pointer);
       return _readStyle(pointer);
     } finally {
@@ -451,8 +450,7 @@ final class WasmUtilityBindings implements UtilityBindings {
   bool styleIsDefault(Style style) {
     final frame = _scratch.acquire(const []);
     try {
-      final pointer = frame.variableAddress(0, _layout.styleSize);
-      _memory.writeU32(pointer, _layout.styleSize);
+      final pointer = frame.variableAddress(0, 16);
       _writeStyle(pointer, style);
       return _exports.ghostty_style_is_default(pointer) != 0;
     } finally {
@@ -485,6 +483,9 @@ final class WasmUtilityBindings implements UtilityBindings {
     }
   }
 
+  @override
+  String version() => _memory.readCString(_exports.ghostty_version());
+
   ({int pointer, int length, int allocation}) _allocUtf8(String value) {
     final bytes = utf8.encode(value);
     final allocation = bytes.isEmpty ? 1 : bytes.length;
@@ -502,11 +503,11 @@ final class WasmUtilityBindings implements UtilityBindings {
   ];
 
   RawColor _readRawColor(int address) => (
-    tag: StyleColorTag.fromValue(_memory.readU32(address)),
-    palette: _memory.readU8(address + _layout.styleColorR),
-    r: _memory.readU8(address + _layout.styleColorR),
-    g: _memory.readU8(address + _layout.styleColorG),
-    b: _memory.readU8(address + _layout.styleColorB),
+    tag: StyleColorTag.fromValue(_memory.readU8(address)),
+    palette: _memory.readU8(address + 1),
+    r: _memory.readU8(address + 1),
+    g: _memory.readU8(address + 2),
+    b: _memory.readU8(address + 3),
   );
 
   RgbColor _readRgb(int pointer) => RgbColor(
@@ -516,23 +517,23 @@ final class WasmUtilityBindings implements UtilityBindings {
   );
 
   Style _readStyle(int pointer) {
-    final underline = _readRawColor(pointer + _layout.styleUnderlineColor);
+    final underline = _readRawColor(pointer + 8);
     return Style(
-      foreground: cellColorFromRaw(_readRawColor(pointer + _layout.styleFg)),
-      background: cellColorFromRaw(_readRawColor(pointer + _layout.styleBg)),
+      foreground: cellColorFromRaw(_readRawColor(pointer)),
+      background: cellColorFromRaw(_readRawColor(pointer + 4)),
       underlineColor: switch (underline.tag) {
         .rgb || .palette => cellColorFromRaw(underline),
         .none => null,
       },
-      bold: _memory.readU8(pointer + _layout.styleBold) != 0,
-      italic: _memory.readU8(pointer + _layout.styleItalic) != 0,
-      faint: _memory.readU8(pointer + _layout.styleFaint) != 0,
-      blink: _memory.readU8(pointer + _layout.styleBlink) != 0,
-      inverse: _memory.readU8(pointer + _layout.styleInverse) != 0,
-      invisible: _memory.readU8(pointer + _layout.styleInvisible) != 0,
-      strikethrough: _memory.readU8(pointer + _layout.styleStrikethrough) != 0,
-      overline: _memory.readU8(pointer + _layout.styleOverline) != 0,
-      underline: .fromValue(_memory.readI32(pointer + _layout.styleUnderline)),
+      bold: _memory.readU16(pointer + 12) & (1 << 0) != 0,
+      italic: _memory.readU16(pointer + 12) & (1 << 1) != 0,
+      faint: _memory.readU16(pointer + 12) & (1 << 2) != 0,
+      blink: _memory.readU16(pointer + 12) & (1 << 3) != 0,
+      inverse: _memory.readU16(pointer + 12) & (1 << 4) != 0,
+      invisible: _memory.readU16(pointer + 12) & (1 << 5) != 0,
+      strikethrough: _memory.readU16(pointer + 12) & (1 << 6) != 0,
+      overline: _memory.readU16(pointer + 12) & (1 << 7) != 0,
+      underline: .fromValue((_memory.readU16(pointer + 12) >> 8) & 7),
     );
   }
 
@@ -548,43 +549,30 @@ final class WasmUtilityBindings implements UtilityBindings {
   }
 
   void _writeStyle(int pointer, Style style) {
-    _writeStyleColor(pointer + _layout.styleFg, style.foreground);
-    _writeStyleColor(pointer + _layout.styleBg, style.background);
-    _writeStyleColor(
-      pointer + _layout.styleUnderlineColor,
-      style.underlineColor,
-    );
-    _memory.writeU8(pointer + _layout.styleBold, style.bold ? 1 : 0);
-    _memory.writeU8(pointer + _layout.styleItalic, style.italic ? 1 : 0);
-    _memory.writeU8(pointer + _layout.styleFaint, style.faint ? 1 : 0);
-    _memory.writeU8(pointer + _layout.styleBlink, style.blink ? 1 : 0);
-    _memory.writeU8(pointer + _layout.styleInverse, style.inverse ? 1 : 0);
-    _memory.writeU8(pointer + _layout.styleInvisible, style.invisible ? 1 : 0);
-    _memory.writeU8(
-      pointer + _layout.styleStrikethrough,
-      style.strikethrough ? 1 : 0,
-    );
-    _memory.writeU8(pointer + _layout.styleOverline, style.overline ? 1 : 0);
-    _memory.writeI32(pointer + _layout.styleUnderline, style.underline.value);
+    _writeStyleColor(pointer, style.foreground);
+    _writeStyleColor(pointer + 4, style.background);
+    _writeStyleColor(pointer + 8, style.underlineColor);
+    _memory.writeU16(pointer + 12, styleFlags(style));
+    _memory.writeU16(pointer + 14, 0);
   }
 
   void _writeStyleColor(int address, CellColor? color) {
     switch (color) {
       case RgbColor(:final r, :final g, :final b):
-        _memory.writeU32(address, StyleColorTag.rgb.value);
-        _memory.writeU8(address + _layout.styleColorR, r);
-        _memory.writeU8(address + _layout.styleColorG, g);
-        _memory.writeU8(address + _layout.styleColorB, b);
+        _memory.writeU8(address, StyleColorTag.rgb.value);
+        _memory.writeU8(address + 1, r);
+        _memory.writeU8(address + 2, g);
+        _memory.writeU8(address + 3, b);
       case PaletteColor(:final index):
-        _memory.writeU32(address, StyleColorTag.palette.value);
-        _memory.writeU8(address + _layout.styleColorR, index);
-        _memory.writeU8(address + _layout.styleColorG, 0);
-        _memory.writeU8(address + _layout.styleColorB, 0);
+        _memory.writeU8(address, StyleColorTag.palette.value);
+        _memory.writeU8(address + 1, index);
+        _memory.writeU8(address + 2, 0);
+        _memory.writeU8(address + 3, 0);
       case DefaultColor() || null:
-        _memory.writeU32(address, StyleColorTag.none.value);
-        _memory.writeU8(address + _layout.styleColorR, 0);
-        _memory.writeU8(address + _layout.styleColorG, 0);
-        _memory.writeU8(address + _layout.styleColorB, 0);
+        _memory.writeU8(address, StyleColorTag.none.value);
+        _memory.writeU8(address + 1, 0);
+        _memory.writeU8(address + 2, 0);
+        _memory.writeU8(address + 3, 0);
     }
   }
 }

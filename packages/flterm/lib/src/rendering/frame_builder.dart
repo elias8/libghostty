@@ -315,7 +315,7 @@ class FrameBuilder {
     final adjustedCursor = cursor.wideTail && cursor.viewportX > 0
         ? cursor.copyWith(viewportX: cursor.viewportX - 1)
         : cursor;
-    final effectiveCursor = adjustedCursor.visualStyle == CursorShape.block
+    final effectiveCursor = adjustedCursor.visualStyle == CursorStyle.block
         ? adjustedCursor.copyWith(visualStyle: _state.theme.cursor.shape)
         : adjustedCursor;
     final ref = GridRef.at(

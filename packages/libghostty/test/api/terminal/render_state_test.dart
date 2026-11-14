@@ -147,7 +147,7 @@ void main() {
 
         renderState.update(terminal);
 
-        expect(renderState.cursor.visualStyle, CursorShape.underline);
+        expect(renderState.cursor.visualStyle, CursorStyle.underline);
       });
 
       test('uses the default cursor blink for a reset sequence', () {

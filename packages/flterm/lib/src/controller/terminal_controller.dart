@@ -168,7 +168,7 @@ sealed class TerminalController implements Listenable {
   /// Programs enable DEC private modes 9, 1000, 1002, or 1003 to receive
   /// mouse reports. When active, pointer events are encoded and sent to the
   /// program instead of performing selection. Hold Shift to bypass tracking.
-  MouseTracking get mouseTracking;
+  MouseTrackingMode get mouseTracking;
 
   /// The mouse pointer shape most recently requested by the terminal program.
   ///

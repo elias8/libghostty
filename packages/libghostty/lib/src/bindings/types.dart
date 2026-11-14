@@ -35,13 +35,6 @@ void checkCode(Result code, {String? operation}) =>
 /// A C function result: the result code paired with a value.
 typedef CResult<T> = (Result code, T value);
 
-/// Progress from restoring one terminal snapshot history page.
-typedef RawSnapshotProgress = ({
-  TerminalScreen screen,
-  int rows,
-  int remaining,
-});
-
 /// Scalar cell metadata captured by one boundary query.
 typedef RawCellSummary = ({int codepoint, int styleId, CellWide wide});
 

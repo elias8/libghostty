@@ -24,9 +24,9 @@ void main() {
 
         const underline = SgrAttribute(
           tag: SgrAttributeTag.underline,
-          underlineStyle: UnderlineStyle.curly,
+          underlineStyle: SgrUnderline.curly,
         );
-        expect(underline.underlineStyle, UnderlineStyle.curly);
+        expect(underline.underlineStyle, SgrUnderline.curly);
       });
     });
   });

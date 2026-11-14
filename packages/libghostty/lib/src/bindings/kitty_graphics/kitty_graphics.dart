@@ -36,7 +36,7 @@ abstract interface class KittyGraphicsBindings {
   LibGhosttyHandle kittyGraphicsPlacementIteratorNew();
   void kittyGraphicsPlacementIteratorSetLayer(
     LibGhosttyHandle iterator,
-    KittyPlacementLayer layer,
+    ImageLayer layer,
   );
   bool kittyGraphicsPlacementNext(LibGhosttyHandle iterator);
 }

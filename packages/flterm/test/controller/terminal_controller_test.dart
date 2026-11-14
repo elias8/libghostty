@@ -83,7 +83,7 @@ void main() {
     group('fromSnapshot', () {
       Terminal terminalWithHistory({int lineCount = 10000}) {
         final terminal = Terminal(cols: 16, rows: 2)
-          ..scrollbackMaxBytes = null
+          ..scrollbackMaxBytes = 16 * 1024 * 1024
           ..scrollbackMaxLines = null;
         addTearDown(terminal.dispose);
         terminal.write(
@@ -91,6 +91,7 @@ void main() {
             List.generate(lineCount, (index) => 'line$index').join('\r\n'),
           ),
         );
+        expect(terminal.scrollbackRows, lineCount - 2);
         return terminal;
       }
 
@@ -2252,7 +2253,7 @@ void main() {
             kittyImageStorageLimit: 1 << 20,
             apcBufferLimit: 1,
             clipboardWriteMaxBytes: 1024,
-            cursorStyle: CursorShape.underline,
+            cursorStyle: CursorStyle.underline,
             cursorBlink: true,
           ),
         );
@@ -2271,7 +2272,7 @@ void main() {
         writeTerminalUtf8(access(custom).terminal, '\x1b[0 q');
         renderState.update(access(custom).terminal);
 
-        expect(renderState.cursor.visualStyle, CursorShape.underline);
+        expect(renderState.cursor.visualStyle, CursorStyle.underline);
         expect(renderState.cursor.blinking, isTrue);
       });
 
@@ -2335,13 +2336,13 @@ void main() {
         addTearDown(renderState.dispose);
 
         controller.config = const TerminalConfig(
-          cursorStyle: CursorShape.bar,
+          cursorStyle: CursorStyle.bar,
           cursorBlink: false,
         );
         writeTerminalUtf8(binding.terminal, '\x1b[0 q');
         renderState.update(binding.terminal);
 
-        expect(renderState.cursor.visualStyle, CursorShape.bar);
+        expect(renderState.cursor.visualStyle, CursorStyle.bar);
         expect(renderState.cursor.blinking, isFalse);
       });
     });

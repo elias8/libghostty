@@ -1,4 +1,4 @@
-import 'package:libghostty/libghostty.dart' show UnderlineStyle;
+import 'package:libghostty/libghostty.dart' show SgrUnderline;
 
 import '../sprite/sprite_face.dart';
 import 'atlas_budget.dart';
@@ -51,7 +51,7 @@ class AtlasCache {
   _emoji = {};
   final Map<_SpriteKey, AtlasEntry> _sprites = {};
   final Map<_CodepointKey, AtlasEntry> _codepoints = {};
-  final Map<UnderlineStyle, AtlasEntry> _decorations = {};
+  final Map<SgrUnderline, AtlasEntry> _decorations = {};
   final List<AtlasEntry?> _regularAscii = List.filled(
     _printableAsciiCount,
     null,
@@ -135,7 +135,7 @@ class AtlasCache {
   }
 
   /// Returns or creates a decoration sprite for the given underline [style].
-  Glyph addDecoration(UnderlineStyle style) {
+  Glyph addDecoration(SgrUnderline style) {
     final existing = _decorations[style];
     if (existing != null) return existing;
     final glyph = _decorationLane.rasterizeDecoration(

@@ -11,6 +11,9 @@
 /// The release tag used for downloading prebuilt binaries.
 const releaseTag = 'libghostty-v0.0.13';
 
+/// Ghostty commit used to build these binaries.
+const prebuiltGhosttyCommit = 'e3ac62001ef2a6c9c4b4bb4231535c1c3c3e4ae3';
+
 /// SHA256 hashes for pre-built native binaries. Keys are the artifact
 /// filenames.
 const assetHashes = <String, String>{

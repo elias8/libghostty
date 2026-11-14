@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:ffi/ffi.dart';
 
 import '../../generated/libghostty.g.dart';
+import '../../generated/libghostty.g.dart' as native show String;
 import '../../generated/libghostty_enums.g.dart';
 import '../../types/types.dart';
 import '../result_helpers.dart';
@@ -27,7 +28,7 @@ final class FfiKittyGraphicsBindings implements KittyGraphicsBindings {
         .kittyGraphics,
         out.cast(),
       );
-      if (result == .noValue) return null;
+      if (result == .noValue || result == .unsupported) return null;
       checkResultCode(result.value, operation: 'ghostty_terminal_get');
       return .fromAddress(out.value.address);
     });
@@ -217,11 +218,11 @@ final class FfiKittyGraphicsBindings implements KittyGraphicsBindings {
   @override
   void kittyGraphicsPlacementIteratorSetLayer(
     LibGhosttyHandle iterator,
-    KittyPlacementLayer layer,
+    ImageLayer layer,
   ) {
     if (iterator.value == 0) checkResultCode(Result.invalidValue.value);
     return using((arena) {
-      final value = arena<UnsignedInt>()..value = layer.value;
+      final value = arena<UnsignedInt>()..value = 1 << layer.value;
       final result = ghostty_kitty_graphics_placement_iterator_set(
         Pointer.fromAddress(iterator.value),
         .layer,
@@ -329,29 +330,22 @@ final class FfiKittyGraphicsBindings implements KittyGraphicsBindings {
 
   Uint8List _imagePixelDataView(LibGhosttyHandle image) {
     if (image.value == 0) checkResultCode(Result.invalidValue.value);
-    _setImageMulti([.dataPtr, .dataLen]);
-    final result = ghostty_kitty_graphics_image_get_multi(
-      Pointer.fromAddress(image.value),
-      2,
-      _keys,
-      _values,
-      _written,
-    );
-    checkResultCode(
-      result.value,
-      operation: 'ghostty_kitty_graphics_image_get_multi',
-    );
-    final pointer = (_multi + 0).cast<Pointer<Uint8>>().value;
-    final length = (_multi + 1).cast<Size>().value;
-    if (pointer == nullptr || length == 0) return Uint8List(0);
-    return pointer.asTypedList(length);
-  }
-
-  void _setImageMulti(List<KittyGraphicsImageData> keys) {
-    for (var i = 0; i < keys.length; i++) {
-      _keys[i] = keys[i].value;
-      _values[i] = (_multi + i).cast();
-    }
+    return using((arena) {
+      final out = arena<native.String>();
+      final result = ghostty_kitty_graphics_image_get(
+        Pointer.fromAddress(image.value),
+        .pixels,
+        out.cast(),
+      );
+      checkResultCode(
+        result.value,
+        operation: 'ghostty_kitty_graphics_image_get',
+      );
+      final pointer = out.ref.ptr;
+      final length = out.ref.len;
+      if (pointer == nullptr || length == 0) return Uint8List(0);
+      return pointer.asTypedList(length);
+    });
   }
 
   void _setPlacementMulti(List<KittyGraphicsPlacementData> keys) {

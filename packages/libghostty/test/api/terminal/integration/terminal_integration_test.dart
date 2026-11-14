@@ -98,7 +98,7 @@ void main() {
         final cell = readCellAt(terminal, 0, 0);
         expect(cell.style.bold, isTrue);
         expect(cell.style.italic, isTrue);
-        expect(cell.underlineStyle, UnderlineStyle.single);
+        expect(cell.underlineStyle, SgrUnderline.single);
         expect(cell.foreground, isA<PaletteColor>());
         expect(cell.background, isA<PaletteColor>());
       });

@@ -38,7 +38,8 @@ final class WasmParserBindings implements ParserBindings {
         OscCommandData.changeWindowTitleStr.value,
         out,
       );
-      if (present == 0) return null;
+      if (present == Result.noValue.value) return null;
+      checkResultCode(present, operation: 'ghostty_osc_command_data');
       final pointer = _exports.ghostty_wasm_take_opaque(out);
       if (pointer == 0) return null;
       return _memory.readCString(pointer);
@@ -52,14 +53,13 @@ final class WasmParserBindings implements ParserBindings {
     final frame = _scratch.acquire(const []);
     try {
       final content = frame.variableAddress(0, _layout.stringSize);
-      if (_exports.ghostty_osc_command_data(
-            command.value,
-            OscCommandData.unknownContent.value,
-            content,
-          ) ==
-          0) {
-        return null;
-      }
+      final contentResult = _exports.ghostty_osc_command_data(
+        command.value,
+        OscCommandData.unknownContent.value,
+        content,
+      );
+      if (contentResult == Result.noValue.value) return null;
+      checkResultCode(contentResult, operation: 'ghostty_osc_command_data');
       final truncated = frame.variableAddress(1, 1);
       final hasTruncated = _exports.ghostty_osc_command_data(
         command.value,
@@ -72,7 +72,12 @@ final class WasmParserBindings implements ParserBindings {
         OscCommandData.unknownTerminator.value,
         terminator,
       );
-      if (hasTruncated == 0 || hasTerminator == 0) return null;
+      if (hasTruncated == Result.noValue.value ||
+          hasTerminator == Result.noValue.value) {
+        return null;
+      }
+      checkResultCode(hasTruncated, operation: 'ghostty_osc_command_data');
+      checkResultCode(hasTerminator, operation: 'ghostty_osc_command_data');
       final pointer = _memory.readPtr(content);
       final length = _memory.readU32(content + _layout.stringLen);
       return (

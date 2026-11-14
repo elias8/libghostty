@@ -48,9 +48,8 @@ void main() {
           ),
         );
         final dashed =
-            lane.rasterizeDecoration(UnderlineStyle.dashed) as AtlasEntry;
-        final empty =
-            lane.rasterizeDecoration(UnderlineStyle.none) as AtlasEntry;
+            lane.rasterizeDecoration(SgrUnderline.dashed) as AtlasEntry;
+        final empty = lane.rasterizeDecoration(SgrUnderline.none) as AtlasEntry;
         expect(empty.srcLeft, dashed.srcRight + 1);
         lane.ensureImage();
         final image = lane.image!;
@@ -75,8 +74,7 @@ void main() {
     );
 
     test('rasterizeDecoration allocates a pending decoration entry', () {
-      final entry =
-          lane.rasterizeDecoration(UnderlineStyle.single) as AtlasEntry;
+      final entry = lane.rasterizeDecoration(SgrUnderline.single) as AtlasEntry;
 
       expect(entry.lane, AtlasEntryLane.decoration);
       expect(entry.srcRight, greaterThan(entry.srcLeft));
@@ -87,7 +85,7 @@ void main() {
     test(
       'ensureImage creates the atlas image and clears pending decorations',
       () {
-        lane.rasterizeDecoration(UnderlineStyle.single);
+        lane.rasterizeDecoration(SgrUnderline.single);
 
         lane.ensureImage();
 

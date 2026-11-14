@@ -56,7 +56,7 @@ void main() {
         expect(atlas.decorationImage, isNull);
 
         atlas.add((text: 'A', bold: false, italic: false));
-        atlas.addDecoration(UnderlineStyle.single);
+        atlas.addDecoration(SgrUnderline.single);
         atlas.add((text: '\u{1F600}', bold: false, italic: false), emoji: true);
         atlas.addCodepoint(0x2500, bold: false, italic: false);
         atlas.ensureImage();
@@ -180,7 +180,7 @@ void main() {
             atlas.addCodepoint(0x2500, bold: false, italic: false)
                 as AtlasEntry;
         final decoration =
-            atlas.addDecoration(UnderlineStyle.single) as AtlasEntry;
+            atlas.addDecoration(SgrUnderline.single) as AtlasEntry;
 
         expect(sprite.lane, AtlasEntryLane.sprite);
         expect(decoration.lane, AtlasEntryLane.decoration);

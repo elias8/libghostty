@@ -43,79 +43,76 @@ void main() {
     });
 
     group('keyEventSetUtf8', () {
-      test(
-        'clears native key text safely when replacement allocation fails',
-        () {
-          final allocator = _FailingTextAllocator();
-          addTearDown(allocator.dispose);
-          final bindings = FfiKeyBindings(textAllocator: allocator);
-          final event = bindings.keyEventNew();
-          final encoder = bindings.keyEncoderNew();
-          var eventFreed = false;
-          addTearDown(() {
-            bindings.keyEncoderFree(encoder);
-            if (!eventFreed) bindings.keyEventFree(event);
-          });
+      test('preserves native key text when replacement allocation fails', () {
+        final allocator = _FailingTextAllocator();
+        addTearDown(allocator.dispose);
+        final bindings = FfiKeyBindings(textAllocator: allocator);
+        final event = bindings.keyEventNew();
+        final encoder = bindings.keyEncoderNew();
+        var eventFreed = false;
+        addTearDown(() {
+          bindings.keyEncoderFree(encoder);
+          if (!eventFreed) bindings.keyEventFree(event);
+        });
 
-          bindings.keyEventSetAction(event, .press);
-          bindings.keyEventSetKey(event, .c);
-          bindings.keyEventSetUtf8(event, 'c');
-          final originalAddress = allocator.live.keys.single;
+        bindings.keyEventSetAction(event, .press);
+        bindings.keyEventSetKey(event, .c);
+        bindings.keyEventSetUtf8(event, 'c');
+        final originalAddress = allocator.live.keys.single;
 
-          expect(bindings.keyEventGetUtf8(event), 'c');
-          expect(bindings.keyEncoderEncode(encoder, event), 'c');
+        expect(bindings.keyEventGetUtf8(event), 'c');
+        expect(bindings.keyEncoderEncode(encoder, event), 'c');
 
-          allocator.failNext = true;
-          expect(
-            () => bindings.keyEventSetUtf8(event, 'replacement'),
-            throwsA(same(allocator.failure)),
-          );
-          expect(allocator.live.containsKey(originalAddress), isFalse);
-          expect(allocator.releases, 1);
+        allocator.failNext = true;
+        expect(
+          () => bindings.keyEventSetUtf8(event, 'replacement'),
+          throwsA(same(allocator.failure)),
+        );
+        expect(allocator.live.containsKey(originalAddress), isTrue);
+        expect(allocator.releases, 0);
 
-          expect(bindings.keyEventGetUtf8(event), isNull);
-          expect(allocator.live, isEmpty);
+        expect(bindings.keyEventGetUtf8(event), 'c');
+        expect(bindings.keyEncoderEncode(encoder, event), 'c');
 
-          bindings.keyEventSetUtf8(event, 'é');
+        bindings.keyEventSetUtf8(event, 'é');
 
-          expect(bindings.keyEventGetUtf8(event), 'é');
-          expect(bindings.keyEncoderEncode(encoder, event), 'é');
-          expect(allocator.allocations, 2);
-          expect(allocator.releases, 1);
-          expect(allocator.live.length, 1);
-          expect(allocator.peakBytes, 2);
+        expect(bindings.keyEventGetUtf8(event), 'é');
+        expect(bindings.keyEncoderEncode(encoder, event), 'é');
+        expect(allocator.allocations, 2);
+        expect(allocator.releases, 1);
+        expect(allocator.live.length, 1);
+        expect(allocator.peakBytes, 3);
 
-          bindings.keyEventSetUtf8(event, null);
+        bindings.keyEventSetUtf8(event, null);
 
-          expect(bindings.keyEventGetUtf8(event), isNull);
-          expect(allocator.live, isEmpty);
-          expect(allocator.allocations, 2);
-          expect(allocator.releases, 2);
+        expect(bindings.keyEventGetUtf8(event), isNull);
+        expect(allocator.live, isEmpty);
+        expect(allocator.allocations, 2);
+        expect(allocator.releases, 2);
 
-          bindings.keyEventSetUtf8(event, 'abc');
+        bindings.keyEventSetUtf8(event, 'abc');
 
-          expect(bindings.keyEventGetUtf8(event), 'abc');
+        expect(bindings.keyEventGetUtf8(event), 'abc');
 
-          bindings.keyEventSetUtf8(event, '');
+        bindings.keyEventSetUtf8(event, '');
 
-          expect(bindings.keyEventGetUtf8(event), isNull);
-          expect(allocator.live, isEmpty);
-          expect(allocator.allocations, 3);
-          expect(allocator.releases, 3);
+        expect(bindings.keyEventGetUtf8(event), isNull);
+        expect(allocator.live, isEmpty);
+        expect(allocator.allocations, 3);
+        expect(allocator.releases, 3);
 
-          bindings.keyEventSetUtf8(event, 'z');
+        bindings.keyEventSetUtf8(event, 'z');
 
-          expect(bindings.keyEventGetUtf8(event), 'z');
-          expect(bindings.keyEncoderEncode(encoder, event), 'z');
+        expect(bindings.keyEventGetUtf8(event), 'z');
+        expect(bindings.keyEncoderEncode(encoder, event), 'z');
 
-          bindings.keyEventFree(event);
-          eventFreed = true;
+        bindings.keyEventFree(event);
+        eventFreed = true;
 
-          expect(allocator.live, isEmpty);
-          expect(allocator.allocations, 4);
-          expect(allocator.releases, 4);
-        },
-      );
+        expect(allocator.live, isEmpty);
+        expect(allocator.allocations, 4);
+        expect(allocator.releases, 4);
+      });
     });
 
     test('replaces retained UTF-8 text and releases it with the event', () {

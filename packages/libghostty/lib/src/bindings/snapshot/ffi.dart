@@ -5,6 +5,7 @@ import 'package:ffi/ffi.dart';
 
 import '../../generated/libghostty.g.dart' as native;
 import '../../generated/libghostty_enums.g.dart';
+import '../../types/snapshot_progress.dart';
 import '../result_helpers.dart';
 import '../types.dart';
 import 'snapshot.dart';
@@ -15,8 +16,10 @@ final class FfiSnapshotBindings implements SnapshotBindings {
   var _encodeBuffer = calloc<Uint8>(_initialEncodeCapacity);
   var _encodeCapacity = _initialEncodeCapacity;
   final Pointer<Size> _written = calloc<Size>();
-  final Pointer<UnsignedInt> _progressKeys = calloc<UnsignedInt>(3);
-  final Pointer<Pointer<Void>> _progressValues = calloc<Pointer<Void>>(3);
+  final Pointer<UnsignedInt> _progressKeys = calloc<UnsignedInt>(4);
+  final Pointer<Pointer<Void>> _progressValues = calloc<Pointer<Void>>(4);
+  final Pointer<Uint32> _progressKind = calloc<Uint32>();
+  final Pointer<Uint32> _progressFrame = calloc<Uint32>();
   final Pointer<Uint32> _progressScreen = calloc<Uint32>();
   final Pointer<Size> _progressRows = calloc<Size>();
   final Pointer<Uint32> _progressRemaining = calloc<Uint32>();
@@ -24,14 +27,11 @@ final class FfiSnapshotBindings implements SnapshotBindings {
   final Map<int, (Pointer<Uint8>, int)> _sources = {};
 
   FfiSnapshotBindings() {
-    _progressKeys
-      ..[0] = SnapshotDecoderData.progressScreen.value
-      ..[1] = SnapshotDecoderData.progressRows.value
-      ..[2] = SnapshotDecoderData.progressRemaining.value;
     _progressValues
       ..[0] = _progressScreen.cast()
       ..[1] = _progressRows.cast()
-      ..[2] = _progressRemaining.cast();
+      ..[2] = _progressRemaining.cast()
+      ..[3] = _progressFrame.cast();
   }
 
   @override
@@ -102,15 +102,29 @@ final class FfiSnapshotBindings implements SnapshotBindings {
   }
 
   @override
-  RawSnapshotProgress? snapshotDecoderNext(LibGhosttyHandle decoder) {
+  SnapshotProgress? snapshotDecoderNext(LibGhosttyHandle decoder) {
     final result = native.ghostty_snapshot_decoder_next(
       Pointer.fromAddress(decoder.value),
     );
     if (result == Result.noValue) return null;
     checkResultCode(result.value, operation: 'ghostty_snapshot_decoder_next');
+    _get(decoder, SnapshotDecoderData.progressKind, _progressKind.cast());
+    final kind = SnapshotDecoderProgressKind.fromValue(_progressKind.value);
+    _progressKeys[0] = SnapshotDecoderData.progressScreen.value;
+    switch (kind) {
+      case .page:
+        _progressKeys
+          ..[1] = SnapshotDecoderData.progressRows.value
+          ..[2] = SnapshotDecoderData.progressRemaining.value;
+      case .image:
+        _progressKeys
+          ..[1] = SnapshotDecoderData.progressImageBytes.value
+          ..[2] = SnapshotDecoderData.progressImageId.value
+          ..[3] = SnapshotDecoderData.progressImageFrame.value;
+    }
     final progressResult = native.ghostty_snapshot_decoder_get_multi(
       Pointer.fromAddress(decoder.value),
-      3,
+      kind == .page ? 3 : 4,
       _progressKeys,
       _progressValues,
       _progressWritten,
@@ -119,11 +133,20 @@ final class FfiSnapshotBindings implements SnapshotBindings {
       progressResult.value,
       operation: 'ghostty_snapshot_decoder_get_multi',
     );
-    return (
-      screen: TerminalScreen.fromValue(_progressScreen.value),
-      rows: _progressRows.value,
-      remaining: _progressRemaining.value,
-    );
+    final screen = TerminalScreen.fromValue(_progressScreen.value);
+    return switch (kind) {
+      .page => SnapshotPageProgress(
+        screen: screen,
+        rows: _progressRows.value,
+        remaining: _progressRemaining.value,
+      ),
+      .image => SnapshotImageProgress(
+        screen: screen,
+        imageId: _progressRemaining.value,
+        frame: _progressFrame.value,
+        bytes: _progressRows.value,
+      ),
+    };
   }
 
   @override

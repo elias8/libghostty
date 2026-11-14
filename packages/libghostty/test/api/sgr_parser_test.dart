@@ -98,7 +98,7 @@ void main() {
         final attrs = parser.parse([4, 3], separators: [':', ';']);
         expect(attrs, hasLength(1));
         expect(attrs.first, hasTag(SgrAttributeTag.underline));
-        expect(attrs.first.underlineStyle, UnderlineStyle.curly);
+        expect(attrs.first.underlineStyle, SgrUnderline.curly);
       });
 
       test('returns colon underline before RGB foreground', () {
@@ -108,7 +108,7 @@ void main() {
         );
         expect(attrs, hasLength(2));
         expect(attrs[0], hasTag(SgrAttributeTag.underline));
-        expect(attrs[0].underlineStyle, UnderlineStyle.curly);
+        expect(attrs[0].underlineStyle, SgrUnderline.curly);
         expect(attrs[1], hasTag(SgrAttributeTag.directColorFg));
         expect(attrs[1].color, const RgbColor(51, 51, 51));
       });

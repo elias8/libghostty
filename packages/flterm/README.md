@@ -147,7 +147,7 @@ TerminalView(
     ),
     fontFamily: 'JetBrains Mono',
     fontSize: 14,
-    cursor: const CursorTheme(shape: CursorShape.bar),
+    cursor: const CursorTheme(shape: CursorStyle.bar),
   ),
 );
 ```

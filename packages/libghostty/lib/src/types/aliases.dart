@@ -3,27 +3,6 @@ import 'dart:typed_data';
 import '../generated/libghostty_enums.g.dart';
 import 'terminal.dart';
 
-/// Width behavior of a terminal cell.
-typedef CellWidth = CellWide;
-
-/// Visual style reported by a render-state cursor snapshot.
-typedef CursorShape = RenderStateCursorVisualStyle;
-
-/// Cursor style accepted by terminal configuration APIs.
-typedef TerminalCursorShape = TerminalCursorStyle;
-
-/// Mouse tracking mode exposed by the terminal API.
-typedef MouseTracking = MouseTrackingMode;
-
-/// Semantic cell content classification.
-typedef SemanticContent = CellSemanticContent;
-
-/// Semantic prompt state reported for a row.
-typedef SemanticPrompt = RowSemanticPrompt;
-
-/// Underline style used by SGR attributes.
-typedef UnderlineStyle = SgrUnderline;
-
 typedef ValueGetter<T> = T Function();
 typedef ValueSetter<T> = void Function(T value);
 typedef VoidCallback = void Function();
