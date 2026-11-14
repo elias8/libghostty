@@ -96,7 +96,9 @@ final class CompileFromSource extends LibraryProvider {
     final os = input.config.code.targetOS;
     final arch = input.config.code.targetArchitecture;
     final ios = os == .iOS ? input.config.code.iOS.targetSdk : null;
-    final iOSVersion = os == .iOS ? input.config.code.iOS.targetVersion : null;
+    final iOSVersion = os == .iOS
+        ? input.config.code.iOS.deploymentVersion.major
+        : null;
 
     final installDir = target.parent.parent.uri;
     final zig = zigTarget(os, arch, iOSSdk: ios, iOSVersion: iOSVersion);

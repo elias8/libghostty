@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:ffi' as ffi;
 import 'dart:ffi';
-import 'dart:isolate';
 import 'dart:typed_data';
 
 import '../../generated/libghostty.g.dart';
@@ -173,30 +172,15 @@ final class FfiSystemBindings implements SystemBindings {
     }, exceptionalReturn: false);
   }
 
-  void _deliverLog(Object? message) {
-    if (message is! List<Object?> || message.length != 3) return;
-    final callback = _sysLogCallback;
-    final zone = _sysLogZone;
-    if (callback == null || zone == null) return;
-    final level = message[0];
-    final scope = message[1];
-    final text = message[2];
-    if (level is! int || scope is! Uint8List || text is! Uint8List) return;
-    zone.runGuarded(() {
-      callback(
-        .fromValue(level),
-        utf8.decode(scope, allowMalformed: true),
-        utf8.decode(text, allowMalformed: true),
-      );
-    });
-  }
-
   void _ensureLogTransport() {
     if (_sysLogTransport != null) return;
-    final port = ReceivePort();
-    port.listen(_deliverLog);
-    final sendPort = port.sendPort;
-    _sysLogTransport = NativeCallable<SysLogFnFunction>.isolateGroupBound((
+    // Like the PNG decoder, this must be called back on the isolate's own
+    // thread: the SysLogFn pointers are only valid during the native call,
+    // so the Dart closure must run synchronously to copy them.
+    // NativeCallable.isolateGroupBound would allow calls from any thread
+    // but is unavailable on stable SDKs (it aborts without
+    // --experimental-shared-data).
+    _sysLogTransport = NativeCallable<SysLogFnFunction>.isolateLocal((
       Pointer<Void> userdata,
       int level,
       Pointer<Uint8> scope,
@@ -204,15 +188,18 @@ final class FfiSystemBindings implements SystemBindings {
       Pointer<Uint8> message,
       int messageLen,
     ) {
-      try {
-        sendPort.send(<Object?>[
-          level,
-          Uint8List.fromList(scope.asTypedList(scopeLen)),
-          Uint8List.fromList(message.asTypedList(messageLen)),
-        ]);
-      } on Object {
-        // The native callback cannot report a Dart dispatch failure.
-      }
+      final callback = _sysLogCallback;
+      final zone = _sysLogZone;
+      if (callback == null || zone == null) return;
+      final scopeBytes = Uint8List.fromList(scope.asTypedList(scopeLen));
+      final messageBytes = Uint8List.fromList(message.asTypedList(messageLen));
+      zone.runGuarded(() {
+        callback(
+          .fromValue(level),
+          utf8.decode(scopeBytes, allowMalformed: true),
+          utf8.decode(messageBytes, allowMalformed: true),
+        );
+      });
     });
   }
 }
