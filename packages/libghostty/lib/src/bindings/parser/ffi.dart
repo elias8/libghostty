@@ -23,7 +23,9 @@ final class FfiParserBindings implements ParserBindings {
   @override
   String? oscCommandWindowTitle(LibGhosttyHandle command) {
     return using((arena) {
-      final out = arena<Pointer<Char>>();
+      // The native side writes a String struct (pointer + length), so the
+      // output buffer must be a full String, not a bare pointer.
+      final out = arena<native.String>();
       final present = native.ghostty_osc_command_data(
         native.OscCommand.fromAddress(command.value),
         OscCommandData.changeWindowTitleStr,
@@ -31,8 +33,7 @@ final class FfiParserBindings implements ParserBindings {
       );
       if (present == .noValue) return null;
       checkResultCode(present.value, operation: 'ghostty_osc_command_data');
-      if (out.value == nullptr) return null;
-      return out.value.cast<Utf8>().toDartString();
+      return out.ref.ptr.cast<Utf8>().toDartString(length: out.ref.len);
     });
   }
 
