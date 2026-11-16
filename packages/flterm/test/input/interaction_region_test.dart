@@ -1967,7 +1967,7 @@ void main() {
         expect(events, isEmpty);
       });
 
-      testWidgets('forwards only the first simultaneous touch contact', (
+      testWidgets('reports simultaneous touch contacts as one right click', (
         tester,
       ) async {
         enableSgrMouseTracking(controller);
@@ -1992,7 +1992,8 @@ void main() {
           const PointerUpEvent(pointer: 31, position: Offset(24, 16)),
         );
 
-        expect(decodeEvents(events), '\x1b[<0;4;2M\x1b[<0;4;2m');
+        // At the first contact, where a left tap would have landed.
+        expect(decodeEvents(events), '\x1b[<2;4;2M\x1b[<2;4;2m');
       });
 
       testWidgets('forwards hover only in any-event tracking', (tester) async {
@@ -3378,6 +3379,53 @@ void main() {
 
         expect(controller.hasSelection, isFalse);
         expect(sgrCodes(events), [0, 0]);
+      });
+
+      testWidgets('tracked two-finger touch tap reports a right click', (
+        tester,
+      ) async {
+        enableAnySgrMouseTracking(controller);
+        final events = <Uint8List>[];
+        controller.onOutput = events.add;
+
+        await tester.pumpWidget(buildHandler(controller: controller));
+        final first = await tester.startGesture(
+          const Offset(24, 16),
+          pointer: 1021,
+        );
+        final second = await tester.startGesture(
+          const Offset(80, 16),
+          pointer: 1022,
+        );
+        await first.up();
+        await second.up();
+        await tester.pumpAndSettle();
+
+        expect(sgrCodes(events), [2, 2]);
+      });
+
+      testWidgets('tracked two-finger touch drag reports no click', (
+        tester,
+      ) async {
+        enableAnySgrMouseTracking(controller);
+        final events = <Uint8List>[];
+        controller.onOutput = events.add;
+
+        await tester.pumpWidget(buildHandler(controller: controller));
+        final first = await tester.startGesture(
+          const Offset(24, 16),
+          pointer: 1023,
+        );
+        final second = await tester.startGesture(
+          const Offset(80, 16),
+          pointer: 1024,
+        );
+        await second.moveBy(const Offset(40, 0));
+        await first.up();
+        await second.up();
+        await tester.pumpAndSettle();
+
+        expect(sgrCodes(events), isNot(anyOf(contains(0), contains(2))));
       });
 
       testWidgets('tracked touch scroll keeps its first contact position', (
